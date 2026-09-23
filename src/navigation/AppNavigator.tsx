@@ -7,8 +7,24 @@ import { ActivityIndicator, View } from 'react-native';
 // Import Screens
 import LoginScreen from '../screens/auth/LoginScreen';
 import DashboardScreen from '../screens/dashboard/DashboardScreen';
-// import CustomerProfileScreen from '../screens/crm/CustomerProfileScreen';
-// import BillingScreen from '../screens/billing/BillingScreen';
+import CustomersScreen from '../screens/crm/CustomersScreen';
+import CustomerProfileScreen from '../screens/crm/CustomerProfileScreen';
+import InventoryScreen from '../screens/inventory/InventoryScreen';
+import BillingScreen from '../screens/billing/BillingScreen';
+import CreateInvoiceScreen from '../screens/billing/CreateInvoiceScreen';
+import CheckoutScreen from '../screens/billing/CheckoutScreen';
+import InvoiceDetailScreen from '../screens/billing/InvoiceDetailScreen';
+
+import PurchasesScreen from '../screens/purchases/PurchasesScreen';
+import CreatePurchaseScreen from '../screens/purchases/CreatePurchaseScreen';
+import CheckoutPurchaseScreen from '../screens/purchases/CheckoutPurchaseScreen';
+import PurchaseDetailScreen from '../screens/purchases/PurchaseDetailScreen';
+
+import ExchangeScreen from '../screens/exchange/ExchangeScreen';
+import CreateExchangeScreen from '../screens/exchange/CreateExchangeScreen';
+import CheckoutExchangeScreen from '../screens/exchange/CheckoutExchangeScreen';
+
+import { useAuthStore } from '../store/authStore';
 
 const Stack = createNativeStackNavigator();
 
@@ -24,23 +40,10 @@ const AppDarkTheme = {
 };
 
 export default function AppNavigator() {
-  const [isLoading, setIsLoading] = useState(true);
-  const [userToken, setUserToken] = useState<string | null>(null);
+  const { userToken, isLoading, restoreToken } = useAuthStore();
 
   useEffect(() => {
-    // Check for existing token
-    const bootstrapAsync = async () => {
-      let token;
-      try {
-        token = await AsyncStorage.getItem('token');
-      } catch (e) {
-        // Restoring token failed
-      }
-      setUserToken(token || null);
-      setIsLoading(false);
-    };
-
-    bootstrapAsync();
+    restoreToken();
   }, []);
 
   if (isLoading) {
@@ -75,10 +78,22 @@ export default function AppNavigator() {
               component={DashboardScreen} 
               options={{ title: 'Jewellery ERP' }} 
             />
-            {/* 
-            <Stack.Screen name="CustomerProfile" component={CustomerProfileScreen} options={{ title: 'Customer Ledger' }} />
-            <Stack.Screen name="Billing" component={BillingScreen} options={{ title: 'Create Invoice' }} /> 
-            */}
+            <Stack.Screen name="Customers" component={CustomersScreen} options={{ title: 'Customers' }} />
+            <Stack.Screen name="CustomerProfile" component={CustomerProfileScreen} options={{ title: 'Customer Profile' }} />
+            <Stack.Screen name="Inventory" component={InventoryScreen} options={{ title: 'Inventory Stock' }} />
+            <Stack.Screen name="Billing" component={BillingScreen} options={{ title: 'Billing & Invoices' }} />
+            <Stack.Screen name="CreateInvoice" component={CreateInvoiceScreen} options={{ title: 'Create Invoice' }} />
+            <Stack.Screen name="Checkout" component={CheckoutScreen} options={{ title: 'Checkout & Settle' }} />
+            <Stack.Screen name="InvoiceDetail" component={InvoiceDetailScreen} options={{ title: 'Invoice Detail' }} />
+
+            <Stack.Screen name="Purchases" component={PurchasesScreen} options={{ title: 'Purchases History' }} />
+            <Stack.Screen name="CreatePurchase" component={CreatePurchaseScreen} options={{ title: 'Add Purchase' }} />
+            <Stack.Screen name="CheckoutPurchase" component={CheckoutPurchaseScreen} options={{ title: 'Checkout Purchase' }} />
+            <Stack.Screen name="PurchaseDetail" component={PurchaseDetailScreen} options={{ title: 'Purchase Detail' }} />
+
+            <Stack.Screen name="Exchange" component={ExchangeScreen} options={{ title: 'Exchange History' }} />
+            <Stack.Screen name="CreateExchange" component={CreateExchangeScreen} options={{ title: 'New Exchange' }} />
+            <Stack.Screen name="CheckoutExchange" component={CheckoutExchangeScreen} options={{ title: 'Checkout Exchange' }} />
           </>
         )}
       </Stack.Navigator>

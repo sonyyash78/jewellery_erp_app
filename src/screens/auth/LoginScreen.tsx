@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { axiosClient } from '../../api/axiosClient';
+import { useAuthStore } from '../../store/authStore';
 
 export default function LoginScreen({ navigation }: any) {
   const [email, setEmail] = useState('');
@@ -17,13 +18,12 @@ export default function LoginScreen({ navigation }: any) {
     setLoading(true);
     try {
       // Existing API expects URL encoded form data for OAuth2
-      const formData = new URLSearchParams();
-      formData.append('username', email);
-      formData.append('password', password);
+      const encodedData = `username=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`;
 
-      const response = await axiosClient.post('/auth/login', formData.toString(), {
+      const response = await axiosClient.post('/auth/login', encodedData, {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
+          'Bypass-Tunnel-Reminder': 'true' // For localtunnel
         },
       });
 
@@ -34,10 +34,10 @@ export default function LoginScreen({ navigation }: any) {
         headers: { Authorization: `Bearer ${token}` }
       });
 
-      await AsyncStorage.setItem('token', token);
-      await AsyncStorage.setItem('user', JSON.stringify(userResponse.data));
+      // Update global auth state (which automatically switches the navigator to MainDrawer)
+      const { signIn } = useAuthStore.getState();
+      await signIn(token, userResponse.data);
 
-      navigation.replace('MainDrawer');
     } catch (error: any) {
       // Errors are handled by axios interceptor, but we can catch specific 401s here
       if (error.response?.status === 401) {

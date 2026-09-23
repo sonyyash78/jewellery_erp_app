@@ -8,6 +8,7 @@ export const axiosClient = axios.create({
   timeout: 10000, // 10 seconds timeout
   headers: {
     'Content-Type': 'application/json',
+    'Bypass-Tunnel-Reminder': 'true' // For localtunnel
   },
 });
 
@@ -45,9 +46,8 @@ axiosClient.interceptors.response.use(
       // 3. Unauthorized / Session Expired
       if (error.response.status === 401) {
         Alert.alert('Session Expired', 'Your session has expired. Please log in again.');
-        await AsyncStorage.removeItem('token');
-        await AsyncStorage.removeItem('user');
-        // Force navigation to Login (handled via App.tsx state or navigation ref in a real app)
+        const { signOut } = require('../store/authStore').useAuthStore.getState();
+        await signOut();
       }
       
       // 4. Server Errors (500)
@@ -55,7 +55,7 @@ axiosClient.interceptors.response.use(
         Alert.alert('Server Error', 'The ERP server encountered an error. Please try again later.');
       }
     } else {
-      Alert.alert('Error', 'An unexpected error occurred connecting to the ERP API.');
+      Alert.alert('Error', `Details: ${error.message || JSON.stringify(error)}`);
     }
 
     return Promise.reject(error);

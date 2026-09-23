@@ -4,6 +4,8 @@ const PORT = 8082;
 const BACKEND_URL = 'http://127.0.0.1:8000';
 
 const server = http.createServer((clientReq, clientRes) => {
+  console.log(`[PROXY] Incoming request from ${clientReq.socket.remoteAddress} -> ${clientReq.method} ${clientReq.url}`);
+
   const options = {
     hostname: '127.0.0.1',
     port: 8000,
@@ -18,7 +20,7 @@ const server = http.createServer((clientReq, clientRes) => {
   });
 
   proxyReq.on('error', (e) => {
-    console.error(`Proxy Error: ${e.message}`);
+    console.error(`[PROXY ERROR] ${e.message}`);
     clientRes.writeHead(500);
     clientRes.end('Proxy Error');
   });

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { axiosClient } from '../../api/axiosClient';
+import { useAuthStore } from '../../store/authStore';
 
 export default function DashboardScreen({ navigation }: any) {
   const [data, setData] = useState<any>(null);
@@ -9,7 +10,7 @@ export default function DashboardScreen({ navigation }: any) {
 
   const fetchDashboardData = async () => {
     try {
-      const response = await axiosClient.get('/dashboard/summary');
+      const response = await axiosClient.get('/dashboard/metrics');
       setData(response.data);
     } catch (error) {
       console.log('Failed to fetch dashboard', error);
@@ -26,9 +27,8 @@ export default function DashboardScreen({ navigation }: any) {
   }, []);
 
   const handleLogout = async () => {
-    await AsyncStorage.removeItem('token');
-    await AsyncStorage.removeItem('user');
-    navigation.replace('Login');
+    const { signOut } = useAuthStore.getState();
+    await signOut();
   };
 
   return (
@@ -57,27 +57,43 @@ export default function DashboardScreen({ navigation }: any) {
       <View style={styles.grid}>
         <TouchableOpacity style={styles.gridItem} onPress={() => {}}>
           <Text style={styles.gridValue}>{data?.total_customers || 0}</Text>
-          <Text style={styles.gridLabel}>Customers</Text>
+          <Text style={styles.gridLabel}>Total Customers</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.gridItem} onPress={() => {}}>
-          <Text style={styles.gridValue}>{data?.total_invoices || 0}</Text>
-          <Text style={styles.gridLabel}>Invoices</Text>
+          <Text style={styles.gridValue}>{data?.today_bills || 0}</Text>
+          <Text style={styles.gridLabel}>Today's Bills</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.gridItem} onPress={() => {}}>
-          <Text style={styles.gridValue}>₹{data?.total_sales?.toLocaleString() || 0}</Text>
-          <Text style={styles.gridLabel}>Total Sales</Text>
+          <Text style={styles.gridValue}>₹{data?.today_sales?.toLocaleString('en-IN') || 0}</Text>
+          <Text style={styles.gridLabel}>Today's Sales</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.gridItem} onPress={() => {}}>
-          <Text style={styles.gridValue}>₹{data?.total_purchases?.toLocaleString() || 0}</Text>
-          <Text style={styles.gridLabel}>Total Purchases</Text>
+          <Text style={styles.gridValue}>₹{data?.today_purchases?.toLocaleString('en-IN') || 0}</Text>
+          <Text style={styles.gridLabel}>Today's Purchases</Text>
         </TouchableOpacity>
       </View>
 
       {/* Upcoming features list */}
       <View style={styles.menuList}>
         <Text style={styles.menuTitle}>Menu</Text>
-        {['Customers', 'Inventory', 'Billing', 'Purchases', 'Settings'].map((item) => (
-          <TouchableOpacity key={item} style={styles.menuItem}>
+        {['Customers', 'Inventory', 'Billing', 'Purchases', 'Exchange', 'Settings'].map((item) => (
+          <TouchableOpacity 
+            key={item} 
+            style={styles.menuItem}
+            onPress={() => {
+              if (item === 'Customers') {
+                navigation.navigate('Customers');
+              } else if (item === 'Inventory') {
+                navigation.navigate('Inventory');
+              } else if (item === 'Billing') {
+                navigation.navigate('Billing');
+              } else if (item === 'Purchases') {
+                navigation.navigate('Purchases');
+              } else if (item === 'Exchange') {
+                navigation.navigate('Exchange');
+              }
+            }}
+          >
             <Text style={styles.menuItemText}>{item}</Text>
             <Text style={styles.menuItemArrow}>→</Text>
           </TouchableOpacity>
