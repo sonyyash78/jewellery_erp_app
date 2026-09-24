@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -11,7 +11,9 @@ import CustomersScreen from '../screens/crm/CustomersScreen';
 import CustomerProfileScreen from '../screens/crm/CustomerProfileScreen';
 import SuppliersScreen from '../screens/crm/SuppliersScreen';
 import SupplierProfileScreen from '../screens/crm/SupplierProfileScreen';
+import CreateCRMScreen from '../screens/crm/CreateCRMScreen';
 import InventoryScreen from '../screens/inventory/InventoryScreen';
+import CreateInventoryScreen from '../screens/inventory/CreateInventoryScreen';
 import SettingsScreen from '../screens/settings/SettingsScreen';
 import ReportsScreen from '../screens/reports/ReportsScreen';
 import BillingScreen from '../screens/billing/BillingScreen';
@@ -86,7 +88,11 @@ export default function AppNavigator() {
             <Stack.Screen name="CustomerProfile" component={CustomerProfileScreen} options={{ title: 'Customer Profile' }} />
             <Stack.Screen name="Suppliers" component={SuppliersScreen} options={{ title: 'Suppliers' }} />
             <Stack.Screen name="SupplierProfile" component={SupplierProfileScreen} options={{ title: 'Supplier Profile' }} />
+            <Stack.Screen name="CreateCRM" component={CreateCRMScreen} options={{ title: 'Add Contact' }} />
+            
             <Stack.Screen name="Inventory" component={InventoryScreen} options={{ title: 'Inventory Stock' }} />
+            <Stack.Screen name="CreateInventory" component={CreateInventoryScreen} options={{ title: 'Add Item' }} />
+            
             <Stack.Screen name="Billing" component={BillingScreen} options={{ title: 'Billing & Invoices' }} />
             <Stack.Screen name="CreateInvoice" component={CreateInvoiceScreen} options={{ title: 'Create Invoice' }} />
             <Stack.Screen name="Checkout" component={CheckoutScreen} options={{ title: 'Checkout & Settle' }} />

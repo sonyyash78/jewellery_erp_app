@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
 import { axiosClient } from '../../api/axiosClient';
 
@@ -67,6 +67,13 @@ export default function SuppliersScreen({ navigation }: any) {
           ListEmptyComponent={<Text style={styles.emptyText}>No Suppliers found.</Text>}
         />
       )}
+      
+      <TouchableOpacity 
+        style={styles.fab} 
+        onPress={() => navigation.navigate('CreateCRM', { type: 'Supplier' })}
+      >
+        <Text style={styles.fabText}>+</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -76,6 +83,27 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0a0a0a',
     padding: 16,
+  },
+  fab: {
+    position: 'absolute',
+    width: 60,
+    height: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+    right: 20,
+    bottom: 20,
+    backgroundColor: '#d4af37',
+    borderRadius: 30,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+  },
+  fabText: {
+    fontSize: 32,
+    color: '#0a0a0a',
+    lineHeight: 34,
   },
   searchInput: {
     backgroundColor: '#141414',
