@@ -3,6 +3,10 @@ import { useFocusEffect } from '@react-navigation/native';
 import { View, Text, Alert, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, ScrollView } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { axiosClient } from '../../api/axiosClient';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system/legacy';
+import { generateLedgerVoucherHtml, generateLedgerStatementHtml } from '../../utils/ledgerPdfUtils';
 
 const formatAmount = (num: number) => {
   if (!num) return '0';
@@ -25,6 +29,7 @@ export default function CustomerProfileScreen({ route, navigation }: any) {
   const { customerId, customerName, item } = route.params || {};
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [pdfGenerating, setPdfGenerating] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -33,7 +38,7 @@ export default function CustomerProfileScreen({ route, navigation }: any) {
   );
 
   useEffect(() => {
-    navigation.setOptions({ title: 'Profile' });
+    navigation.setOptions({ title: 'Customer Profile' });
     fetchProfile();
   }, [customerId]);
 
@@ -51,12 +56,79 @@ export default function CustomerProfileScreen({ route, navigation }: any) {
 
   const outstanding = data?.outstanding_balance || 0;
   const isDr = outstanding > 0;
+
+  const handleDownloadVoucherPdf = async (bill: any) => {
+    try {
+      setPdfGenerating(true);
+      const party = item || { first_name: customerName, name: customerName };
+      const html = generateLedgerVoucherHtml('Customer', party, bill);
+      
+      const { base64 } = await Print.printToFileAsync({ html, base64: true });
+      const sanitizedBillNo = (bill?.bill_no || `VOUCHER_${bill?.id || Date.now()}`).replace(/[^a-zA-Z0-9_-]/g, '_');
+      const pdfName = `Customer_Voucher_${sanitizedBillNo}.pdf`;
+      const newUri = FileSystem.documentDirectory + pdfName;
+
+      if (base64) {
+        await FileSystem.writeAsStringAsync(newUri, base64, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+      }
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(newUri, {
+          UTI: '.pdf',
+          mimeType: 'application/pdf',
+          dialogTitle: `Download Voucher ${bill?.bill_no || ''}`,
+        });
+      } else {
+        Alert.alert('PDF Saved', `Voucher PDF saved to: ${newUri}`);
+      }
+    } catch (error: any) {
+      console.error('Error generating voucher PDF:', error);
+      Alert.alert('Error', 'Failed to generate voucher PDF. Please try again.');
+    } finally {
+      setPdfGenerating(false);
+    }
+  };
+
+  const handleDownloadStatementPdf = async () => {
+    try {
+      setPdfGenerating(true);
+      const party = item || { first_name: customerName, name: customerName };
+      const html = generateLedgerStatementHtml('Customer', party, data);
+      
+      const { base64 } = await Print.printToFileAsync({ html, base64: true });
+      const sanitizedName = (customerName || 'Customer').replace(/[^a-zA-Z0-9_-]/g, '_');
+      const pdfName = `Customer_Statement_${sanitizedName}_${Date.now()}.pdf`;
+      const newUri = FileSystem.documentDirectory + pdfName;
+
+      if (base64) {
+        await FileSystem.writeAsStringAsync(newUri, base64, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+      }
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(newUri, {
+          UTI: '.pdf',
+          mimeType: 'application/pdf',
+          dialogTitle: `Download Customer Statement - ${customerName || ''}`,
+        });
+      } else {
+        Alert.alert('PDF Saved', `Statement PDF saved to: ${newUri}`);
+      }
+    } catch (error: any) {
+      console.error('Error generating statement PDF:', error);
+      Alert.alert('Error', 'Failed to generate statement PDF. Please try again.');
+    } finally {
+      setPdfGenerating(false);
+    }
+  };
   
   const renderBill = ({ item: bill }: { item: any }) => {
-    // Type badge color
     let typeColor = '#3b82f6'; // INVOICE
     if (bill.type === 'EXCHANGE') typeColor = '#a855f7';
-    else if (bill.type === 'SETTLEMENT') typeColor = '#10b981';
+    else if (bill.type === 'SETTLEMENT' || bill.type === 'Payment' || bill.type === 'Receipt') typeColor = '#10b981';
     
     return (
       <View style={styles.billCard}>
@@ -72,7 +144,11 @@ export default function CustomerProfileScreen({ route, navigation }: any) {
         {/* Row 2: Details */}
         <View style={styles.detailsRow}>
           <Text style={styles.billSummary} numberOfLines={2}>{bill.summary}</Text>
-          <TouchableOpacity style={styles.pdfBtn} onPress={() => Alert.alert("PDF Generated", "The ledger PDF has been downloaded successfully.")}>
+          <TouchableOpacity 
+            style={styles.pdfBtn} 
+            onPress={() => handleDownloadVoucherPdf(bill)}
+            disabled={pdfGenerating}
+          >
             <Ionicons name="download-outline" size={14} color="#d4af37" />
             <Text style={styles.pdfBtnText}>PDF</Text>
           </TouchableOpacity>
@@ -112,7 +188,7 @@ export default function CustomerProfileScreen({ route, navigation }: any) {
         <View style={styles.balanceRow}>
           <Text style={styles.balanceLabel}>BALANCE (₹)</Text>
           <Text style={styles.balanceAmt}>
-            {Math.abs(bill.balance).toLocaleString('en-IN')} {bill.balance > 0 ? '(Dr)' : (bill.balance < 0 ? '(Cr)' : '')}
+            ₹ {Math.abs(bill.balance).toLocaleString('en-IN')} {bill.balance > 0 ? '(Dr)' : (bill.balance < 0 ? '(Cr)' : '')}
           </Text>
         </View>
       </View>
@@ -179,11 +255,29 @@ export default function CustomerProfileScreen({ route, navigation }: any) {
           <Text style={styles.sectionTitle}>CUSTOMER LEDGER</Text>
         </View>
         <View style={styles.actionBtns}>
-          <TouchableOpacity style={styles.settleBtn} onPress={() => navigation.navigate('CreateSettlement', { id: customerId, type: 'Customer' })}>
-            <Text style={styles.settleBtnText}>+ Record Settlement</Text>
+          <TouchableOpacity 
+            style={styles.statementBtn} 
+            onPress={handleDownloadStatementPdf}
+            disabled={pdfGenerating}
+          >
+            <Ionicons name="document-attach-outline" size={14} color="#fff" />
+            <Text style={styles.statementBtnText}>Statement PDF</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.settleBtn} 
+            onPress={() => navigation.navigate('CreateSettlement', { id: customerId, type: 'Customer' })}
+          >
+            <Text style={styles.settleBtnText}>+ Settlement</Text>
           </TouchableOpacity>
         </View>
       </View>
+
+      {pdfGenerating && (
+        <View style={styles.generatingBanner}>
+          <ActivityIndicator size="small" color="#d4af37" />
+          <Text style={styles.generatingText}>Generating & opening PDF...</Text>
+        </View>
+      )}
 
       {/* Ledger List */}
       <FlatList
@@ -282,23 +376,57 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     color: '#d4af37',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: 'bold',
-    marginLeft: 8,
+    marginLeft: 6,
   },
   actionBtns: {
     flexDirection: 'row',
+    gap: 8,
+  },
+  statementBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#262626',
+    borderWidth: 1,
+    borderColor: '#444',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    gap: 4,
+  },
+  statementBtnText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 11,
   },
   settleBtn: {
     backgroundColor: '#ffcc00',
     paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     borderRadius: 6,
   },
   settleBtnText: {
     color: '#000',
     fontWeight: 'bold',
+    fontSize: 11,
+  },
+  generatingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1a1a1a',
+    padding: 8,
+    borderRadius: 6,
+    marginBottom: 10,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#d4af37',
+  },
+  generatingText: {
+    color: '#d4af37',
     fontSize: 12,
+    fontWeight: '600',
   },
   billCard: {
     backgroundColor: '#141414',
@@ -353,13 +481,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#d4af37',
-    paddingHorizontal: 6,
+    backgroundColor: 'rgba(212, 175, 55, 0.1)',
+    paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 4,
   },
   pdfBtnText: {
     color: '#d4af37',
-    fontSize: 10,
+    fontSize: 11,
     marginLeft: 4,
     fontWeight: 'bold',
   },
