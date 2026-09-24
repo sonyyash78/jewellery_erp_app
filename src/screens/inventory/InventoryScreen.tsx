@@ -62,11 +62,7 @@ export default function InventoryScreen({ navigation }: any) {
                 {item.status || 'Not Available'}
               </Text>
             </View>
-            <View style={{ marginLeft: 12, justifyContent: 'center' }}>
-              <TouchableOpacity style={{ padding: 8 }} onPress={() => navigation.navigate('EditInventory', { item })}>
-                <Ionicons name="pencil" size={20} color="#d4af37" />
-              </TouchableOpacity>
-            </View>
+            
             
           </View>
           
@@ -84,15 +80,14 @@ export default function InventoryScreen({ navigation }: any) {
                 Fine: {fineWt}g ({item.tanch || 0}% + {item.wastage || 0}%)
               </Text>
             </View>
-            <View style={{ marginLeft: 12, justifyContent: 'center' }}>
-              <TouchableOpacity style={{ padding: 8 }} onPress={() => navigation.navigate('EditInventory', { item })}>
-                <Ionicons name="pencil" size={20} color="#d4af37" />
-              </TouchableOpacity>
+              <View style={{ marginLeft: 12, justifyContent: 'center' }}>
+                <TouchableOpacity style={{ padding: 8 }} onPress={() => navigation.navigate('EditInventory', { item })}>
+                  <Ionicons name="pencil" size={20} color="#d4af37" />
+                </TouchableOpacity>
+              </View>
             </View>
-            
           </View>
         </View>
-      </View>
     );
   };
 
