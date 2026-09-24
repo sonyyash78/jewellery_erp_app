@@ -39,7 +39,17 @@ export default function InventoryScreen({ navigation }: any) {
   const totalWeight = items.reduce((acc, item) => acc + (item.net_weight || 0), 0);
 
   const renderItem = ({ item }: { item: any }) => {
-    const isAvailable = item.status === 'Available';
+    let statusStyle = styles.statusSold;
+    let statusTextStyle = styles.statusTextSold;
+    
+    if (item.status === 'Available') {
+      statusStyle = styles.statusAvailable;
+      statusTextStyle = styles.statusTextAvailable;
+    } else if (item.status === 'Stock Low') {
+      statusStyle = styles.statusLow;
+      statusTextStyle = styles.statusTextLow;
+    }
+
     const fineWt = (item.net_weight * (((item.tanch || 0) + (item.wastage || 0)) / 100)).toFixed(3);
     const purityText = item.purity ? `${item.metal} • ${item.purity}` : item.metal;
 
@@ -54,8 +64,8 @@ export default function InventoryScreen({ navigation }: any) {
         <View style={styles.infoContainer}>
           <View style={styles.rowHeader}>
             <Text style={styles.itemCode}>{item.item_code}</Text>
-            <View style={[styles.statusBadge, isAvailable ? styles.statusAvailable : styles.statusSold]}>
-              <Text style={isAvailable ? styles.statusTextAvailable : styles.statusTextSold}>
+            <View style={[styles.statusBadge, statusStyle]}>
+              <Text style={statusTextStyle}>
                 {item.status}
               </Text>
             </View>
@@ -313,6 +323,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(34, 197, 94, 0.1)',
     borderColor: 'rgba(34, 197, 94, 0.3)',
   },
+  statusLow: { backgroundColor: 'rgba(234, 179, 8, 0.1)', borderColor: 'rgba(234, 179, 8, 0.3)' },
   statusSold: {
     backgroundColor: 'rgba(239, 68, 68, 0.1)',
     borderColor: 'rgba(239, 68, 68, 0.3)',
@@ -322,6 +333,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: 'bold',
   },
+  statusTextLow: { color: '#eab308', fontSize: 10, fontWeight: 'bold' },
   statusTextSold: {
     color: '#f87171',
     fontSize: 10,

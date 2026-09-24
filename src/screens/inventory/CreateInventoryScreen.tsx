@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { axiosClient } from '../../api/axiosClient';
@@ -200,9 +200,20 @@ export default function CreateInventoryScreen({ navigation }: any) {
               <Text style={styles.label}>SHELF / TRAY</Text>
               <TextInput style={styles.input} placeholder="e.g. Tray 5" placeholderTextColor="#555" value={formData.shelf} onChangeText={(t) => setFormData({ ...formData, shelf: t })} />
             </View>
-            <View style={styles.col}>
-              <Text style={styles.label}>STATUS</Text>
-              <TextInput style={styles.input} value={formData.status} onChangeText={(t) => setFormData({ ...formData, status: t })} />
+          </View>
+
+          <View style={{ marginBottom: 16 }}>
+            <Text style={styles.label}>STATUS</Text>
+            <View style={styles.radioGroup}>
+              <TouchableOpacity style={[styles.radio, formData.status === 'Available' && styles.radioActive]} onPress={() => setFormData({ ...formData, status: 'Available' })}>
+                <Text style={[styles.radioText, {fontSize: 12}]}>Available</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.radio, formData.status === 'Stock Low' && styles.radioActive]} onPress={() => setFormData({ ...formData, status: 'Stock Low' })}>
+                <Text style={[styles.radioText, {fontSize: 12}]}>Stock Low</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.radio, formData.status === 'Not Available' && styles.radioActive]} onPress={() => setFormData({ ...formData, status: 'Not Available' })}>
+                <Text style={[styles.radioText, {fontSize: 12}]}>Not Available</Text>
+              </TouchableOpacity>
             </View>
           </View>
           
