@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert,
 import { axiosClient } from '../../api/axiosClient';
 
 export default function CreateCRMScreen({ route, navigation }: any) {
-  const { type, item } = route.params; // 'Customer' or 'Supplier'
+  const { type, item } = route.params || {}; // 'Customer' or 'Supplier'
   
   const [formData, setFormData] = useState({
     name: item ? (item.first_name || item.name || '') : '',
@@ -29,29 +29,37 @@ export default function CreateCRMScreen({ route, navigation }: any) {
     try {
       setLoading(true);
       if (type === 'Supplier') {
-        // Supplier schema matches mobile exactly
-        await axiosClient.post('/suppliers/', {
+        const payload = {
           name: formData.name,
           mobile: formData.mobile,
           address: formData.address || undefined,
-          gst_number: formData.gst_number || undefined
-        });
+          gst_number: formData.gst_number || undefined,
+        };
+        if (item && item.id) {
+          await axiosClient.put(`/suppliers/${item.id}`, payload);
+        } else {
+          await axiosClient.post('/suppliers/', payload);
+        }
       } else {
-        // Customer schema maps
-        await axiosClient.post('/customers/', {
+        const payload = {
           first_name: formData.name,
           phone_number: formData.mobile,
           address: formData.address || undefined,
           aadhaar_pan: formData.aadhaar_pan || undefined,
           gst_number: formData.gst_number || undefined
-        });
+        };
+        if (item && item.id) {
+          await axiosClient.put(`/customers/${item.id}`, payload);
+        } else {
+          await axiosClient.post('/customers/', payload);
+        }
       }
       
-      Alert.alert('Success', `${type} created successfully!`);
+      Alert.alert('Success', `${type} saved successfully!`);
       navigation.goBack();
     } catch (error: any) {
-      console.log(`Failed to create ${type}`, error.response?.data || error.message);
-      Alert.alert('Error', `Failed to create ${type}. Please check your inputs.`);
+      console.log(`Failed to save ${type}`, error.response?.data || error.message);
+      Alert.alert('Error', `Failed to save ${type}. Please check your inputs.`);
     } finally {
       setLoading(false);
     }
