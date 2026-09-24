@@ -103,7 +103,7 @@ export default function CustomersScreen({ route, navigation }: any) {
             <Text style={styles.itemName}>{item.first_name} {item.last_name || ''}</Text>
           </View>
           <Text style={styles.outstandingValue}>
-            â‚¹ {(item.outstanding_balance || 0).toLocaleString('en-IN')}
+            ₹ {formatAmount(item.outstanding_balance || 0)}
           </Text>
         </View>
 
@@ -122,7 +122,7 @@ export default function CustomersScreen({ route, navigation }: any) {
           </View>
           <View style={styles.detailCol}>
             <Text style={styles.detailLabel}>CREDIT LIMIT</Text>
-            <Text style={styles.detailValue}>â‚¹ {(item.credit_limit || 0).toLocaleString('en-IN')}</Text>
+            <Text style={styles.detailValue}>₹ {formatAmount(item.credit_limit || 0)}</Text>
           </View>
         </View>
 
@@ -187,7 +187,7 @@ export default function CustomersScreen({ route, navigation }: any) {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.summaryLabel}>NET OUTSTANDING</Text>
-            <Text style={styles.summaryValueBig}>â‚¹ {netOutstanding.toLocaleString('en-IN')}</Text>
+            <Text style={styles.summaryValueBig} numberOfLines={1} adjustsFontSizeToFit>₹ {formatAmount(netOutstanding)}</Text>
           </View>
         </View>
         
