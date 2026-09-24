@@ -54,6 +54,7 @@ from app.api.v1.settings import router as settings_router
 from app.api.v1.billing import router as billing_router
 from app.api.v1.ai import router as ai_router
 from app.api.v1.backup import router as backup_router
+from app.api.v1.verification import router as verification_router
 
 # Migrate legacy Stack-A exchanges table if schema does not match Stack-B model
 from sqlalchemy import inspect, text
@@ -130,6 +131,7 @@ app.include_router(settings_router, prefix="/api/v1/settings", tags=["Settings"]
 app.include_router(billing_router, prefix="/api/v1/billing", tags=["Billing"])
 app.include_router(ai_router, prefix="/api/v1/ai", tags=["AI"])
 app.include_router(backup_router, prefix="/api/v1/backup", tags=["Backup"])
+app.include_router(verification_router, prefix="/api/v1/verification", tags=["Verification"])
 
 static_dir = os.path.join(os.path.dirname(__file__), "..", "static")
 os.makedirs(static_dir, exist_ok=True)

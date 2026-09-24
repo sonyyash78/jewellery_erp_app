@@ -21,6 +21,20 @@ export const generateInvoiceHtml = (data: any): string => {
   };
   const customer = data.customer || { name: 'Walk-in Customer', phone: '', address: '', email: '', gstin: '', pan: '' };
   const invoice = data.invoice || { invoice_number: 'INV-001', invoice_date: new Date().toISOString(), status: 'paid', subtotal: 0, tax_amount: 0, discount_amount: 0, grand_total: 0, amount_paid: 0, balance_due: 0 };
+  const allItems = data.items || [];
+
+  const isOldOrDeposit = (item: any) => {
+    const name = (item.item_name || '').toLowerCase();
+    return /\b(old|deposit|metal given)\b/i.test(name);
+  };
+
+  const items = allItems.filter((i: any) => !isOldOrDeposit(i));
+  const oldItems = [...(data.old_items || []), ...allItems.filter((i: any) => isOldOrDeposit(i))];
+
+  let goldBilled = { required: 0, fineBilled: 0, fineReceived: 0, valueSettled: 0, price: 0, balanceLedger: 0 };
+  let silverBilled = { required: 0, fineBilled: 0, fineReceived: 0, valueSettled: 0, price: 0, balanceLedger: 0 };
+  let totals = { totalGoldAmount: 0, totalSilverAmount: 0, totalMakingCharges: 0, totalOtherCharges: 0, metal_received_value: 0 };
+  const detectedMetals = new Set<string>();
 
   items.forEach((item: any) => {
     const isGold = item.item_type === 'Gold' || normalizeMetal(item.metal_type) === 'Gold';

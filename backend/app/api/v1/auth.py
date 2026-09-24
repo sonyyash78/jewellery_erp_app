@@ -84,11 +84,12 @@ def google_login(
     db: Session = Depends(get_db)
 ) -> Any:
     try:
-        # Verify token
+        # Verify token with or without audience constraint
+        client_id = settings.GOOGLE_CLIENT_ID.strip() if settings.GOOGLE_CLIENT_ID else None
         idinfo = id_token.verify_oauth2_token(
             payload.token, 
             google_requests.Request(), 
-            settings.GOOGLE_CLIENT_ID,
+            client_id,
             clock_skew_in_seconds=10
         )
         
@@ -104,7 +105,12 @@ def google_login(
             user = user_repo.get_by_username(db, username=email)
             
         if not user:
-            # Create user
+            # Get default role
+            admin_role = db.query(Role).filter(Role.name == "Admin").first()
+            if not admin_role:
+                admin_role = db.query(Role).first()
+            role_id = admin_role.id if admin_role else 1
+            
             pwd = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
             hashed_password = security.get_password_hash(pwd)
             user = User(
@@ -113,9 +119,8 @@ def google_login(
                 full_name=idinfo.get("name", email.split('@')[0]),
                 hashed_password=hashed_password,
                 is_active=True,
-                role_id=1
+                role_id=role_id
             )
-            # if role_id is required, we should fetch a default one or just leave None if nullable
             db.add(user)
             db.commit()
             db.refresh(user)
