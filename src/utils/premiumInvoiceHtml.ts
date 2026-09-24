@@ -471,21 +471,43 @@ export const renderBottomRow = (
       </div>`;
   }
 
-  let settlementContent = '';
-  if (goldLedger > 0 || silverLedger > 0) {
-    settlementContent = `
-      <div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 6px; padding: 4px 6px; display: flex; align-items: center; gap: 6px; width: 100%; box-sizing: border-box;">
-        <div style="width: 26px; height: 26px; border-radius: 50%; background: #EF4444; color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-          <svg viewBox="0 0 24 24" style="width: 14px; height: 14px; fill: white;"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+  const payableAmount = prevBalance > 0 ? netPayableWithPrev : Math.max(0, balanceDue);
+
+  let settlementContent = `
+    <div style="background: #FEF2F2; border: 1.5px solid #FCA5A5; border-radius: 6px; padding: 5px 7px; width: 100%; box-sizing: border-box;">
+      <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px dashed #FECACA; padding-bottom: 3px; margin-bottom: 4px;">
+        <div style="display: flex; align-items: center; gap: 4px;">
+          <div style="width: 18px; height: 18px; border-radius: 50%; background: #EF4444; color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+            <svg viewBox="0 0 24 24" style="width: 11px; height: 11px; fill: white;"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+          </div>
+          <span style="color: #991B1B; font-family: 'Cinzel', serif; font-size: 9px; font-weight: 800; letter-spacing: 0.5px;">FINAL SETTLEMENT</span>
         </div>
-        <div>
-          <div style="color: #991B1B; font-size: 8px; font-weight: 700; letter-spacing: 0.5px;">FINAL SETTLEMENT</div>
-          ${goldLedger > 0 ? `<div style="color: #7F1D1D; font-size: 10.5px; font-weight: 800;">Gold Ledger: +${goldLedger.toFixed(3)} gm</div>` : ''}
-          ${silverLedger > 0 ? `<div style="color: #7F1D1D; font-size: 10.5px; font-weight: 800;">Silver Ledger: +${silverLedger.toFixed(3)} gm</div>` : ''}
-          <div style="color: #991B1B; font-size: 7.5px;">Please make the payment.</div>
+        <span style="background: ${payableAmount > 0 || goldLedger > 0 || silverLedger > 0 ? '#FEE2E2' : '#DCFCE7'}; color: ${payableAmount > 0 || goldLedger > 0 || silverLedger > 0 ? '#991B1B' : '#166534'}; font-size: 7.5px; font-weight: 700; padding: 1px 5px; border-radius: 3px;">${payableAmount > 0 || goldLedger > 0 || silverLedger > 0 ? 'DUE' : 'SETTLED'}</span>
+      </div>
+
+      ${payableAmount > 0 ? `
+        <div style="background: #FFFFFF; border: 1px solid #FCA5A5; border-radius: 4px; padding: 3px 6px; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center;">
+          <span style="color: #7F1D1D; font-size: 8.5px; font-weight: 800;">AMOUNT PAYABLE:</span>
+          <span style="color: #991B1B; font-size: 12.5px; font-weight: 900;">&#8377; ${formatCurrency(payableAmount)}</span>
         </div>
-      </div>`;
-  }
+      ` : `
+        <div style="background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 4px; padding: 3px 6px; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center;">
+          <span style="color: #065F46; font-size: 8.5px; font-weight: 700;">CASH STATUS:</span>
+          <span style="color: #064E3B; font-size: 9.5px; font-weight: 800;">&#10004; FULLY PAID</span>
+        </div>
+      `}
+
+      ${(goldLedger > 0 || silverLedger > 0) ? `
+        <div style="font-size: 8.5px; line-height: 1.35; color: #7F1D1D; margin-bottom: 2px;">
+          ${goldLedger > 0 ? `<div style="display: flex; justify-content: space-between; font-weight: 700;"><span>Gold Ledger Due:</span><span style="color: #DC2626; font-weight: 800;">+${goldLedger.toFixed(3)} gm</span></div>` : ''}
+          ${silverLedger > 0 ? `<div style="display: flex; justify-content: space-between; font-weight: 700;"><span>Silver Ledger Due:</span><span style="color: #DC2626; font-weight: 800;">+${silverLedger.toFixed(3)} gm</span></div>` : ''}
+        </div>
+      ` : ''}
+
+      <div style="color: #991B1B; font-size: 7.5px; text-align: center; font-style: italic; margin-top: 2px;">
+        ${payableAmount > 0 || goldLedger > 0 || silverLedger > 0 ? 'Please settle remaining cash / metal dues.' : 'All dues settled. Thank you!'}
+      </div>
+    </div>`;
 
   let paymentDetailsRows = `
     <tr><td>Cash Paid</td><td style="text-align:right;">:</td><td style="text-align:right; font-weight: 700;">&#8377; ${formatCurrency(cashPaid)}</td></tr>
@@ -540,19 +562,15 @@ export const renderBottomRow = (
             ` : ''}
           </table>
         </div>
-        <div style="background: var(--gold); border-radius: 0 0 6px 6px; padding: 3px; text-align: center; color: #16213E;">
-          <div style="font-family: 'Cinzel', serif; font-size: 9px; font-weight: 700; margin-bottom: 1px;">PAYABLE AMOUNT</div>
-          <div style="font-size: 13px; font-weight: 800;">&#8377; ${formatCurrency(prevBalance > 0 ? netPayableWithPrev : Math.max(0, balanceDue + cashPaid))}</div>
+        <div style="background: var(--gold); border-radius: 0 0 6px 6px; padding: 3px 6px; display: flex; justify-content: space-between; align-items: center; color: #16213E;">
+          <span style="font-family: 'Cinzel', serif; font-size: 8.5px; font-weight: 700;">GRAND TOTAL:</span>
+          <span style="font-size: 11.5px; font-weight: 800;">&#8377; ${formatCurrency(grandTotal)}</span>
         </div>
       </div>
 
       <!-- PAYMENT STATUS COLUMN -->
       <div style="flex: 1; display: flex; flex-direction: column; gap: 4px; box-sizing: border-box;">
-        ${paymentCards || `
-          <div style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; padding: 6px; display: flex; align-items: center; justify-content: center; flex: 1;">
-            <div style="color: #9CA3AF; font-size: 9px; text-align: center; font-weight: 600;">Standard Settlement</div>
-          </div>
-        `}
+        ${paymentCards}
         ${settlementContent}
       </div>
 
