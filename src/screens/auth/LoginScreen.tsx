@@ -1,9 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
-import * as Google from 'expo-auth-session/providers/google';
-import * as AuthSession from 'expo-auth-session';
 import { axiosClient } from '../../api/axiosClient';
 import { useAuthStore } from '../../store/authStore';
 
@@ -17,35 +15,8 @@ export default function LoginScreen({ navigation }: any) {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
-  // Genuine Google OAuth Client ID
   const GOOGLE_CLIENT_ID = '600695546964-a2qcg0vtcn4o15e7pma3msimvol3n4fr.apps.googleusercontent.com';
-
-  const redirectUri = AuthSession.makeRedirectUri({
-    scheme: 'jewellerapp',
-  });
-
-  // Initialize Google Auth Request
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    clientId: GOOGLE_CLIENT_ID,
-    webClientId: GOOGLE_CLIENT_ID,
-    androidClientId: GOOGLE_CLIENT_ID,
-    iosClientId: GOOGLE_CLIENT_ID,
-    redirectUri,
-    scopes: ['profile', 'email'],
-    extraParams: {
-      prompt: 'select_account',
-    },
-  });
-
-  useEffect(() => {
-    if (response?.type === 'success') {
-      const params: any = response.params;
-      const tokenToSend = params?.id_token || params?.authentication?.idToken || params?.authentication?.accessToken || params?.access_token;
-      if (tokenToSend) {
-        handleGoogleLoginWithToken(tokenToSend);
-      }
-    }
-  }, [response]);
+  const REDIRECT_URI = 'https://auth.expo.io/@sonyyash78/jeweller-app';
 
   const handleGoogleLoginWithToken = async (idToken: string) => {
     setGoogleLoading(true);
@@ -76,10 +47,27 @@ export default function LoginScreen({ navigation }: any) {
   const handleGoogleSignInPress = async () => {
     try {
       setGoogleLoading(true);
-      if (promptAsync) {
-        await promptAsync();
-      } else {
-        Alert.alert('Google Sign-In', 'Google Sign-In is initializing. Please try again.');
+      const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(GOOGLE_CLIENT_ID)}&response_type=token%20id_token&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${encodeURIComponent('openid profile email')}&nonce=${Date.now()}&prompt=select_account`;
+
+      const result = await WebBrowser.openAuthSessionAsync(authUrl, REDIRECT_URI);
+
+      if (result.type === 'success' && result.url) {
+        const url = result.url;
+        const hashIndex = url.indexOf('#');
+        const queryIndex = url.indexOf('?');
+        const queryString = hashIndex !== -1 ? url.substring(hashIndex + 1) : (queryIndex !== -1 ? url.substring(queryIndex + 1) : '');
+        
+        const params: Record<string, string> = {};
+        queryString.split('&').forEach(part => {
+          const [k, v] = part.split('=');
+          if (k && v) params[decodeURIComponent(k)] = decodeURIComponent(v);
+        });
+
+        const token = params.id_token || params.access_token;
+        if (token) {
+          await handleGoogleLoginWithToken(token);
+          return;
+        }
       }
     } catch (e: any) {
       Alert.alert('Google Sign-In Error', e.message || 'Could not launch Google Sign-In');
@@ -119,7 +107,7 @@ export default function LoginScreen({ navigation }: any) {
         });
       }
 
-      // 2. Login with credentials (sends JSON payload to match FastAPI endpoint)
+      // 2. Login with credentials
       const response = await axiosClient.post('/auth/login', {
         username: userVal,
         password: passVal
