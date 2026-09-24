@@ -162,6 +162,27 @@ export default function MobileMetalCalculator({ onAdd, buttonLabel = "ADD ITEM",
     setItemName('');
   };
 
+  const renderSilverPurity = () => {
+    const opts = [
+      { l: 'Fine', t: '99.9', r: liveRates?.silver || 90000 },
+      { l: 'Sterling', t: '92.5', r: (liveRates?.silver || 90000) * 0.925 },
+      { l: 'Custom', t: '65.0', r: (liveRates?.silver || 90000) * 0.65 },
+    ];
+    return (
+      <View style={styles.purityRow}>
+        {opts.map(o => (
+          <TouchableOpacity 
+            key={o.l} 
+            style={[styles.purityBtn, sCategory === o.l && styles.purityBtnActiveSilver]}
+            onPress={() => { setSCategory(o.l); setSTouch(o.t); setSRate(o.r.toString()); }}
+          >
+            <Text style={[styles.purityText, sCategory === o.l && styles.purityTextActiveSilver]}>{o.l} ({o.t})</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    );
+  };
+
   const renderGoldPurity = () => {
     const opts = [
       { l: '14K', t: '58.3', r: liveRates?.gold14k || 45000 },
@@ -209,6 +230,13 @@ export default function MobileMetalCalculator({ onAdd, buttonLabel = "ADD ITEM",
         <View style={{ marginBottom: 12 }}>
           <Text style={styles.label}>Gold Purity</Text>
           {renderGoldPurity()}
+        </View>
+      )}
+      
+      {metal === 'Silver' && (
+        <View style={{ marginBottom: 12 }}>
+          <Text style={styles.label}>Silver Purity</Text>
+          {renderSilverPurity()}
         </View>
       )}
 
@@ -356,9 +384,11 @@ const styles = StyleSheet.create({
   },
   purityRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   purityBtn: { borderWidth: 1, borderColor: '#444', borderRadius: 4, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: '#1a1a20' },
-  purityBtnActive: { borderColor: '#d4af37', backgroundColor: 'rgba(212₹75,55,0.1)' },
+  purityBtnActive: { borderColor: '#d4af37', backgroundColor: 'rgba(212, 175, 55, 0.1)' },
+    purityBtnActiveSilver: { borderColor: '#e5e7eb', backgroundColor: 'rgba(229, 231, 235, 0.1)' },
   purityText: { color: '#888', fontSize: 11, fontWeight: 'bold' },
   purityTextActive: { color: '#d4af37' },
+  purityTextActiveSilver: { color: '#e5e7eb' },
 
   row3: { flexDirection: 'row', gap: 10, marginBottom: 12 },
   row2: { flexDirection: 'row', gap: 10, marginBottom: 12 },
