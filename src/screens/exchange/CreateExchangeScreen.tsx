@@ -117,7 +117,13 @@ export default function CreateExchangeScreen({ navigation }: any) {
       item_name: calcItem.itemName,
       item_type: calcItem.metalType,
       direction: 'New',
-      final_price: calcItem.taxableAmount,
+      final_price: Number(calcItem.taxableAmount || 0),
+      gross_weight: Number(calcItem.grossWeight || 0),
+      stone_weight: Number(calcItem.stoneWeight || 0),
+      net_weight: Number(calcItem.netWeight || 0),
+      touch_purity: Number(calcItem.touchPurity || (isGold ? 91.6 : 99.9)),
+      fine_weight: Number(calcItem.fineWeight || 0),
+      applied_rate: Number(calcItem.metalRate || 0),
     };
     if (isGold) {
       item.gold_calculation = {
@@ -169,7 +175,13 @@ export default function CreateExchangeScreen({ navigation }: any) {
       item_name: calcItem.itemName,
       item_type: calcItem.metalType,
       direction: 'Old',
-      final_price: calcItem.taxableAmount,
+      final_price: Number(calcItem.taxableAmount || 0),
+      gross_weight: Number(calcItem.grossWeight || 0),
+      stone_weight: Number(calcItem.stoneWeight || 0),
+      net_weight: Number(calcItem.netWeight || 0),
+      touch_purity: Number(calcItem.touchPurity || (isGold ? 91.6 : 99.9)),
+      fine_weight: Number(calcItem.fineWeight || 0),
+      applied_rate: Number(calcItem.metalRate || 0),
     };
     if (isGold) {
       item.gold_calculation = {

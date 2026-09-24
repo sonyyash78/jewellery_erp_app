@@ -124,7 +124,8 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
   const hasGold = totalNewGoldFine > 0 || totalOldGoldFine > 0 || goldRequired > 0;
   const hasSilver = totalNewSilverFine > 0 || totalOldSilverFine > 0 || silverRequired > 0;
 
-  // Additional Metal Given by customer in Checkout
+  // Additional Metal Given by customer in Checkout (optional)
+  const [showExtraMetal, setShowExtraMetal] = useState(false);
   const [goldGiven, setGoldGiven] = useState('');
   const [goldGivenTanch, setGoldGivenTanch] = useState('100');
   const [silverGiven, setSilverGiven] = useState('');
@@ -151,63 +152,86 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
 
   // Net monetary balance before cash
   // Grand Total (New Items + GST) - Old Items Total - Additional Metal Given
-  const monetaryBeforeCash = grand_total - total_old_value - totalAdditionalMetalValue;
+  const netDifference = grand_total - total_old_value;
+  const monetaryBeforeCash = netDifference - totalAdditionalMetalValue;
   const parsedCash = parseFloat(cashReceived) || 0;
-  const cashBalanceDue = Math.max(0, monetaryBeforeCash - parsedCash);
+  const remainingDue = monetaryBeforeCash - parsedCash;
 
-  // Settlement Options (How to settle cash due)
-  // Option 2: Convert entire remaining cash balance to Gold Ledger
-  const cashToGoldGrams = goldRate > 0 ? (cashBalanceDue / (goldRate / 10)) : 0;
-  const cashDueAfterGold = 0;
+  // Settlement Calculations
+  const isPositiveDue = remainingDue > 0.01;
+  const isNegativeDue = remainingDue < -0.01;
+  const isFullySettled = Math.abs(remainingDue) <= 0.01;
 
-  // Option 3: Convert entire remaining cash balance to Silver Ledger
-  const cashToSilverGrams = silverRate > 0 ? (cashBalanceDue / (silverRate / 1000)) : 0;
-  const cashDueAfterSilver = 0;
+  // Positive Due: Customer owes shop
+  const cashToGoldGrams = goldRate > 0 ? (Math.max(0, remainingDue) / (goldRate / 10)) : 0;
+  const cashToSilverGrams = silverRate > 0 ? (Math.max(0, remainingDue) / (silverRate / 1000)) : 0;
 
-  // Option 4: Convert both metals (satisfy gold required first if any, remainder to silver)
   let bothGoldGrams = 0;
   let bothSilverGrams = 0;
-  if (goldRequired > 0 && goldRate > 0) {
-    const goldReqVal = goldRequired * (goldRate / 10);
-    if (cashBalanceDue <= goldReqVal) {
-      bothGoldGrams = cashBalanceDue / (goldRate / 10);
-      bothSilverGrams = 0;
+  if (isPositiveDue) {
+    if (goldRequired > 0 && goldRate > 0) {
+      const goldReqVal = goldRequired * (goldRate / 10);
+      if (remainingDue <= goldReqVal) {
+        bothGoldGrams = remainingDue / (goldRate / 10);
+        bothSilverGrams = 0;
+      } else {
+        bothGoldGrams = goldRequired;
+        const remCash = remainingDue - goldReqVal;
+        bothSilverGrams = silverRate > 0 ? (remCash / (silverRate / 1000)) : 0;
+      }
     } else {
-      bothGoldGrams = goldRequired;
-      const remCash = cashBalanceDue - goldReqVal;
-      bothSilverGrams = silverRate > 0 ? (remCash / (silverRate / 1000)) : 0;
+      const halfCash = remainingDue / 2;
+      bothGoldGrams = goldRate > 0 ? (halfCash / (goldRate / 10)) : 0;
+      bothSilverGrams = silverRate > 0 ? (halfCash / (silverRate / 1000)) : 0;
     }
-  } else {
-    // 50/50 split if no specific gold requirement
-    const halfCash = cashBalanceDue / 2;
-    bothGoldGrams = goldRate > 0 ? (halfCash / (goldRate / 10)) : 0;
-    bothSilverGrams = silverRate > 0 ? (halfCash / (silverRate / 1000)) : 0;
   }
-  const cashDueAfterBoth = 0;
+
+  // Negative Due: Shop owes customer (Refund / Credit)
+  const absRemaining = Math.abs(remainingDue);
+  const refundToGoldGrams = goldRate > 0 ? (absRemaining / (goldRate / 10)) : 0;
+  const refundToSilverGrams = silverRate > 0 ? (absRemaining / (silverRate / 1000)) : 0;
 
   let finalGoldDebt = 0;
   let finalSilverDebt = 0;
-  let finalBalanceAmount = cashBalanceDue;
+  let finalBalanceAmount = remainingDue;
 
-  if (cashBalanceAction === 'metal_gold') {
-    finalGoldDebt = cashToGoldGrams;
-    finalSilverDebt = 0;
-    finalBalanceAmount = cashDueAfterGold;
-  } else if (cashBalanceAction === 'metal_silver') {
-    finalGoldDebt = 0;
-    finalSilverDebt = cashToSilverGrams;
-    finalBalanceAmount = cashDueAfterSilver;
-  } else if (cashBalanceAction === 'metal_both') {
-    finalGoldDebt = bothGoldGrams;
-    finalSilverDebt = bothSilverGrams;
-    finalBalanceAmount = cashDueAfterBoth;
+  if (isPositiveDue) {
+    if (cashBalanceAction === 'metal_gold') {
+      finalGoldDebt = cashToGoldGrams;
+      finalSilverDebt = 0;
+      finalBalanceAmount = 0;
+    } else if (cashBalanceAction === 'metal_silver') {
+      finalGoldDebt = 0;
+      finalSilverDebt = cashToSilverGrams;
+      finalBalanceAmount = 0;
+    } else if (cashBalanceAction === 'metal_both') {
+      finalGoldDebt = bothGoldGrams;
+      finalSilverDebt = bothSilverGrams;
+      finalBalanceAmount = 0;
+    } else {
+      finalGoldDebt = 0;
+      finalSilverDebt = 0;
+      finalBalanceAmount = remainingDue;
+    }
+  } else if (isNegativeDue) {
+    if (cashBalanceAction === 'metal_gold') {
+      finalGoldDebt = -refundToGoldGrams;
+      finalSilverDebt = 0;
+      finalBalanceAmount = 0;
+    } else if (cashBalanceAction === 'metal_silver') {
+      finalGoldDebt = 0;
+      finalSilverDebt = -refundToSilverGrams;
+      finalBalanceAmount = 0;
+    } else {
+      finalGoldDebt = 0;
+      finalSilverDebt = 0;
+      finalBalanceAmount = remainingDue;
+    }
   } else {
     finalGoldDebt = 0;
     finalSilverDebt = 0;
-    finalBalanceAmount = cashBalanceDue;
+    finalBalanceAmount = 0;
   }
-
-  const isFullySettled = finalBalanceAmount < 0.01 && finalGoldDebt === 0 && finalSilverDebt === 0;
 
   const fmt = (n?: any) => {
     const num = Number(n);
@@ -326,7 +350,7 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
         difference_amount: monetaryBeforeCash,
 
         settlement_type: backendSettlementType,
-        balance_amount: Math.max(0, finalBalanceAmount),
+        balance_amount: finalBalanceAmount,
         gold_balance_metal_weight: finalGoldDebt,
         silver_balance_metal_weight: finalSilverDebt,
 
@@ -369,25 +393,25 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
     <View style={styles.container}>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
         
-        {/* Top Summary Accordion / Card */}
+        {/* Top Summary Card */}
         <View style={styles.card}>
           <Text style={styles.cardHeaderTitle}>EXCHANGE SUMMARY</Text>
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>New Items Value (To Customer):</Text>
+            <Text style={styles.summaryLabel}>New Items (To Customer):</Text>
             <Text style={styles.summaryValue}>₹ {fmt(total_new_value)}</Text>
           </View>
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>GST on New Items (3%):</Text>
+            <Text style={styles.summaryLabel}>GST on New Items ({gstType === 'none' ? '0%' : '3%'}):</Text>
             <Text style={styles.summaryValue}>₹ {fmt(gstAmount)}</Text>
           </View>
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Total Old Value (Trade-in):</Text>
+            <Text style={styles.summaryLabel}>Old Items Deposited (Trade-in):</Text>
             <Text style={[styles.summaryValue, { color: '#f97316' }]}>- ₹ {fmt(total_old_value)}</Text>
           </View>
           <View style={[styles.summaryRow, styles.dividerRow]}>
             <Text style={styles.grandTotalLabel}>Net Difference:</Text>
-            <Text style={[styles.grandTotalValue, { color: (grand_total - total_old_value) >= 0 ? '#d4af37' : '#4ade80' }]}>
-              ₹ {fmt(grand_total - total_old_value)}
+            <Text style={[styles.grandTotalValue, { color: netDifference >= 0 ? '#d4af37' : '#4ade80' }]}>
+              {netDifference < 0 ? `- ₹ ${fmt(Math.abs(netDifference))}` : `₹ ${fmt(netDifference)}`}
             </Text>
           </View>
         </View>
@@ -417,123 +441,143 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
           </View>
         </View>
 
-        {/* METAL RECEIVED FROM CUSTOMER */}
+        {/* METAL COMPARISON & CART SUMMARY */}
         <View style={styles.card}>
-          <Text style={styles.sectionHeaderTitle}>METAL RECEIVED FROM CUSTOMER</Text>
+          <Text style={styles.sectionHeaderTitle}>METAL & TRADE-IN STATUS</Text>
 
-          {oldItemsRaw.length > 0 && (
-            <View style={{ backgroundColor: '#18181b', padding: 10, borderRadius: 6, marginBottom: 12, borderWidth: 1, borderColor: '#333' }}>
+          {oldItemsRaw.length > 0 ? (
+            <View style={{ backgroundColor: '#18181b', padding: 10, borderRadius: 6, marginBottom: 10, borderWidth: 1, borderColor: '#333' }}>
               <Text style={{ color: '#d4af37', fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
-                ✓ OLD ITEMS DEPOSITED IN CART ({oldItemsRaw.length} Items):
+                ✓ OLD ITEMS IN CART ({oldItemsRaw.length} Items):
               </Text>
-              <Text style={{ color: '#aaa', fontSize: 10 }}>
-                Gold Fine: <Text style={{ color: '#eab308', fontWeight: '700' }}>{totalOldGoldFine.toFixed(3)}g</Text> | Silver Fine: <Text style={{ color: '#e2e8f0', fontWeight: '700' }}>{totalOldSilverFine.toFixed(3)}g</Text> | Trade-in Value: <Text style={{ color: '#4ade80', fontWeight: '700' }}>₹ {fmt(total_old_value)}</Text>
+              <Text style={{ color: '#ccc', fontSize: 10, lineHeight: 16 }}>
+                Gold Fine: <Text style={{ color: '#eab308', fontWeight: '700' }}>{totalOldGoldFine.toFixed(3)}g</Text> | Silver Fine: <Text style={{ color: '#e2e8f0', fontWeight: '700' }}>{totalOldSilverFine.toFixed(3)}g</Text>{'\n'}
+                Total Trade-in Value: <Text style={{ color: '#4ade80', fontWeight: '700' }}>₹ {fmt(total_old_value)}</Text>
               </Text>
+            </View>
+          ) : (
+            <Text style={{ color: '#888', fontSize: 10, marginBottom: 10, fontStyle: 'italic' }}>
+              No old items entered in cart.
+            </Text>
+          )}
+
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+            <View style={{ flex: 1, backgroundColor: '#1f1a10', padding: 8, borderRadius: 6, borderWidth: 1, borderColor: '#ca8a04' }}>
+              <Text style={{ color: '#ca8a04', fontSize: 9, fontWeight: '700' }}>GOLD REQUIREMENT</Text>
+              <Text style={{ color: '#eab308', fontSize: 14, fontWeight: '800', marginTop: 2 }}>{goldRequired.toFixed(3)} g</Text>
+              <Text style={{ color: '#888', fontSize: 8 }}>@ ₹{goldRate.toLocaleString('en-IN')}/10g</Text>
+            </View>
+            <View style={{ flex: 1, backgroundColor: '#181e24', padding: 8, borderRadius: 6, borderWidth: 1, borderColor: '#475569' }}>
+              <Text style={{ color: '#94a3b8', fontSize: 9, fontWeight: '700' }}>SILVER REQUIREMENT</Text>
+              <Text style={{ color: '#cbd5e1', fontSize: 14, fontWeight: '800', marginTop: 2 }}>{silverRequired.toFixed(3)} g</Text>
+              <Text style={{ color: '#888', fontSize: 8 }}>@ ₹{silverRate.toLocaleString('en-IN')}/kg</Text>
+            </View>
+          </View>
+
+          {/* Toggle for Additional Metal given at checkout */}
+          <TouchableOpacity
+            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, paddingVertical: 6 }}
+            onPress={() => setShowExtraMetal(!showExtraMetal)}
+          >
+            <Text style={{ color: '#d4af37', fontSize: 11, fontWeight: '700' }}>
+              {showExtraMetal ? '▼ Hide Extra Metal Handed Over' : '+ Add Extra Metal Handed Over Right Now (Optional)'}
+            </Text>
+          </TouchableOpacity>
+
+          {showExtraMetal && (
+            <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#222' }}>
+              {/* Gold Extra */}
+              <View style={styles.metalItemBlock}>
+                <Text style={{ color: '#ca8a04', fontSize: 10, fontWeight: '700', marginBottom: 4 }}>EXTRA GOLD HANDED OVER</Text>
+                <View style={styles.gridRow}>
+                  <View style={styles.gridCol}>
+                    <Text style={styles.gridLabel}>GROSS GIVEN</Text>
+                    <TextInput
+                      style={styles.gridInput}
+                      keyboardType="numeric"
+                      value={goldGiven}
+                      onChangeText={setGoldGiven}
+                      placeholder="0.000"
+                      placeholderTextColor="#666"
+                    />
+                  </View>
+                  <View style={styles.gridCol}>
+                    <Text style={styles.gridLabel}>TANCH %</Text>
+                    <TextInput
+                      style={styles.gridInput}
+                      keyboardType="numeric"
+                      value={goldGivenTanch}
+                      onChangeText={setGoldGivenTanch}
+                      placeholder="100"
+                      placeholderTextColor="#666"
+                    />
+                  </View>
+                  <View style={styles.gridCol}>
+                    <Text style={styles.gridLabel}>FINE METAL</Text>
+                    <Text style={styles.gridValGold}>{fineGoldGiven.toFixed(3)} g</Text>
+                  </View>
+                  <View style={styles.gridCol}>
+                    <Text style={styles.gridLabel}>VALUE</Text>
+                    <Text style={styles.gridValGreen}>₹ {fmt(goldValueGiven)}</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Silver Extra */}
+              <View style={[styles.metalItemBlock, { marginTop: 8 }]}>
+                <Text style={{ color: '#94a3b8', fontSize: 10, fontWeight: '700', marginBottom: 4 }}>EXTRA SILVER HANDED OVER</Text>
+                <View style={styles.gridRow}>
+                  <View style={styles.gridCol}>
+                    <Text style={styles.gridLabel}>GROSS GIVEN</Text>
+                    <TextInput
+                      style={styles.gridInput}
+                      keyboardType="numeric"
+                      value={silverGiven}
+                      onChangeText={setSilverGiven}
+                      placeholder="0.000"
+                      placeholderTextColor="#666"
+                    />
+                  </View>
+                  <View style={styles.gridCol}>
+                    <Text style={styles.gridLabel}>TANCH %</Text>
+                    <TextInput
+                      style={styles.gridInput}
+                      keyboardType="numeric"
+                      value={silverGivenTanch}
+                      onChangeText={setSilverGivenTanch}
+                      placeholder="100"
+                      placeholderTextColor="#666"
+                    />
+                  </View>
+                  <View style={styles.gridCol}>
+                    <Text style={styles.gridLabel}>FINE METAL</Text>
+                    <Text style={styles.gridValSilver}>{fineSilverGiven.toFixed(3)} g</Text>
+                  </View>
+                  <View style={styles.gridCol}>
+                    <Text style={styles.gridLabel}>VALUE</Text>
+                    <Text style={styles.gridValGreen}>₹ {fmt(silverValueGiven)}</Text>
+                  </View>
+                </View>
+              </View>
             </View>
           )}
 
-          <Text style={{ color: '#888', fontSize: 10, marginBottom: 8, fontStyle: 'italic' }}>
-            Enter below only if customer is handing over additional metal right now at checkout:
-          </Text>
-
-          {/* Gold Row */}
-          <View style={styles.metalItemBlock}>
-            <View style={styles.metalHeaderLine}>
-              <Text style={styles.metalRequiredTitle}>
-                GOLD REQUIRED @ ₹{goldRate.toLocaleString('en-IN')}/10G
-              </Text>
-              <Text style={styles.metalRequiredGrams}>{goldRequired.toFixed(3)} g</Text>
-            </View>
-
-            <View style={styles.gridRow}>
-              <View style={styles.gridCol}>
-                <Text style={styles.gridLabel}>GROSS GIVEN</Text>
-                <TextInput
-                  style={styles.gridInput}
-                  keyboardType="numeric"
-                  value={goldGiven}
-                  onChangeText={setGoldGiven}
-                  placeholder="0.000"
-                  placeholderTextColor="#666"
-                />
-              </View>
-              <View style={styles.gridCol}>
-                <Text style={styles.gridLabel}>TANCH %</Text>
-                <TextInput
-                  style={styles.gridInput}
-                  keyboardType="numeric"
-                  value={goldGivenTanch}
-                  onChangeText={setGoldGivenTanch}
-                  placeholder="100"
-                  placeholderTextColor="#666"
-                />
-              </View>
-              <View style={styles.gridCol}>
-                <Text style={styles.gridLabel}>FINE METAL</Text>
-                <Text style={styles.gridValGold}>{fineGoldGiven.toFixed(3)} g</Text>
-              </View>
-              <View style={styles.gridCol}>
-                <Text style={styles.gridLabel}>VALUE</Text>
-                <Text style={styles.gridValGreen}>₹ {fmt(goldValueGiven)}</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Silver Row */}
-          <View style={[styles.metalItemBlock, { borderTopWidth: 1, borderTopColor: '#222', paddingTop: 12, marginTop: 12 }]}>
-            <View style={styles.metalHeaderLine}>
-              <Text style={styles.metalRequiredTitle}>
-                SILVER REQUIRED @ ₹{silverRate.toLocaleString('en-IN')}/KG
-              </Text>
-              <Text style={styles.metalRequiredGrams}>{silverRequired.toFixed(3)} g</Text>
-            </View>
-
-            <View style={styles.gridRow}>
-              <View style={styles.gridCol}>
-                <Text style={styles.gridLabel}>GROSS GIVEN</Text>
-                <TextInput
-                  style={styles.gridInput}
-                  keyboardType="numeric"
-                  value={silverGiven}
-                  onChangeText={setSilverGiven}
-                  placeholder="0.000"
-                  placeholderTextColor="#666"
-                />
-              </View>
-              <View style={styles.gridCol}>
-                <Text style={styles.gridLabel}>TANCH %</Text>
-                <TextInput
-                  style={styles.gridInput}
-                  keyboardType="numeric"
-                  value={silverGivenTanch}
-                  onChangeText={setSilverGivenTanch}
-                  placeholder="100"
-                  placeholderTextColor="#666"
-                />
-              </View>
-              <View style={styles.gridCol}>
-                <Text style={styles.gridLabel}>FINE METAL</Text>
-                <Text style={styles.gridValSilver}>{fineSilverGiven.toFixed(3)} g</Text>
-              </View>
-              <View style={styles.gridCol}>
-                <Text style={styles.gridLabel}>VALUE</Text>
-                <Text style={styles.gridValGreen}>₹ {fmt(silverValueGiven)}</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Monetary Balance & Cash Received */}
-          <View style={styles.cashSectionRow}>
+          {/* Cash Received Input */}
+          <View style={[styles.cashSectionRow, { marginTop: 12, borderTopWidth: 1, borderTopColor: '#222', paddingTop: 10 }]}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.gridLabel}>MONETARY BALANCE (AFTER METAL)</Text>
-              <Text style={styles.monetaryAmountText}>₹ {fmt(monetaryBeforeCash)}</Text>
-              <Text style={styles.monetarySubText}>
-                ₹{fmt(grand_total - total_old_value)} − ₹{fmt(totalAdditionalMetalValue)} metal
+              <Text style={styles.gridLabel}>NET DIFFERENCE (AFTER METAL)</Text>
+              <Text style={[styles.monetaryAmountText, { color: monetaryBeforeCash >= 0 ? '#d4af37' : '#4ade80' }]}>
+                {monetaryBeforeCash < 0 ? `- ₹ ${fmt(Math.abs(monetaryBeforeCash))}` : `₹ ${fmt(monetaryBeforeCash)}`}
               </Text>
+              {totalAdditionalMetalValue > 0 && (
+                <Text style={styles.monetarySubText}>
+                  ₹{fmt(netDifference)} − ₹{fmt(totalAdditionalMetalValue)} extra metal
+                </Text>
+              )}
             </View>
 
             <View style={{ flex: 1 }}>
-              <Text style={[styles.gridLabel, { color: '#4ade80' }]}>CASH RECEIVED</Text>
+              <Text style={[styles.gridLabel, { color: '#4ade80' }]}>CASH / ONLINE PAID</Text>
               <TextInput
                 style={styles.cashInput}
                 keyboardType="numeric"
@@ -560,24 +604,27 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
           </View>
         </View>
 
-        {/* FINAL SETTLEMENT SUMMARY */}
+        {/* FINAL SETTLEMENT SUMMARY & 4 OPTIONS */}
         <View style={styles.settlementSummaryCard}>
           <Text style={styles.settlementSummaryTitle}>FINAL SETTLEMENT SUMMARY</Text>
 
           <View style={styles.finalCashDueBox}>
-            <Text style={styles.finalCashDueLabel}>Final Cash Due:</Text>
-            <Text style={[styles.finalCashDueValue, { color: finalBalanceAmount > 0 ? '#ef4444' : '#4ade80' }]}>
-              ₹ {fmt(Math.abs(finalBalanceAmount))}
+            <Text style={styles.finalCashDueLabel}>
+              {isNegativeDue ? 'Shop Refund Due to Customer:' : 'Remaining Cash Due:'}
+            </Text>
+            <Text style={[styles.finalCashDueValue, { color: isNegativeDue ? '#4ade80' : (finalBalanceAmount > 0 ? '#ef4444' : '#4ade80') }]}>
+              {isNegativeDue ? `₹ ${fmt(Math.abs(finalBalanceAmount))}` : `₹ ${fmt(Math.max(0, finalBalanceAmount))}`}
             </Text>
           </View>
 
-          {cashBalanceDue > 0 && (
+          {/* If Customer owes Shop money (Positive Due) */}
+          {isPositiveDue && (
             <View style={{ marginTop: 12 }}>
               <Text style={styles.settleChoicePrompt}>
-                HOW TO SETTLE THE ₹ {fmt(cashBalanceDue)} CASH DUE?
+                HOW TO SETTLE THE ₹ {fmt(remainingDue)} REMAINING DUE?
               </Text>
 
-              {/* Option 1 */}
+              {/* Option 1: Cash Due */}
               <TouchableOpacity
                 style={[styles.settleOptionBox, cashBalanceAction === 'cash' && styles.settleOptionBoxActive]}
                 onPress={() => setCashBalanceAction('cash')}
@@ -585,12 +632,13 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
                 <View style={[styles.radioCircle, cashBalanceAction === 'cash' && styles.radioCircleActive]}>
                   {cashBalanceAction === 'cash' && <View style={styles.radioInner} />}
                 </View>
-                <Text style={styles.settleOptionText}>
-                  Keep as Cash Due — pay ₹ {fmt(cashBalanceDue)} later
-                </Text>
+                <View>
+                  <Text style={styles.settleOptionText}>Keep as Cash Due</Text>
+                  <Text style={{ color: '#aaa', fontSize: 9 }}>Customer owes ₹ {fmt(remainingDue)} in cash</Text>
+                </View>
               </TouchableOpacity>
 
-              {/* Option 2 (Gold) */}
+              {/* Option 2: Gold Ledger */}
               <TouchableOpacity
                 style={[styles.settleOptionBox, cashBalanceAction === 'metal_gold' && styles.settleOptionBoxActive]}
                 onPress={() => setCashBalanceAction('metal_gold')}
@@ -599,14 +647,14 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
                   {cashBalanceAction === 'metal_gold' && <View style={styles.radioInner} />}
                 </View>
                 <View>
-                  <Text style={styles.settleOptionText}>Convert Metal to Gold Ledger</Text>
+                  <Text style={styles.settleOptionText}>Convert to Gold Ledger</Text>
                   <Text style={styles.settleOptionSubGold}>
-                    +{cashToGoldGrams.toFixed(3)} g Gold | ₹ {fmt(cashDueAfterGold)} Cash Due
+                    +{cashToGoldGrams.toFixed(3)} g Fine Gold | ₹ 0.00 Cash Due
                   </Text>
                 </View>
               </TouchableOpacity>
 
-              {/* Option 3 (Silver) */}
+              {/* Option 3: Silver Ledger */}
               <TouchableOpacity
                 style={[styles.settleOptionBox, cashBalanceAction === 'metal_silver' && styles.settleOptionBoxActive]}
                 onPress={() => setCashBalanceAction('metal_silver')}
@@ -615,14 +663,14 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
                   {cashBalanceAction === 'metal_silver' && <View style={styles.radioInner} />}
                 </View>
                 <View>
-                  <Text style={styles.settleOptionText}>Convert Metal to Silver Ledger</Text>
+                  <Text style={styles.settleOptionText}>Convert to Silver Ledger</Text>
                   <Text style={styles.settleOptionSubSilver}>
-                    +{cashToSilverGrams.toFixed(3)} g Silver | ₹ {fmt(cashDueAfterSilver)} Cash Due
+                    +{cashToSilverGrams.toFixed(3)} g Silver | ₹ 0.00 Cash Due
                   </Text>
                 </View>
               </TouchableOpacity>
 
-              {/* Option 4 (Both) */}
+              {/* Option 4: Both Ledgers */}
               <TouchableOpacity
                 style={[styles.settleOptionBox, cashBalanceAction === 'metal_both' && styles.settleOptionBoxActive]}
                 onPress={() => setCashBalanceAction('metal_both')}
@@ -633,10 +681,71 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
                 <View>
                   <Text style={styles.settleOptionText}>Convert Both Metals to Ledgers</Text>
                   <Text style={styles.settleOptionSubGold}>
-                    Gold: +{bothGoldGrams.toFixed(3)} g | Silver: +{bothSilverGrams.toFixed(3)} g | ₹ {fmt(cashDueAfterBoth)} Cash Due
+                    Gold: +{bothGoldGrams.toFixed(3)} g | Silver: +{bothSilverGrams.toFixed(3)} g | ₹ 0.00 Cash Due
                   </Text>
                 </View>
               </TouchableOpacity>
+            </View>
+          )}
+
+          {/* If Shop owes Customer (Negative Due) */}
+          {isNegativeDue && (
+            <View style={{ marginTop: 12 }}>
+              <Text style={[styles.settleChoicePrompt, { color: '#4ade80' }]}>
+                EXCESS METAL DEPOSITED: REFUND OR CREDIT TO CUSTOMER (₹ {fmt(absRemaining)})
+              </Text>
+
+              {/* Refund Option 1: Cash Refund */}
+              <TouchableOpacity
+                style={[styles.settleOptionBox, cashBalanceAction === 'cash' && styles.settleOptionBoxActive]}
+                onPress={() => setCashBalanceAction('cash')}
+              >
+                <View style={[styles.radioCircle, cashBalanceAction === 'cash' && styles.radioCircleActive]}>
+                  {cashBalanceAction === 'cash' && <View style={styles.radioInner} />}
+                </View>
+                <View>
+                  <Text style={styles.settleOptionText}>Refund in Cash</Text>
+                  <Text style={{ color: '#4ade80', fontSize: 9 }}>Shop pays ₹ {fmt(absRemaining)} cash refund</Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* Refund Option 2: Gold Credit */}
+              <TouchableOpacity
+                style={[styles.settleOptionBox, cashBalanceAction === 'metal_gold' && styles.settleOptionBoxActive]}
+                onPress={() => setCashBalanceAction('metal_gold')}
+              >
+                <View style={[styles.radioCircle, cashBalanceAction === 'metal_gold' && styles.radioCircleActive]}>
+                  {cashBalanceAction === 'metal_gold' && <View style={styles.radioInner} />}
+                </View>
+                <View>
+                  <Text style={styles.settleOptionText}>Credit to Gold Ledger</Text>
+                  <Text style={styles.settleOptionSubGold}>
+                    +{refundToGoldGrams.toFixed(3)} g Fine Gold credit to customer
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* Refund Option 3: Silver Credit */}
+              <TouchableOpacity
+                style={[styles.settleOptionBox, cashBalanceAction === 'metal_silver' && styles.settleOptionBoxActive]}
+                onPress={() => setCashBalanceAction('metal_silver')}
+              >
+                <View style={[styles.radioCircle, cashBalanceAction === 'metal_silver' && styles.radioCircleActive]}>
+                  {cashBalanceAction === 'metal_silver' && <View style={styles.radioInner} />}
+                </View>
+                <View>
+                  <Text style={styles.settleOptionText}>Credit to Silver Ledger</Text>
+                  <Text style={styles.settleOptionSubSilver}>
+                    +{refundToSilverGrams.toFixed(3)} g Silver credit to customer
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {isFullySettled && (
+            <View style={{ backgroundColor: '#052e16', padding: 10, borderRadius: 6, marginTop: 10, alignItems: 'center' }}>
+              <Text style={{ color: '#4ade80', fontWeight: '800', fontSize: 12 }}>✔ ALL DUES FULLY SETTLED</Text>
             </View>
           )}
         </View>
