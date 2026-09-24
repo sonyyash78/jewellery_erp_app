@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator,
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
+import { ENV } from '../../config/api';
 import { axiosClient } from '../../api/axiosClient';
 import { useAuthStore } from '../../store/authStore';
 
@@ -47,12 +48,11 @@ export default function LoginScreen({ navigation }: any) {
   const handleGoogleSignInPress = async () => {
     try {
       setGoogleLoading(true);
-      const redirectUri = AuthSession.makeRedirectUri({
-        scheme: 'jewellerapp',
-      });
+      const callbackBase = ENV.API_BASE_URL.replace('/api/v1', '');
+      const redirectUri = `${callbackBase}/api/v1/auth/google-callback`;
       const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(GOOGLE_CLIENT_ID)}&response_type=token%20id_token&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent('openid profile email')}&nonce=${Date.now()}&prompt=select_account`;
 
-      const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
+      const result = await WebBrowser.openAuthSessionAsync(authUrl, 'jewellerapp://');
 
       if (result.type === 'success' && result.url) {
         const url = result.url;
@@ -66,7 +66,7 @@ export default function LoginScreen({ navigation }: any) {
           if (k && v) params[decodeURIComponent(k)] = decodeURIComponent(v);
         });
 
-        const token = params.id_token || params.access_token;
+        const token = params.token || params.id_token || params.access_token;
         if (token) {
           await handleGoogleLoginWithToken(token);
           return;

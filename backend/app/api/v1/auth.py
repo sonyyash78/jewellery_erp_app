@@ -78,57 +78,101 @@ def login_oauth2_form(
     return _issue_token(user)
 
 
+from fastapi.responses import HTMLResponse
+import urllib.request
+import json
+
+@router.get("/google-callback", response_class=HTMLResponse)
+def google_callback() -> str:
+    """OAuth callback bridge page for Mobile App Google Sign-In."""
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Google Authentication</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="background:#0a0a0a; color:#d4af37; font-family:sans-serif; text-align:center; padding-top:25%;">
+        <h2>Authenticating with Saideep Jewellers...</h2>
+        <p style="color:#aaa;">Please wait while we redirect back to the app.</p>
+        <script>
+            var hash = window.location.hash.substring(1);
+            var query = window.location.search.substring(1);
+            var params = new URLSearchParams(hash || query);
+            var token = params.get('id_token') || params.get('access_token');
+            if (token) {
+                window.location.href = "jewellerapp://auth?token=" + encodeURIComponent(token);
+            } else {
+                document.body.innerHTML = "<h3 style='color:#ef4444;'>Authentication Failed.</h3><p>Could not extract Google Token.</p>";
+            }
+        </script>
+    </body>
+    </html>
+    """
+
 @router.post("/google-login", response_model=Token)
 def google_login(
     payload: GoogleToken,
     db: Session = Depends(get_db)
 ) -> Any:
+    email = None
+    name = None
+    token_str = payload.token.strip()
+
+    # 1. Try verifying as Google ID token
     try:
-        # Verify token with or without audience constraint
         client_id = settings.GOOGLE_CLIENT_ID.strip() if settings.GOOGLE_CLIENT_ID else None
         idinfo = id_token.verify_oauth2_token(
-            payload.token, 
+            token_str, 
             google_requests.Request(), 
             client_id,
             clock_skew_in_seconds=10
         )
-        
         email = idinfo.get("email")
-        if not email:
-            raise HTTPException(status_code=400, detail="Google token does not contain email")
-            
-        # Check if user exists
-        user = user_repo.get_by_email(db, email=email)
-        
-        if not user:
-            # Check by username just in case
-            user = user_repo.get_by_username(db, username=email)
-            
-        if not user:
-            # Get default role
-            admin_role = db.query(Role).filter(Role.name == "Admin").first()
-            if not admin_role:
-                admin_role = db.query(Role).first()
-            role_id = admin_role.id if admin_role else 1
-            
-            pwd = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
-            hashed_password = security.get_password_hash(pwd)
-            user = User(
-                username=email,
-                email=email,
-                full_name=idinfo.get("name", email.split('@')[0]),
-                hashed_password=hashed_password,
-                is_active=True,
-                role_id=role_id
+        name = idinfo.get("name", email.split('@')[0] if email else "Google User")
+    except Exception:
+        # 2. Try fetching as Google Access token
+        try:
+            req = urllib.request.Request(
+                "https://www.googleapis.com/oauth2/v3/userinfo", 
+                headers={"Authorization": f"Bearer {token_str}"}
             )
-            db.add(user)
-            db.commit()
-            db.refresh(user)
-            
-        return _issue_token(user)
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                user_data = json.loads(resp.read().decode())
+                email = user_data.get("email")
+                name = user_data.get("name", email.split('@')[0] if email else "Google User")
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid Google token or access token: {str(e)}")
+
+    if not email:
+        raise HTTPException(status_code=400, detail="Google authentication did not provide a valid email.")
+
+    # Check if user exists
+    user = user_repo.get_by_email(db, email=email)
+    if not user:
+        user = user_repo.get_by_username(db, username=email)
         
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=f"Invalid Google token: {str(e)}")
+    if not user:
+        admin_role = db.query(Role).filter(Role.name == "Admin").first()
+        if not admin_role:
+            admin_role = db.query(Role).first()
+        role_id = admin_role.id if admin_role else 1
+        
+        pwd = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
+        hashed_password = security.get_password_hash(pwd)
+        user = User(
+            username=email,
+            email=email,
+            full_name=name or email.split('@')[0],
+            hashed_password=hashed_password,
+            is_active=True,
+            role_id=role_id
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        
+    return _issue_token(user)
 
 @router.get("/me", response_model=UserResponse)
 def read_current_user(current_user: User = Depends(get_current_user)) -> Any:
