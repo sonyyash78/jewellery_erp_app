@@ -39,46 +39,50 @@ export const generateLedgerVoucherHtml = (
   <title>Voucher - ${voucherNo}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #fff; color: #1f2937; padding: 24px; line-height: 1.5; }
-    .voucher-card { border: 2px solid #d4af37; border-radius: 12px; padding: 24px; max-width: 700px; margin: 0 auto; background: #fff; }
-    .header { text-align: center; border-bottom: 2px solid #f3f4f6; padding-bottom: 16px; margin-bottom: 20px; }
-    .brand-name { font-size: 24px; font-weight: 800; color: #0a0a0a; letter-spacing: 1px; }
-    .brand-sub { font-size: 12px; color: #6b7280; margin-top: 4px; }
-    .voucher-title { margin-top: 12px; display: inline-block; background: #0a0a0a; color: #d4af37; font-size: 13px; font-weight: 700; padding: 4px 16px; border-radius: 20px; letter-spacing: 0.5px; }
+    @page { size: A4 portrait; margin: 8mm 6mm; }
+    @media print {
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+    body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #fff; color: #1f2937; padding: 12px; line-height: 1.4; }
+    .voucher-card { border: 2px solid #d4af37; border-radius: 10px; padding: 20px; max-width: 680px; margin: 0 auto; background: #fff; page-break-inside: avoid; }
+    .header { text-align: center; border-bottom: 2px solid #f3f4f6; padding-bottom: 12px; margin-bottom: 16px; }
+    .brand-name { font-size: 22px; font-weight: 800; color: #0a0a0a; letter-spacing: 1px; }
+    .brand-sub { font-size: 11px; color: #6b7280; margin-top: 3px; }
+    .voucher-title { margin-top: 10px; display: inline-block; background: #0a0a0a; color: #d4af37; font-size: 12px; font-weight: 700; padding: 4px 14px; border-radius: 20px; letter-spacing: 0.5px; }
     
-    .meta-grid { display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 13px; }
+    .meta-grid { display: flex; justify-content: space-between; margin-bottom: 16px; font-size: 12px; }
     .meta-col { flex: 1; }
     .meta-col.right { text-align: right; }
-    .meta-label { color: #6b7280; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+    .meta-label { color: #6b7280; font-size: 10px; font-weight: 600; text-transform: uppercase; }
     .meta-val { color: #111827; font-weight: 700; margin-top: 2px; }
 
-    .party-box { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px; margin-bottom: 20px; font-size: 13px; }
-    .party-title { font-size: 11px; font-weight: 700; color: #d4af37; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px; }
-    .party-name { font-size: 16px; font-weight: 700; color: #111827; margin-bottom: 4px; }
-    .party-details { color: #4b5563; font-size: 12px; line-height: 1.4; }
+    .party-box { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px; margin-bottom: 16px; font-size: 12px; }
+    .party-title { font-size: 10px; font-weight: 700; color: #d4af37; text-transform: uppercase; margin-bottom: 4px; letter-spacing: 0.5px; }
+    .party-name { font-size: 15px; font-weight: 700; color: #111827; margin-bottom: 3px; }
+    .party-details { color: #4b5563; font-size: 11.5px; line-height: 1.3; }
 
-    .table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-    .table th { background: #f3f4f6; padding: 10px 12px; font-size: 11px; text-transform: uppercase; color: #374151; font-weight: 700; border-bottom: 2px solid #e5e7eb; text-align: left; }
+    .table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+    .table th { background: #f3f4f6; padding: 8px 10px; font-size: 10px; text-transform: uppercase; color: #374151; font-weight: 700; border-bottom: 2px solid #e5e7eb; text-align: left; }
     .table th.right { text-align: right; }
-    .table td { padding: 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; vertical-align: middle; }
+    .table td { padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 12px; vertical-align: middle; }
     .table td.right { text-align: right; font-weight: 600; }
     
-    .badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; background: #e0f2fe; color: #0284c7; }
+    .badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; background: #e0f2fe; color: #0284c7; }
     .debit-val { color: #dc2626; font-weight: 700; }
     .credit-val { color: #16a34a; font-weight: 700; }
     
-    .metal-section { background: #fefce8; border: 1px solid #fef08a; border-radius: 8px; padding: 12px; margin-bottom: 20px; display: flex; justify-content: space-around; font-size: 13px; }
+    .metal-section { background: #fefce8; border: 1px solid #fef08a; border-radius: 6px; padding: 10px; margin-bottom: 16px; display: flex; justify-content: space-around; font-size: 12px; }
     .metal-box { text-align: center; }
-    .metal-lbl { font-size: 11px; color: #854d0e; font-weight: 600; text-transform: uppercase; }
-    .metal-num { font-size: 15px; font-weight: 800; color: #713f12; margin-top: 2px; }
+    .metal-lbl { font-size: 10px; color: #854d0e; font-weight: 600; text-transform: uppercase; }
+    .metal-num { font-size: 14px; font-weight: 800; color: #713f12; margin-top: 2px; }
 
-    .total-box { background: #111827; color: #fff; border-radius: 8px; padding: 16px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; }
-    .total-label { font-size: 13px; color: #9ca3af; text-transform: uppercase; font-weight: 600; }
-    .total-val { font-size: 20px; font-weight: 800; color: #d4af37; }
+    .total-box { background: #111827; color: #fff; border-radius: 6px; padding: 12px 16px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+    .total-label { font-size: 12px; color: #9ca3af; text-transform: uppercase; font-weight: 600; }
+    .total-val { font-size: 18px; font-weight: 800; color: #d4af37; }
 
-    .signatures { display: flex; justify-content: space-between; margin-top: 40px; padding-top: 20px; border-top: 1px dashed #d1d5db; font-size: 12px; color: #6b7280; }
-    .sig-block { text-align: center; width: 180px; }
-    .sig-line { border-top: 1px solid #9ca3af; margin-top: 36px; padding-top: 4px; font-weight: 600; }
+    .signatures { display: flex; justify-content: space-between; margin-top: 24px; padding-top: 14px; border-top: 1px dashed #d1d5db; font-size: 11px; color: #6b7280; }
+    .sig-block { text-align: center; width: 160px; }
+    .sig-line { border-top: 1px solid #9ca3af; margin-top: 28px; padding-top: 4px; font-weight: 600; }
   </style>
 </head>
 <body>
@@ -148,7 +152,7 @@ export const generateLedgerVoucherHtml = (
     <div class="total-box">
       <div>
         <div class="total-label">Closing Running Balance</div>
-        <div style="font-size: 11px; color: #9ca3af; margin-top: 2px;">After this transaction</div>
+        <div style="font-size: 10px; color: #9ca3af; margin-top: 1px;">After this transaction</div>
       </div>
       <div class="total-val">₹ ${Math.abs(balance).toLocaleString('en-IN', { minimumFractionDigits: 2 })} ${balance > 0 ? '(Dr)' : (balance < 0 ? '(Cr)' : '')}</div>
     </div>
@@ -207,7 +211,7 @@ export const generateLedgerStatementHtml = (
         <td>${d}</td>
         <td><span class="badge ${b.type?.toLowerCase()}">${b.type || '-'}</span></td>
         <td style="font-weight: 600;">${b.bill_no || '-'}</td>
-        <td style="max-width: 200px;">${b.summary || '-'}</td>
+        <td style="max-width: 180px;">${b.summary || '-'}</td>
         <td style="text-align: right; color: #b45309; font-weight: 600;">${gChg !== 0 ? (gChg > 0 ? '+' : '') + gChg.toFixed(3) : '-'}</td>
         <td style="text-align: right; color: #4b5563; font-weight: 600;">${sChg !== 0 ? (sChg > 0 ? '+' : '') + sChg.toFixed(3) : '-'}</td>
         <td style="text-align: right; color: #dc2626; font-weight: 600;">${deb > 0 ? deb.toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '-'}</td>
@@ -225,39 +229,52 @@ export const generateLedgerStatementHtml = (
   <title>${partyType} Ledger Statement - ${partyName}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #fff; color: #1f2937; padding: 20px; line-height: 1.4; font-size: 12px; }
-    .statement-wrapper { max-width: 1000px; margin: 0 auto; }
+    @page {
+      size: A4 portrait;
+      margin: 8mm 6mm;
+    }
+    @media print {
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      tr { page-break-inside: avoid !important; }
+      thead { display: table-header-group !important; }
+      .party-and-summary { page-break-inside: avoid !important; }
+      .footer { page-break-inside: avoid !important; }
+    }
+    body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #fff; color: #1f2937; padding: 8px; line-height: 1.35; font-size: 11px; }
+    .statement-wrapper { max-width: 980px; margin: 0 auto; width: 100%; }
     
-    .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #d4af37; padding-bottom: 16px; margin-bottom: 16px; }
-    .brand-title { font-size: 24px; font-weight: 800; color: #0a0a0a; letter-spacing: 0.5px; }
-    .brand-sub { font-size: 11px; color: #4b5563; margin-top: 3px; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #d4af37; padding-bottom: 12px; margin-bottom: 12px; }
+    .brand-title { font-size: 22px; font-weight: 800; color: #0a0a0a; letter-spacing: 0.5px; }
+    .brand-sub { font-size: 10.5px; color: #4b5563; margin-top: 2px; }
     .statement-tag { text-align: right; }
-    .statement-title { font-size: 18px; font-weight: 800; color: #d4af37; text-transform: uppercase; }
-    .statement-date { font-size: 11px; color: #6b7280; margin-top: 2px; }
+    .statement-title { font-size: 16px; font-weight: 800; color: #d4af37; text-transform: uppercase; }
+    .statement-date { font-size: 10px; color: #6b7280; margin-top: 2px; }
 
-    .party-and-summary { display: flex; gap: 16px; margin-bottom: 16px; }
-    .party-card { flex: 1.2; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; }
-    .card-title { font-size: 10px; font-weight: 700; color: #d4af37; text-transform: uppercase; margin-bottom: 4px; letter-spacing: 0.5px; }
-    .party-name { font-size: 15px; font-weight: 700; color: #111827; }
-    .party-meta { color: #4b5563; font-size: 11px; margin-top: 4px; line-height: 1.4; }
+    .party-and-summary { display: flex; gap: 12px; margin-bottom: 12px; }
+    .party-card { flex: 1.2; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 10px; }
+    .card-title { font-size: 9px; font-weight: 700; color: #d4af37; text-transform: uppercase; margin-bottom: 3px; letter-spacing: 0.5px; }
+    .party-name { font-size: 14px; font-weight: 700; color: #111827; }
+    .party-meta { color: #4b5563; font-size: 10.5px; margin-top: 3px; line-height: 1.3; }
 
-    .summary-card { flex: 1.5; background: #0a0a0a; color: #fff; border-radius: 8px; padding: 12px; display: flex; justify-content: space-between; align-items: center; }
-    .sum-col { text-align: center; flex: 1; border-right: 1px solid #262626; padding: 0 8px; }
+    .summary-card { flex: 1.4; background: #0a0a0a; color: #fff; border-radius: 6px; padding: 10px; display: flex; justify-content: space-between; align-items: center; }
+    .sum-col { text-align: center; flex: 1; border-right: 1px solid #262626; padding: 0 6px; }
     .sum-col:last-child { border-right: none; }
-    .sum-lbl { font-size: 9px; color: #9ca3af; text-transform: uppercase; font-weight: 700; }
-    .sum-val { font-size: 14px; font-weight: 800; margin-top: 2px; }
+    .sum-lbl { font-size: 8.5px; color: #9ca3af; text-transform: uppercase; font-weight: 700; }
+    .sum-val { font-size: 13px; font-weight: 800; margin-top: 2px; }
     .sum-sub { font-size: 8px; color: #6b7280; margin-top: 1px; }
 
-    .table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 11px; }
-    .table th { background: #f3f4f6; color: #374151; padding: 8px 6px; text-transform: uppercase; font-weight: 700; border: 1px solid #e5e7eb; font-size: 10px; }
-    .table td { padding: 8px 6px; border: 1px solid #e5e7eb; vertical-align: middle; }
+    .table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 10px; }
+    .table thead { display: table-header-group; }
+    .table th { background: #f3f4f6; color: #374151; padding: 6px 5px; text-transform: uppercase; font-weight: 700; border: 1px solid #e5e7eb; font-size: 9px; }
+    .table td { padding: 6px 5px; border: 1px solid #e5e7eb; vertical-align: middle; }
+    .table tr:nth-child(even) { background-color: #fafafa; }
     
-    .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: 700; }
+    .badge { display: inline-block; padding: 2px 5px; border-radius: 3px; font-size: 8.5px; font-weight: 700; }
     .badge.invoice { background: #eff6ff; color: #2563eb; }
     .badge.exchange { background: #faf5ff; color: #9333ea; }
     .badge.settlement, .badge.payment, .badge.receipt { background: #f0fdf4; color: #16a34a; }
 
-    .footer { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 30px; padding-top: 16px; border-top: 1px solid #e5e7eb; font-size: 11px; color: #6b7280; }
+    .footer { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 20px; padding-top: 12px; border-top: 1px solid #e5e7eb; font-size: 10px; color: #6b7280; }
   </style>
 </head>
 <body>
@@ -306,7 +323,7 @@ export const generateLedgerStatementHtml = (
     <table class="table">
       <thead>
         <tr>
-          <th style="width: 30px;">#</th>
+          <th style="width: 24px;">#</th>
           <th>Date</th>
           <th>Type</th>
           <th>Ref No</th>
@@ -319,7 +336,7 @@ export const generateLedgerStatementHtml = (
         </tr>
       </thead>
       <tbody>
-        ${rowsHtml.length > 0 ? rowsHtml : '<tr><td colspan="10" style="text-align: center; padding: 20px; color: #9ca3af;">No transaction records found</td></tr>'}
+        ${rowsHtml.length > 0 ? rowsHtml : '<tr><td colspan="10" style="text-align: center; padding: 16px; color: #9ca3af;">No transaction records found</td></tr>'}
       </tbody>
     </table>
 
