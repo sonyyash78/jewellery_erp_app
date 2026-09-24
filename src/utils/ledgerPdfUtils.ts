@@ -18,7 +18,7 @@ export const generateLedgerVoucherHtml = (
   const partyAddress = party?.address || 'N/A';
 
   const dateFormatted = bill?.date ? new Date(bill.date).toLocaleString('en-IN') : new Date().toLocaleString('en-IN');
-  const typeName = bill?.type || 'TRANSACTION';
+  const typeName = bill?.type || 'RECEIPT';
   const voucherNo = bill?.bill_no || '-';
   const summary = bill?.summary || '-';
 
@@ -90,7 +90,7 @@ export const generateLedgerVoucherHtml = (
     <div class="header">
       <div class="brand-name">${comp.name}</div>
       <div class="brand-sub">${comp.address} | Phone: ${comp.phone} | GSTIN: ${comp.gstin}</div>
-      <div class="voucher-title">${typeName} VOUCHER</div>
+      <div class="voucher-title">${typeName.toUpperCase()} VOUCHER</div>
     </div>
 
     <div class="meta-grid">
@@ -136,14 +136,18 @@ export const generateLedgerVoucherHtml = (
     <div class="metal-section">
       ${goldChange !== 0 ? `
       <div class="metal-box">
-        <div class="metal-lbl">Gold Movement</div>
-        <div class="metal-num">${goldChange > 0 ? '+' : ''}${goldChange.toFixed(3)} g</div>
+        <div class="metal-lbl">${partyType === 'Supplier' ? (goldChange > 0 ? 'Gold Received (Purchased)' : 'Gold Given (Settled)') : (goldChange < 0 ? 'Gold Received (Deposited)' : 'Gold Given (Issued)')}</div>
+        <div class="metal-num" style="color: ${(partyType === 'Supplier' ? goldChange > 0 : goldChange < 0) ? '#15803d' : '#b45309'};">
+          ${Math.abs(goldChange).toFixed(3)} g Fine Gold
+        </div>
       </div>
       ` : ''}
       ${silverChange !== 0 ? `
       <div class="metal-box">
-        <div class="metal-lbl">Silver Movement</div>
-        <div class="metal-num">${silverChange > 0 ? '+' : ''}${silverChange.toFixed(3)} g</div>
+        <div class="metal-lbl">${partyType === 'Supplier' ? (silverChange > 0 ? 'Silver Received (Purchased)' : 'Silver Given (Settled)') : (silverChange < 0 ? 'Silver Received (Deposited)' : 'Silver Given (Issued)')}</div>
+        <div class="metal-num" style="color: ${(partyType === 'Supplier' ? silverChange > 0 : silverChange < 0) ? '#15803d' : '#4b5563'};">
+          ${Math.abs(silverChange).toFixed(3)} g Fine Silver
+        </div>
       </div>
       ` : ''}
     </div>
@@ -151,10 +155,10 @@ export const generateLedgerVoucherHtml = (
 
     <div class="total-box">
       <div>
-        <div class="total-label">Closing Running Balance</div>
+        <div class="total-label">Closing Cash Balance</div>
         <div style="font-size: 10px; color: #9ca3af; margin-top: 1px;">After this transaction</div>
       </div>
-      <div class="total-val">₹ ${Math.abs(balance).toLocaleString('en-IN', { minimumFractionDigits: 2 })} ${balance > 0 ? '(Dr)' : (balance < 0 ? '(Cr)' : '')}</div>
+      <div class="total-val">₹ ${Math.abs(balance).toLocaleString('en-IN', { minimumFractionDigits: 2 })} ${partyType === 'Supplier' ? (balance > 0 ? '(Cr - Payable)' : (balance < 0 ? '(Dr - Advance)' : '')) : (balance > 0 ? '(Dr - Due)' : (balance < 0 ? '(Cr - Advance)' : ''))}</div>
     </div>
 
     <div class="signatures">
@@ -216,7 +220,7 @@ export const generateLedgerStatementHtml = (
         <td style="text-align: right; color: #4b5563; font-weight: 600;">${sChg !== 0 ? (sChg > 0 ? '+' : '') + sChg.toFixed(3) : '-'}</td>
         <td style="text-align: right; color: #dc2626; font-weight: 600;">${deb > 0 ? deb.toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '-'}</td>
         <td style="text-align: right; color: #16a34a; font-weight: 600;">${cred > 0 ? cred.toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '-'}</td>
-        <td style="text-align: right; font-weight: 700; color: #111827;">${Math.abs(bal).toLocaleString('en-IN', { minimumFractionDigits: 2 })} ${bal > 0 ? 'Dr' : (bal < 0 ? 'Cr' : '')}</td>
+        <td style="text-align: right; font-weight: 700; color: #111827;">${Math.abs(bal).toLocaleString('en-IN', { minimumFractionDigits: 2 })} ${partyType === 'Supplier' ? (bal > 0 ? 'Cr' : (bal < 0 ? 'Dr' : '')) : (bal > 0 ? 'Dr' : (bal < 0 ? 'Cr' : ''))}</td>
       </tr>
     `;
   }).join('');
@@ -314,7 +318,7 @@ export const generateLedgerStatementHtml = (
         <div class="sum-col">
           <div class="sum-lbl">Net Outstanding</div>
           <div class="sum-val" style="color: ${outstanding > 0 ? '#ef4444' : '#10b981'};">
-            ₹ ${Math.abs(outstanding).toLocaleString('en-IN', { minimumFractionDigits: 2 })} ${outstanding > 0 ? '(Dr)' : (outstanding < 0 ? '(Cr)' : '')}
+            ₹ ${Math.abs(outstanding).toLocaleString('en-IN', { minimumFractionDigits: 2 })} ${partyType === 'Supplier' ? (outstanding > 0 ? '(Cr - Payable)' : (outstanding < 0 ? '(Dr - Advance)' : '')) : (outstanding > 0 ? '(Dr - Due)' : (outstanding < 0 ? '(Cr - Advance)' : ''))}
           </div>
         </div>
       </div>

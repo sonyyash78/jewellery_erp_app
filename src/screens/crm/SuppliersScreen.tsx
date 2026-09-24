@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { axiosClient } from '../../api/axiosClient';
 
 export default function SuppliersScreen({ navigation }: any) {
-  const [Suppliers, setSuppliers] = useState<any[]>([]);
+  const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
@@ -12,7 +13,7 @@ export default function SuppliersScreen({ navigation }: any) {
       setLoading(true);
       const url = searchQuery ? `/sellers/?search=${searchQuery}` : '/sellers/';
       const response = await axiosClient.get(url);
-      setSuppliers(response.data.items || []);
+      setSuppliers(response.data.items || response.data || []);
     } catch (error) {
       console.log('Failed to fetch Suppliers', error);
     } finally {
@@ -20,37 +21,55 @@ export default function SuppliersScreen({ navigation }: any) {
     }
   };
 
-  useEffect(() => {
-    fetchSuppliers();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      fetchSuppliers(search);
+    }, [])
+  );
 
   const handleSearch = (text: string) => {
     setSearch(text);
-    // In a real app, use debounce. For now, we fetch immediately.
     fetchSuppliers(text);
   };
 
-  const renderItem = ({ item }: { item: any }) => (
-    <TouchableOpacity 
-      style={styles.card} 
-      onPress={() => navigation.navigate('SupplierProfile', { SupplierId: item.id, SupplierName: `${item.first_name} ${item.last_name || ""}`.trim() })}
-    >
-      <View style={styles.cardHeader}>
-        <Text style={styles.name}>{item.first_name} {item.last_name || ""}</Text>
-        <Text style={styles.balance}>₹{item.outstanding_balance || 0}</Text>
-      </View>
-      <View style={styles.cardBody}>
-        <Text style={styles.detail}>{item.phone_number}</Text>
-        <Text style={styles.detail}>{item.city}</Text>
-      </View>
-    </TouchableOpacity>
-  );
+  const formatAmount = (num: number) => {
+    if (!num) return '0.00';
+    return Math.abs(num).toLocaleString('en-IN', { minimumFractionDigits: 2 });
+  };
+
+  const renderItem = ({ item }: { item: any }) => {
+    const sName = item.name || `${item.first_name || ''} ${item.last_name || ''}`.trim() || 'Supplier';
+    const sPhone = item.mobile || item.phone_number || 'N/A';
+    const sBalance = Number(item.outstanding_balance || 0);
+
+    return (
+      <TouchableOpacity 
+        style={styles.card} 
+        onPress={() => navigation.navigate('SupplierProfile', { 
+          supplierId: item.id, 
+          supplierName: sName,
+          item: item 
+        })}
+      >
+        <View style={styles.cardHeader}>
+          <Text style={styles.name}>{sName}</Text>
+          <Text style={[styles.balance, { color: sBalance > 0 ? '#ef4444' : '#10b981' }]}>
+            ₹ {formatAmount(sBalance)} {sBalance > 0 ? '(Cr)' : (sBalance < 0 ? '(Dr)' : '')}
+          </Text>
+        </View>
+        <View style={styles.cardBody}>
+          <Text style={styles.detail}>📱 {sPhone}</Text>
+          <Text style={styles.detail}>{item.city || item.address || 'N/A'}</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View style={styles.container}>
       <TextInput
         style={styles.searchInput}
-        placeholder="Search Suppliers..."
+        placeholder="Search Suppliers by name or phone..."
         placeholderTextColor="#888"
         value={search}
         onChangeText={handleSearch}
@@ -60,10 +79,10 @@ export default function SuppliersScreen({ navigation }: any) {
         <ActivityIndicator size="large" color="#d4af37" style={{ marginTop: 20 }} />
       ) : (
         <FlatList
-          data={Suppliers}
+          data={suppliers}
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderItem}
-          contentContainerStyle={{ paddingBottom: 20 }}
+          contentContainerStyle={{ paddingBottom: 80 }}
           ListEmptyComponent={<Text style={styles.emptyText}>No Suppliers found.</Text>}
         />
       )}
@@ -86,14 +105,14 @@ const styles = StyleSheet.create({
   },
   fab: {
     position: 'absolute',
-    width: 60,
-    height: 60,
+    width: 56,
+    height: 56,
     alignItems: 'center',
     justifyContent: 'center',
     right: 20,
-    bottom: 20,
+    bottom: 24,
     backgroundColor: '#d4af37',
-    borderRadius: 30,
+    borderRadius: 28,
     elevation: 8,
     shadowColor: '#000',
     shadowOpacity: 0.3,
@@ -101,8 +120,9 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
   },
   fabText: {
-    fontSize: 32,
+    fontSize: 30,
     color: '#0a0a0a',
+    fontWeight: 'bold',
     lineHeight: 34,
   },
   searchInput: {
@@ -132,11 +152,12 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
+    flex: 1,
   },
   balance: {
-    color: '#d4af37',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: 'bold',
+    marginLeft: 8,
   },
   cardBody: {
     flexDirection: 'row',
@@ -144,11 +165,11 @@ const styles = StyleSheet.create({
   },
   detail: {
     color: '#888',
-    fontSize: 14,
+    fontSize: 13,
   },
   emptyText: {
     color: '#888',
     textAlign: 'center',
-    marginTop: 20,
+    marginTop: 40,
   }
 });

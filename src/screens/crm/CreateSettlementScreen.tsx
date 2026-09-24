@@ -5,9 +5,10 @@ import { Ionicons } from '@expo/vector-icons';
 
 export default function CreateSettlementScreen({ route, navigation }: any) {
   const { id, type, name } = route.params; // type: 'Customer' or 'Supplier'
+  const isSupplier = type === 'Supplier';
   
   const [formData, setFormData] = useState({
-    voucher_type: 'Payment',
+    voucher_type: isSupplier ? 'Payment' : 'Receipt',
     voucher_number: '',
     description: '',
     debit: '0',
@@ -26,7 +27,7 @@ export default function CreateSettlementScreen({ route, navigation }: any) {
       const payload = {
         voucher_type: formData.voucher_type,
         voucher_number: formData.voucher_number || undefined,
-        description: formData.description || undefined,
+        description: formData.description || (isSupplier ? 'Supplier Settlement' : 'Customer Settlement'),
         debit: parseFloat(formData.debit) || 0,
         credit: parseFloat(formData.credit) || 0,
         gold_debit: parseFloat(formData.gold_debit) || 0,
@@ -35,7 +36,7 @@ export default function CreateSettlementScreen({ route, navigation }: any) {
         silver_credit: parseFloat(formData.silver_credit) || 0,
       };
 
-      const endpoint = type === 'Customer' ? `/customers/${id}/ledger` : `/sellers/${id}/ledger`;
+      const endpoint = isSupplier ? `/sellers/${id}/ledger` : `/customers/${id}/ledger`;
       await axiosClient.post(endpoint, payload);
       
       Alert.alert('Success', 'Settlement recorded successfully!');
@@ -48,36 +49,41 @@ export default function CreateSettlementScreen({ route, navigation }: any) {
     }
   };
 
+  const voucherTypes = ['Payment', 'Receipt', 'Metal Settlement', 'Manual'];
+
   return (
     <ScrollView style={styles.container}>
       <View style={styles.card}>
         <View style={styles.header}>
           <Text style={styles.title}>RECORD {type.toUpperCase()} SETTLEMENT</Text>
+          {name ? <Text style={styles.partyName}>{name}</Text> : null}
         </View>
 
         <View style={styles.row}>
           <View style={styles.col}>
             <Text style={styles.label}>VOUCHER TYPE</Text>
             <View style={styles.typeGroup}>
-              <TouchableOpacity 
-                style={[styles.typeBtn, formData.voucher_type === 'Payment' && styles.typeBtnActive]}
-                onPress={() => setFormData({...formData, voucher_type: 'Payment'})}
-              >
-                <Text style={[styles.typeBtnText, formData.voucher_type === 'Payment' && styles.typeBtnTextActive]}>Payment</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.typeBtn, formData.voucher_type === 'Receipt' && styles.typeBtnActive]}
-                onPress={() => setFormData({...formData, voucher_type: 'Receipt'})}
-              >
-                <Text style={[styles.typeBtnText, formData.voucher_type === 'Receipt' && styles.typeBtnTextActive]}>Receipt</Text>
-              </TouchableOpacity>
+              {voucherTypes.map((vType) => (
+                <TouchableOpacity 
+                  key={vType}
+                  style={[styles.typeBtn, formData.voucher_type === vType && styles.typeBtnActive]}
+                  onPress={() => setFormData({...formData, voucher_type: vType})}
+                >
+                  <Text style={[styles.typeBtnText, formData.voucher_type === vType && styles.typeBtnTextActive]}>
+                    {vType === 'Metal Settlement' ? 'Metal Settle' : vType}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
           </View>
+        </View>
+
+        <View style={styles.row}>
           <View style={styles.col}>
-            <Text style={styles.label}>REF / VOUCHER NO.</Text>
+            <Text style={styles.label}>REF / VOUCHER NO. (OPTIONAL)</Text>
             <TextInput
               style={styles.input}
-              placeholder="e.g. PAY-123"
+              placeholder={isSupplier ? "e.g. PAY-SUP-01" : "e.g. REC-CUST-01"}
               placeholderTextColor="#555"
               value={formData.voucher_number}
               onChangeText={(t) => setFormData({...formData, voucher_number: t})}
@@ -88,7 +94,7 @@ export default function CreateSettlementScreen({ route, navigation }: any) {
         <Text style={styles.label}>REMARKS / DESCRIPTION</Text>
         <TextInput
           style={styles.input}
-          placeholder="e.g. Received Cash for Due Bill"
+          placeholder={isSupplier ? "e.g. Payment for Gold Purchase" : "e.g. Received Cash / Gold Deposit"}
           placeholderTextColor="#555"
           value={formData.description}
           onChangeText={(t) => setFormData({...formData, description: t})}
@@ -96,13 +102,18 @@ export default function CreateSettlementScreen({ route, navigation }: any) {
 
         {/* Dual columns for Debit and Credit */}
         <View style={styles.financeContainer}>
+          {/* Debit Column */}
           <View style={styles.financeCol}>
-            <Text style={[styles.financeTitle, { color: '#ef4444' }]}>Debit (They Owe Us)</Text>
+            <Text style={[styles.financeTitle, { color: '#ef4444' }]}>
+              {isSupplier ? 'Debit (We Pay Them)' : 'Debit (Customer Owes)'}
+            </Text>
             
             <Text style={styles.financeLabel}>Amount (₹)</Text>
             <TextInput
               style={styles.financeInput}
               keyboardType="numeric"
+              placeholder="0.00"
+              placeholderTextColor="#444"
               value={formData.debit}
               onChangeText={(t) => setFormData({...formData, debit: t})}
             />
@@ -111,6 +122,8 @@ export default function CreateSettlementScreen({ route, navigation }: any) {
             <TextInput
               style={styles.financeInput}
               keyboardType="numeric"
+              placeholder="0.000"
+              placeholderTextColor="#444"
               value={formData.gold_debit}
               onChangeText={(t) => setFormData({...formData, gold_debit: t})}
             />
@@ -119,18 +132,25 @@ export default function CreateSettlementScreen({ route, navigation }: any) {
             <TextInput
               style={styles.financeInput}
               keyboardType="numeric"
+              placeholder="0.000"
+              placeholderTextColor="#444"
               value={formData.silver_debit}
               onChangeText={(t) => setFormData({...formData, silver_debit: t})}
             />
           </View>
 
+          {/* Credit Column */}
           <View style={styles.financeCol}>
-            <Text style={[styles.financeTitle, { color: '#10b981' }]}>Credit (They Paid Us)</Text>
+            <Text style={[styles.financeTitle, { color: '#10b981' }]}>
+              {isSupplier ? 'Credit (They Billed Us)' : 'Credit (Customer Paid)'}
+            </Text>
             
             <Text style={styles.financeLabel}>Amount (₹)</Text>
             <TextInput
               style={styles.financeInput}
               keyboardType="numeric"
+              placeholder="0.00"
+              placeholderTextColor="#444"
               value={formData.credit}
               onChangeText={(t) => setFormData({...formData, credit: t})}
             />
@@ -139,6 +159,8 @@ export default function CreateSettlementScreen({ route, navigation }: any) {
             <TextInput
               style={styles.financeInput}
               keyboardType="numeric"
+              placeholder="0.000"
+              placeholderTextColor="#444"
               value={formData.gold_credit}
               onChangeText={(t) => setFormData({...formData, gold_credit: t})}
             />
@@ -147,6 +169,8 @@ export default function CreateSettlementScreen({ route, navigation }: any) {
             <TextInput
               style={styles.financeInput}
               keyboardType="numeric"
+              placeholder="0.000"
+              placeholderTextColor="#444"
               value={formData.silver_credit}
               onChangeText={(t) => setFormData({...formData, silver_credit: t})}
             />
@@ -174,7 +198,7 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: '#141414',
-    borderRadius: 8,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: '#333',
     padding: 16,
@@ -183,19 +207,25 @@ const styles = StyleSheet.create({
   header: {
     borderBottomWidth: 1,
     borderBottomColor: '#222',
-    paddingBottom: 16,
+    paddingBottom: 12,
     marginBottom: 16,
   },
   title: {
     color: '#d4af37',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
-    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  partyName: {
+    color: '#aaa',
+    fontSize: 13,
+    marginTop: 3,
+    fontWeight: '600',
   },
   row: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   col: {
     flex: 1,
@@ -205,6 +235,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: 'bold',
     marginBottom: 6,
+    textTransform: 'uppercase',
   },
   input: {
     backgroundColor: '#0a0a0a',
@@ -223,29 +254,33 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#333',
     overflow: 'hidden',
+    flexWrap: 'wrap',
   },
   typeBtn: {
     flex: 1,
-    paddingVertical: 10,
+    minWidth: 70,
+    paddingVertical: 9,
+    paddingHorizontal: 4,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   typeBtnActive: {
-    backgroundColor: '#333',
+    backgroundColor: '#d4af37',
   },
   typeBtnText: {
     color: '#888',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 'bold',
   },
   typeBtnTextActive: {
-    color: '#fff',
+    color: '#000',
   },
   financeContainer: {
     flexDirection: 'row',
-    gap: 16,
+    gap: 12,
     backgroundColor: '#0f0f0f',
     padding: 12,
-    borderRadius: 6,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: '#222',
     marginBottom: 20,
@@ -254,28 +289,30 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   financeTitle: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 'bold',
-    marginBottom: 12,
-    paddingBottom: 8,
+    marginBottom: 10,
+    paddingBottom: 6,
     borderBottomWidth: 1,
     borderBottomColor: '#222',
+    textTransform: 'uppercase',
   },
   financeLabel: {
     color: '#d4af37',
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: 'bold',
-    marginBottom: 4,
+    marginBottom: 3,
   },
   financeInput: {
     backgroundColor: '#000',
     borderWidth: 1,
-    borderColor: '#222',
+    borderColor: '#262626',
     borderRadius: 6,
     color: '#fff',
     padding: 8,
-    fontSize: 14,
-    marginBottom: 12,
+    fontSize: 13,
+    marginBottom: 10,
+    fontFamily: 'System',
   },
   footer: {
     flexDirection: 'row',
@@ -287,20 +324,23 @@ const styles = StyleSheet.create({
     paddingTop: 16,
   },
   cancelBtn: {
-    padding: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
   },
   cancelBtnText: {
-    color: '#ccc',
+    color: '#888',
     fontWeight: 'bold',
+    fontSize: 13,
   },
   saveBtn: {
-    backgroundColor: '#ffcc00',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
+    backgroundColor: '#d4af37',
+    paddingVertical: 11,
+    paddingHorizontal: 22,
     borderRadius: 6,
   },
   saveBtnText: {
     color: '#000',
     fontWeight: 'bold',
+    fontSize: 13,
   }
 });

@@ -56,15 +56,28 @@ export default function SupplierProfileScreen({ route, navigation }: any) {
   };
 
   const outstanding = data?.outstanding_balance || 0;
-  const isDr = outstanding > 0;
+  const isCr = outstanding > 0;
 
   const getVoucherHtml = async (bill: any) => {
     let html = '';
     try {
-      if (bill.bill_no && (bill.bill_no.startsWith('INV-') || bill.bill_no.startsWith('PUR-') || bill.bill_no.startsWith('EXC-') || bill.bill_no.startsWith('PAY-'))) {
-        const res = await axiosClient.get(`/invoices/pdf-by-voucher/${bill.bill_no}`);
-        if (res.data) {
-          html = generateInvoiceHtml(res.data);
+      if (bill.bill_no && bill.bill_no !== '-') {
+        // Try purchase PDF endpoint first
+        try {
+          const res = await axiosClient.get(`/purchases/pdf-by-voucher/${bill.bill_no}`);
+          if (res.data) {
+            html = generateInvoiceHtml(res.data);
+          }
+        } catch (e) {
+          // If not purchase, try invoice endpoint
+          try {
+            const res = await axiosClient.get(`/invoices/pdf-by-voucher/${bill.bill_no}`);
+            if (res.data) {
+              html = generateInvoiceHtml(res.data);
+            }
+          } catch (e2) {
+            // fallback
+          }
         }
       }
     } catch (e) {
@@ -245,7 +258,7 @@ export default function SupplierProfileScreen({ route, navigation }: any) {
         <View style={styles.balanceRow}>
           <Text style={styles.balanceLabel}>BALANCE (₹)</Text>
           <Text style={styles.balanceAmt}>
-            ₹ {Math.abs(bill.balance).toLocaleString('en-IN')} {bill.balance > 0 ? '(Dr)' : (bill.balance < 0 ? '(Cr)' : '')}
+            ₹ {Math.abs(bill.balance).toLocaleString('en-IN')} {bill.balance > 0 ? '(Cr)' : (bill.balance < 0 ? '(Dr)' : '')}
           </Text>
         </View>
       </View>
@@ -297,9 +310,9 @@ export default function SupplierProfileScreen({ route, navigation }: any) {
             <Text style={styles.sumSub}>@ ₹{data?.current_silver_rate || 85}/g</Text>
           </View>
           <View style={[styles.sumBox, { borderRightWidth: 0 }]}>
-            <Text style={styles.sumLabel}>OUTSTANDING ₹</Text>
-            <Text style={[styles.sumValBig, {color: isDr ? '#ef4444' : '#10b981'}]} numberOfLines={1} adjustsFontSizeToFit>
-              ₹ {formatAmount(outstanding)} {isDr ? '(Dr)' : (outstanding < 0 ? '(Cr)' : '')}
+            <Text style={styles.sumLabel}>PENDING PAYABLE ₹</Text>
+            <Text style={[styles.sumValBig, {color: isCr ? '#ef4444' : '#10b981'}]} numberOfLines={1} adjustsFontSizeToFit>
+              ₹ {formatAmount(outstanding)} {isCr ? '(Cr)' : (outstanding < 0 ? '(Dr)' : '')}
             </Text>
           </View>
         </View>
