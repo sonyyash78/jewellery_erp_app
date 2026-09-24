@@ -82,9 +82,9 @@ export default function DashboardScreen({ navigation }: any) {
             style={styles.menuItem}
             onPress={() => {
               if (item === 'Customers') {
-                navigation.navigate('Customers');
+                navigation.navigate('Customers', { initialTab: 'customers' });
               } else if (item === 'Suppliers') {
-                navigation.navigate('Suppliers');
+                navigation.navigate('Customers', { initialTab: 'suppliers' });
               } else if (item === 'Inventory') {
                 navigation.navigate('Inventory');
               } else if (item === 'Billing') {
