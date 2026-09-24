@@ -1,7 +1,7 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, FlatList, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { axiosClient } from '../../api/axiosClient';
-import MobileMetalCalculator from '../../components/MobileMetalCalculator';
+import MobileMetalCalculator, { ItemPayload } from '../../components/MobileMetalCalculator';
 
 export default function CreateInvoiceScreen({ navigation }: any) {
   const [customers, setCustomers] = useState<any[]>([]);
@@ -13,6 +13,7 @@ export default function CreateInvoiceScreen({ navigation }: any) {
   const [newCustomerPhone, setNewCustomerPhone] = useState('');
   
   const [items, setItems] = useState<any[]>([]);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
   
   useEffect(() => {
     fetchCustomers();
@@ -51,8 +52,34 @@ export default function CreateInvoiceScreen({ navigation }: any) {
     }
   };
 
+  const editingPayload = useMemo<ItemPayload | null>(() => {
+    if (editingIndex === null || !items[editingIndex]) return null;
+    const it = items[editingIndex];
+    const isGold = it.item_type === 'Gold';
+    const calc = isGold ? it.gold_calculation : it.silver_calculation;
+    return {
+      metalType: isGold ? 'Gold' : 'Silver',
+      itemName: it.item_name || '',
+      category: isGold ? (calc?.touch_purity >= 99 ? '24K' : calc?.touch_purity >= 91 ? '22K' : calc?.touch_purity >= 83 ? '20K' : calc?.touch_purity >= 75 ? '18K' : '14K') : 'Fine',
+      grossWeight: Number(calc?.gross_weight || it.gross_weight || 0),
+      stoneWeight: Number(calc?.stone_weight || 0),
+      netWeight: Number(calc?.net_weight || it.net_weight || 0),
+      touchPurity: Number(calc?.touch_purity || calc?.tanch_percentage || (isGold ? 91.6 : 99.9)),
+      wastage: Number(calc?.wastage || 0),
+      fineWeight: Number(calc?.fine_weight || calc?.pure_weight || 0),
+      metalRate: Number(calc?.applied_rate || 0),
+      metalValue: Number(calc?.total_gold_value || calc?.total_silver_value || 0),
+      makingChargeType: calc?.making_charge_type || 'flat',
+      makingChargeValue: Number(calc?.making_charge_rate || 0),
+      makingAmount: Number(calc?.making_charges_amount || 0),
+      hallmarkCharge: Number(calc?.hallmark_charges || 0),
+      otherCharges: Number(calc?.other_charges || 0),
+      discount: Number(calc?.discount || 0),
+      taxableAmount: Number(it.final_price || 0)
+    };
+  }, [editingIndex, items]);
+
   const handleAddItem = (calcItem: any) => {
-    // Map to backend Invoice Item structure
     const isGold = calcItem.metalType === 'Gold';
     const newItem: any = {
       item_name: calcItem.itemName,
@@ -94,16 +121,24 @@ export default function CreateInvoiceScreen({ navigation }: any) {
       };
     }
     
-    setItems([...items, newItem]);
+    if (editingIndex !== null) {
+      const updated = [...items];
+      updated[editingIndex] = newItem;
+      setItems(updated);
+      setEditingIndex(null);
+    } else {
+      setItems([...items, newItem]);
+    }
   };
 
   const removeItem = (index: number) => {
+    if (editingIndex === index) setEditingIndex(null);
     const updated = [...items];
     updated.splice(index, 1);
     setItems(updated);
   };
 
-  const subtotal = items.reduce((acc, item) => acc + item.final_price, 0);
+  const subtotal = items.reduce((acc, item) => acc + (Number(item.final_price) || 0), 0);
 
   const handleSave = () => {
     if (items.length === 0) {
@@ -130,25 +165,37 @@ export default function CreateInvoiceScreen({ navigation }: any) {
           </Text>
         </TouchableOpacity>
 
-        <Text style={[styles.label, {marginTop: 20}]}>Add Item to Bill</Text>
+        <Text style={[styles.label, {marginTop: 20}]}>
+          {editingIndex !== null ? '✎ Edit Cart Item' : 'Add Item to Bill'}
+        </Text>
         
-        {/* Unified Calculator Component */}
-        <MobileMetalCalculator onAdd={handleAddItem} buttonLabel="ADD TO BILL" />
+        {/* Unified Calculator Component with edit support */}
+        <MobileMetalCalculator 
+          onAdd={handleAddItem} 
+          buttonLabel={editingIndex !== null ? "✓ UPDATE ITEM" : "ADD TO BILL"}
+          initialItem={editingPayload}
+          onCancelEdit={() => setEditingIndex(null)}
+        />
 
         {/* Cart View */}
         {items.length > 0 && (
           <View style={{ marginTop: 24 }}>
             <Text style={styles.label}>Cart Items ({items.length})</Text>
             {items.map((item, idx) => (
-              <View key={idx} style={styles.cartItem}>
-                <View>
+              <View key={idx} style={[styles.cartItem, editingIndex === idx && styles.cartItemEditing]}>
+                <View style={{ flex: 1 }}>
                   <Text style={styles.cartItemName}>{item.item_name}</Text>
                   <Text style={styles.cartItemType}>{item.item_type}</Text>
-                  <Text style={styles.cartItemPrice}>₹{item.final_price.toFixed(2)}</Text>
+                  <Text style={styles.cartItemPrice}>₹{Number(item.final_price || 0).toFixed(2)}</Text>
                 </View>
-                <TouchableOpacity onPress={() => removeItem(idx)}>
-                  <Text style={styles.removeText}>Remove</Text>
-                </TouchableOpacity>
+                <View style={styles.cartItemActions}>
+                  <TouchableOpacity style={styles.editItemBtn} onPress={() => setEditingIndex(idx)}>
+                    <Text style={styles.editItemBtnText}>✎ Edit</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.removeItemBtn} onPress={() => removeItem(idx)}>
+                    <Text style={styles.removeItemBtnText}>✕ Remove</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             ))}
 
@@ -226,11 +273,48 @@ const styles = StyleSheet.create({
   label: { color: '#888', fontSize: 12, textTransform: 'uppercase', marginBottom: 8, marginTop: 16, fontWeight: 'bold' },
   selector: { backgroundColor: '#141414', borderWidth: 1, borderColor: '#333', padding: 16, borderRadius: 8 },
   selectorText: { color: '#fff', fontSize: 16 },
-  cartItem: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#1a1a1a', padding: 12, borderRadius: 8, marginBottom: 8 },
+  cartItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#1a1a1a',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#262626'
+  },
+  cartItemEditing: {
+    borderColor: '#d4af37',
+    backgroundColor: '#221f14'
+  },
   cartItemName: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  cartItemType: { color: '#888', fontSize: 12 },
-  cartItemPrice: { color: '#d4af37', fontSize: 16, fontWeight: 'bold' },
-  removeText: { color: '#ef4444', fontSize: 12, marginTop: 4 },
+  cartItemType: { color: '#888', fontSize: 12, marginTop: 2 },
+  cartItemPrice: { color: '#d4af37', fontSize: 15, fontWeight: 'bold', marginTop: 2 },
+  cartItemActions: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center'
+  },
+  editItemBtn: {
+    backgroundColor: 'rgba(212, 175, 55, 0.15)',
+    borderWidth: 1,
+    borderColor: '#d4af37',
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 6
+  },
+  editItemBtnText: { color: '#d4af37', fontSize: 12, fontWeight: 'bold' },
+  removeItemBtn: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderWidth: 1,
+    borderColor: '#ef4444',
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 6
+  },
+  removeItemBtnText: { color: '#ef4444', fontSize: 12, fontWeight: 'bold' },
+
   totalsCard: { backgroundColor: '#141414', borderWidth: 1, borderColor: '#333', padding: 16, borderRadius: 8, marginTop: 16 },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   totalLabel: { color: '#888', fontSize: 14 },

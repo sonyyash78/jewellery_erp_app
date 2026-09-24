@@ -1,7 +1,7 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity } from 'react-native';
 
-interface ItemPayload {
+export interface ItemPayload {
   metalType: 'Gold' | 'Silver';
   itemName: string;
   category: string;
@@ -26,9 +26,11 @@ interface Props {
   onAdd: (item: ItemPayload) => void;
   buttonLabel?: string;
   liveRates?: { gold14k: number, gold18k: number, gold22k: number, gold24k: number, silver: number };
+  initialItem?: ItemPayload | null;
+  onCancelEdit?: () => void;
 }
 
-export default function MobileMetalCalculator({ onAdd, buttonLabel = "ADD ITEM", liveRates }: Props) {
+export default function MobileMetalCalculator({ onAdd, buttonLabel = "ADD ITEM", liveRates, initialItem, onCancelEdit }: Props) {
   const [metal, setMetal] = useState<'Gold' | 'Silver'>('Gold');
   const [itemName, setItemName] = useState('');
   
@@ -59,6 +61,39 @@ export default function MobileMetalCalculator({ onAdd, buttonLabel = "ADD ITEM",
   const [sHallmark, setSHallmark] = useState('0');
   const [sOther, setSOther] = useState('0');
   const [sDiscount, setSDiscount] = useState('0');
+
+  // Watch initialItem to load into calculator for editing
+  useEffect(() => {
+    if (initialItem) {
+      setMetal(initialItem.metalType);
+      setItemName(initialItem.itemName || '');
+      if (initialItem.metalType === 'Gold') {
+        setGCategory(initialItem.category || '22K');
+        setGGross(String(initialItem.grossWeight || ''));
+        setGStone(String(initialItem.stoneWeight || ''));
+        setGTouch(String(initialItem.touchPurity || '91.6'));
+        setGWastage(String(initialItem.wastage || '0'));
+        setGRate(String(initialItem.metalRate || '72500'));
+        setGMakingType(initialItem.makingChargeType || 'flat');
+        setGMakingValue(String(initialItem.makingChargeValue || '0'));
+        setGHallmark(String(initialItem.hallmarkCharge || '0'));
+        setGOther(String(initialItem.otherCharges || '0'));
+        setGDiscount(String(initialItem.discount || '0'));
+      } else {
+        setSCategory(initialItem.category || 'Fine');
+        setSGross(String(initialItem.grossWeight || ''));
+        setSStone(String(initialItem.stoneWeight || ''));
+        setSTouch(String(initialItem.touchPurity || '99.9'));
+        setSWastage(String(initialItem.wastage || '0'));
+        setSRate(String(initialItem.metalRate || '90000'));
+        setSMakingType(initialItem.makingChargeType || 'flat');
+        setSMakingValue(String(initialItem.makingChargeValue || '0'));
+        setSHallmark(String(initialItem.hallmarkCharge || '0'));
+        setSOther(String(initialItem.otherCharges || '0'));
+        setSDiscount(String(initialItem.discount || '0'));
+      }
+    }
+  }, [initialItem]);
 
   // Calculations
   const calculateGold = () => {
@@ -206,8 +241,22 @@ export default function MobileMetalCalculator({ onAdd, buttonLabel = "ADD ITEM",
     );
   };
 
+  const isEditing = Boolean(initialItem);
+  const finalBtnLabel = isEditing ? "✓ UPDATE ITEM" : buttonLabel;
+
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, isEditing && styles.containerEditing]}>
+      {isEditing && (
+        <View style={styles.editingBanner}>
+          <Text style={styles.editingBannerText}>✎ Editing Item</Text>
+          {onCancelEdit && (
+            <TouchableOpacity onPress={onCancelEdit} style={styles.cancelEditHeaderBtn}>
+              <Text style={styles.cancelEditHeaderText}>✕ Cancel</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
       {/* Metal Toggle */}
       <View style={styles.toggleRow}>
         <TouchableOpacity style={[styles.toggleBtn, metal === 'Gold' ? styles.goldActive : styles.inactive]} onPress={() => setMetal('Gold')}>
@@ -338,9 +387,16 @@ export default function MobileMetalCalculator({ onAdd, buttonLabel = "ADD ITEM",
         <Text style={styles.taxableValue}>₹{c.taxAmt.toFixed(2)}</Text>
       </View>
 
-      <TouchableOpacity style={styles.addButton} onPress={handleAdd}>
-        <Text style={styles.addButtonText}>{buttonLabel}</Text>
-      </TouchableOpacity>
+      <View style={styles.buttonActionRow}>
+        {isEditing && onCancelEdit && (
+          <TouchableOpacity style={styles.cancelEditBtn} onPress={onCancelEdit}>
+            <Text style={styles.cancelEditBtnText}>Cancel</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity style={[styles.addButton, isEditing && styles.updateButton, isEditing && onCancelEdit && { flex: 2 }]} onPress={handleAdd}>
+          <Text style={[styles.addButtonText, isEditing && styles.updateButtonText]}>{finalBtnLabel}</Text>
+        </TouchableOpacity>
+      </View>
 
     </View>
   );
@@ -354,6 +410,37 @@ const styles = StyleSheet.create({
     borderColor: '#333',
     padding: 16,
     marginBottom: 20
+  },
+  containerEditing: {
+    borderColor: '#d4af37',
+    borderWidth: 1.5,
+    backgroundColor: '#141416'
+  },
+  editingBanner: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: 'rgba(212, 175, 55, 0.15)',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#d4af37'
+  },
+  editingBannerText: {
+    color: '#d4af37',
+    fontSize: 12,
+    fontWeight: '800'
+  },
+  cancelEditHeaderBtn: {
+    paddingVertical: 2,
+    paddingHorizontal: 6
+  },
+  cancelEditHeaderText: {
+    color: '#ef4444',
+    fontSize: 11,
+    fontWeight: '700'
   },
   toggleRow: {
     flexDirection: 'row',
@@ -385,7 +472,7 @@ const styles = StyleSheet.create({
   purityRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   purityBtn: { borderWidth: 1, borderColor: '#444', borderRadius: 4, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: '#1a1a20' },
   purityBtnActive: { borderColor: '#d4af37', backgroundColor: 'rgba(212, 175, 55, 0.1)' },
-    purityBtnActiveSilver: { borderColor: '#e5e7eb', backgroundColor: 'rgba(229, 231, 235, 0.1)' },
+  purityBtnActiveSilver: { borderColor: '#e5e7eb', backgroundColor: 'rgba(229, 231, 235, 0.1)' },
   purityText: { color: '#888', fontSize: 11, fontWeight: 'bold' },
   purityTextActive: { color: '#d4af37' },
   purityTextActiveSilver: { color: '#e5e7eb' },
@@ -429,11 +516,35 @@ const styles = StyleSheet.create({
   taxableLabel: { color: '#aaa', fontSize: 12 },
   taxableValue: { color: '#d4af37', fontSize: 18, fontWeight: 'bold', fontFamily: 'monospace' },
   
+  buttonActionRow: {
+    flexDirection: 'row',
+    gap: 8
+  },
+  cancelEditBtn: {
+    flex: 1,
+    backgroundColor: '#333',
+    padding: 14,
+    borderRadius: 8,
+    alignItems: 'center'
+  },
+  cancelEditBtnText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 13
+  },
   addButton: {
+    flex: 1,
     backgroundColor: '#d4af37',
     padding: 14,
     borderRadius: 8,
     alignItems: 'center'
   },
-  addButtonText: { color: '#000', fontWeight: 'bold', fontSize: 14 }
+  addButtonText: { color: '#000', fontWeight: 'bold', fontSize: 14 },
+  updateButton: {
+    backgroundColor: '#22c55e'
+  },
+  updateButtonText: {
+    color: '#000',
+    fontWeight: '900'
+  }
 });

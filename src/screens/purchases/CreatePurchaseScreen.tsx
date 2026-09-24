@@ -1,42 +1,36 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, FlatList, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
 import { axiosClient } from '../../api/axiosClient';
-import MobileMetalCalculator from '../../components/MobileMetalCalculator';
+import MobileMetalCalculator, { ItemPayload } from '../../components/MobileMetalCalculator';
 
 export default function CreatePurchaseScreen({ navigation }: any) {
   const [sellers, setSellers] = useState<any[]>([]);
   const [selectedSeller, setSelectedSeller] = useState<any>(null);
-  
-  // Modals
   const [showSellerModal, setShowSellerModal] = useState(false);
   const [showAddSellerModal, setShowAddSellerModal] = useState(false);
   
-  // New Supplier Form
   const [newSellerName, setNewSellerName] = useState('');
   const [newSellerPhone, setNewSellerPhone] = useState('');
   
-  // Cart
   const [items, setItems] = useState<any[]>([]);
-  
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetchSellers();
+  }, []);
+
   const fetchSellers = async () => {
     try {
       const response = await axiosClient.get('/sellers/');
       setSellers(response.data.items || response.data || []);
     } catch (error) {
-      console.log('Failed to fetch sellers', error);
+      console.log('Failed to fetch suppliers', error);
     }
   };
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchSellers();
-    }, [])
-  );
-
   const handleAddNewSeller = async () => {
     if (!newSellerName) {
-      Alert.alert('Error', 'Please enter a name');
+      Alert.alert('Error', 'Please enter supplier name');
       return;
     }
     const cleanedPhone = newSellerPhone.replace(/\D/g, '');
@@ -58,8 +52,33 @@ export default function CreatePurchaseScreen({ navigation }: any) {
     }
   };
 
+  const editingPayload = useMemo<ItemPayload | null>(() => {
+    if (editingIndex === null || !items[editingIndex]) return null;
+    const it = items[editingIndex];
+    const isGold = it.metal_type === 'Gold';
+    return {
+      metalType: isGold ? 'Gold' : 'Silver',
+      itemName: it.item_name || '',
+      category: isGold ? (it.touch_purity >= 99 ? '24K' : it.touch_purity >= 91 ? '22K' : it.touch_purity >= 83 ? '20K' : it.touch_purity >= 75 ? '18K' : '14K') : 'Fine',
+      grossWeight: Number(it.gross_weight || 0),
+      stoneWeight: Number(it.stone_weight || 0),
+      netWeight: Number(it.net_weight || 0),
+      touchPurity: Number(it.touch_purity || (isGold ? 91.6 : 99.9)),
+      wastage: Number(it.wastage || 0),
+      fineWeight: Number(it.fine_weight || 0),
+      metalRate: Number(it.metal_rate || 0),
+      metalValue: Number(it.metal_value || 0),
+      makingChargeType: 'flat',
+      makingChargeValue: Number(it.labour_charge || 0),
+      makingAmount: Number(it.labour_charge || 0),
+      hallmarkCharge: Number(it.hallmark_charge || 0),
+      otherCharges: Number(it.other_charges || 0),
+      discount: Number(it.discount || 0),
+      taxableAmount: Number(it.taxable_amount || 0)
+    };
+  }, [editingIndex, items]);
+
   const handleAddItem = (calcItem: any) => {
-    // Map MobileMetalCalculator payload to backend expected structure
     const newItem = {
       metal_type: calcItem.metalType,
       item_name: calcItem.itemName,
@@ -78,17 +97,25 @@ export default function CreatePurchaseScreen({ navigation }: any) {
       taxable_amount: calcItem.taxableAmount
     };
     
-    setItems([...items, newItem]);
+    if (editingIndex !== null) {
+      const updated = [...items];
+      updated[editingIndex] = newItem;
+      setItems(updated);
+      setEditingIndex(null);
+    } else {
+      setItems([...items, newItem]);
+    }
   };
 
   const removeItem = (index: number) => {
+    if (editingIndex === index) setEditingIndex(null);
     const updated = [...items];
     updated.splice(index, 1);
     setItems(updated);
   };
 
-  const subtotal = items.reduce((acc, item) => acc + item.taxable_amount, 0);
-  const totalFineWeight = items.reduce((acc, item) => acc + item.fine_weight, 0);
+  const subtotal = items.reduce((acc, item) => acc + (Number(item.taxable_amount) || 0), 0);
+  const totalFineWeight = items.reduce((acc, item) => acc + (Number(item.fine_weight) || 0), 0);
 
   const handleSave = () => {
     if (items.length === 0) {
@@ -118,25 +145,37 @@ export default function CreatePurchaseScreen({ navigation }: any) {
           </Text>
         </TouchableOpacity>
 
-        <Text style={[styles.label, {marginTop: 20}]}>Add Item to Bill</Text>
+        <Text style={[styles.label, {marginTop: 20}]}>
+          {editingIndex !== null ? '✎ Edit Purchase Item' : 'Add Item to Bill'}
+        </Text>
         
-        {/* Unified Calculator Component */}
-        <MobileMetalCalculator onAdd={handleAddItem} buttonLabel="ADD TO BILL" />
+        {/* Unified Calculator Component with edit support */}
+        <MobileMetalCalculator 
+          onAdd={handleAddItem} 
+          buttonLabel={editingIndex !== null ? "✓ UPDATE ITEM" : "ADD TO BILL"}
+          initialItem={editingPayload}
+          onCancelEdit={() => setEditingIndex(null)}
+        />
 
         {/* Cart View */}
         {items.length > 0 && (
           <View style={{ marginTop: 24 }}>
             <Text style={styles.label}>Cart Items ({items.length})</Text>
             {items.map((item, idx) => (
-              <View key={idx} style={styles.cartItem}>
-                <View>
+              <View key={idx} style={[styles.cartItem, editingIndex === idx && styles.cartItemEditing]}>
+                <View style={{ flex: 1 }}>
                   <Text style={styles.cartItemName}>{item.item_name}</Text>
-                  <Text style={styles.cartItemType}>{item.metal_type} | Net: {item.net_weight}g | Fine: {item.fine_weight.toFixed(3)}g</Text>
-                  <Text style={styles.cartItemPrice}>₹{item.taxable_amount.toFixed(2)}</Text>
+                  <Text style={styles.cartItemType}>{item.metal_type} | Net: {item.net_weight}g | Fine: {Number(item.fine_weight || 0).toFixed(3)}g</Text>
+                  <Text style={styles.cartItemPrice}>₹{Number(item.taxable_amount || 0).toFixed(2)}</Text>
                 </View>
-                <TouchableOpacity onPress={() => removeItem(idx)}>
-                  <Text style={styles.removeText}>Remove</Text>
-                </TouchableOpacity>
+                <View style={styles.cartItemActions}>
+                  <TouchableOpacity style={styles.editItemBtn} onPress={() => setEditingIndex(idx)}>
+                    <Text style={styles.editItemBtnText}>✎ Edit</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.removeItemBtn} onPress={() => removeItem(idx)}>
+                    <Text style={styles.removeItemBtnText}>✕ Remove</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             ))}
 
@@ -170,14 +209,12 @@ export default function CreatePurchaseScreen({ navigation }: any) {
               <Text style={styles.addNewBtnText}>+ Add New Supplier</Text>
             </TouchableOpacity>
 
-            
-            
             <FlatList
               data={sellers}
               keyExtractor={(item) => item.id.toString()}
               renderItem={({ item }) => (
-                <TouchableOpacity style={styles.customerOption} onPress={() => { setSelectedSeller(item); setShowSellerModal(false); }}>
-                  <Text style={styles.customerOptionText}>{item.name} ({item.mobile})</Text>
+                <TouchableOpacity style={styles.sellerOption} onPress={() => { setSelectedSeller(item); setShowSellerModal(false); }}>
+                  <Text style={styles.sellerOptionText}>{item.name} ({item.mobile})</Text>
                 </TouchableOpacity>
               )}
             />
@@ -216,11 +253,48 @@ const styles = StyleSheet.create({
   label: { color: '#888', fontSize: 12, textTransform: 'uppercase', marginBottom: 8, marginTop: 16, fontWeight: 'bold' },
   selector: { backgroundColor: '#141414', borderWidth: 1, borderColor: '#333', padding: 16, borderRadius: 8 },
   selectorText: { color: '#fff', fontSize: 16 },
-  cartItem: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#1a1a1a', padding: 12, borderRadius: 8, marginBottom: 8 },
+  cartItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#1a1a1a',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#262626'
+  },
+  cartItemEditing: {
+    borderColor: '#d4af37',
+    backgroundColor: '#221f14'
+  },
   cartItemName: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  cartItemType: { color: '#888', fontSize: 12 },
-  cartItemPrice: { color: '#d4af37', fontSize: 16, fontWeight: 'bold' },
-  removeText: { color: '#ef4444', fontSize: 12, marginTop: 4 },
+  cartItemType: { color: '#888', fontSize: 12, marginTop: 2 },
+  cartItemPrice: { color: '#d4af37', fontSize: 15, fontWeight: 'bold', marginTop: 2 },
+  cartItemActions: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center'
+  },
+  editItemBtn: {
+    backgroundColor: 'rgba(212, 175, 55, 0.15)',
+    borderWidth: 1,
+    borderColor: '#d4af37',
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 6
+  },
+  editItemBtnText: { color: '#d4af37', fontSize: 12, fontWeight: 'bold' },
+  removeItemBtn: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderWidth: 1,
+    borderColor: '#ef4444',
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 6
+  },
+  removeItemBtnText: { color: '#ef4444', fontSize: 12, fontWeight: 'bold' },
+
   totalsCard: { backgroundColor: '#141414', borderWidth: 1, borderColor: '#333', padding: 16, borderRadius: 8, marginTop: 16 },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   totalLabel: { color: '#888', fontSize: 14 },
@@ -234,8 +308,8 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', padding: 20 },
   modalContent: { backgroundColor: '#141414', borderRadius: 12, padding: 20, maxHeight: '80%', borderWidth: 1, borderColor: '#333' },
   modalTitle: { color: '#d4af37', fontSize: 20, fontWeight: 'bold', marginBottom: 16 },
-  customerOption: { paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#333' },
-  customerOptionText: { color: '#fff', fontSize: 16 },
+  sellerOption: { paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#333' },
+  sellerOptionText: { color: '#fff', fontSize: 16 },
   modalCloseBtn: { marginTop: 16, padding: 16, alignItems: 'center', backgroundColor: '#333', borderRadius: 8 },
   modalCloseText: { color: '#fff', fontWeight: 'bold' },
   addNewBtn: { backgroundColor: 'rgba(212, 175, 55, 0.1)', borderWidth: 1, borderColor: '#d4af37', padding: 12, borderRadius: 8, marginBottom: 12, alignItems: 'center' },
