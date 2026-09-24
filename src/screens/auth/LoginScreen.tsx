@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
-import * as AuthSession from 'expo-auth-session';
 import { ENV } from '../../config/api';
 import { axiosClient } from '../../api/axiosClient';
 import { useAuthStore } from '../../store/authStore';
@@ -11,7 +10,6 @@ WebBrowser.maybeCompleteAuthSession();
 
 export default function LoginScreen({ navigation }: any) {
   const [isRegister, setIsRegister] = useState(false);
-  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -80,15 +78,10 @@ export default function LoginScreen({ navigation }: any) {
   };
 
   const handleAuth = async () => {
-    const userVal = username.trim();
-    const passVal = password.trim();
     const emailVal = email.trim();
+    const passVal = password.trim();
 
-    if (!userVal) {
-      Alert.alert('Validation Error', 'Please enter your username');
-      return;
-    }
-    if (isRegister && !emailVal) {
+    if (!emailVal) {
       Alert.alert('Validation Error', 'Please enter your email address');
       return;
     }
@@ -100,9 +93,9 @@ export default function LoginScreen({ navigation }: any) {
     setLoading(true);
     try {
       if (isRegister) {
-        // 1. Register new user
+        // 1. Register new user directly with Email
         await axiosClient.post('/auth/register', {
-          username: userVal,
+          username: emailVal,
           email: emailVal,
           password: passVal
         }, {
@@ -110,9 +103,9 @@ export default function LoginScreen({ navigation }: any) {
         });
       }
 
-      // 2. Login with credentials
+      // 2. Login directly with Email
       const response = await axiosClient.post('/auth/login', {
-        username: userVal,
+        username: emailVal,
         password: passVal
       }, {
         headers: {
@@ -137,9 +130,9 @@ export default function LoginScreen({ navigation }: any) {
       if (errorDetail) {
         Alert.alert(isRegister ? 'Registration Failed' : 'Login Failed', errorDetail);
       } else if (error.response?.status === 401 || error.response?.status === 400) {
-        Alert.alert('Login Failed', isRegister ? 'Could not create account.' : 'Incorrect username, email, or password.');
+        Alert.alert('Login Failed', isRegister ? 'Could not create account.' : 'Incorrect email or password.');
       } else {
-        Alert.alert('Connection Error', 'Could not connect to the backend server. Please verify your internet connection.');
+        Alert.alert('Connection Error', 'Could not connect to the backend server. Please verify connection.');
       }
     } finally {
       setLoading(false);
@@ -159,38 +152,21 @@ export default function LoginScreen({ navigation }: any) {
             {isRegister ? 'Create New Account' : 'Secure Portal Access'}
           </Text>
 
-          {/* Username */}
+          {/* Email Address */}
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Username</Text>
+            <Text style={styles.label}>Email Address</Text>
             <TextInput
               style={styles.input}
-              placeholder="e.g. admin or your username"
+              placeholder="you@example.com"
               placeholderTextColor="#666"
-              value={username}
-              onChangeText={setUsername}
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
               editable={!loading && !googleLoading}
             />
           </View>
-
-          {/* Email (only in Register mode) */}
-          {isRegister && (
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Email Address</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="you@example.com"
-                placeholderTextColor="#666"
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                editable={!loading && !googleLoading}
-              />
-            </View>
-          )}
 
           {/* Password */}
           <View style={styles.inputContainer}>
