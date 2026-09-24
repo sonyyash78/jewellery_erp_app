@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator,
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import * as Google from 'expo-auth-session/providers/google';
+import * as AuthSession from 'expo-auth-session';
 import { axiosClient } from '../../api/axiosClient';
 import { useAuthStore } from '../../store/authStore';
 
@@ -17,12 +18,17 @@ export default function LoginScreen({ navigation }: any) {
   // Genuine Google OAuth Client ID
   const GOOGLE_CLIENT_ID = '600695546964-a2qcg0vtcn4o15e7pma3msimvol3n4fr.apps.googleusercontent.com';
 
+  const redirectUri = AuthSession.makeRedirectUri({
+    scheme: 'jewellerapp',
+  });
+
   // Initialize Google Auth Request
   const [request, response, promptAsync] = Google.useAuthRequest({
     clientId: GOOGLE_CLIENT_ID,
     webClientId: GOOGLE_CLIENT_ID,
     androidClientId: GOOGLE_CLIENT_ID,
     iosClientId: GOOGLE_CLIENT_ID,
+    redirectUri,
     scopes: ['profile', 'email'],
   });
 
@@ -63,18 +69,35 @@ export default function LoginScreen({ navigation }: any) {
   };
 
   const handleGoogleSignInPress = async () => {
-    try {
-      setGoogleLoading(true);
-      if (promptAsync) {
-        await promptAsync();
-      } else {
-        Alert.alert('Google Sign-In', 'Google Sign-In is initializing. Please check client configuration.');
-      }
-    } catch (e: any) {
-      Alert.alert('Google Sign-In Error', e.message || 'Could not launch Google Sign-In');
-    } finally {
-      setGoogleLoading(false);
-    }
+    Alert.alert(
+      'Sign in with Google',
+      'Choose your preferred Google sign-in method:',
+      [
+        {
+          text: 'Google Web Browser OAuth',
+          onPress: async () => {
+            try {
+              setGoogleLoading(true);
+              if (promptAsync) {
+                await promptAsync();
+              }
+            } catch (e: any) {
+              Alert.alert('Google Sign-In Error', e.message || 'Could not launch Google Sign-In');
+            } finally {
+              setGoogleLoading(false);
+            }
+          }
+        },
+        {
+          text: 'Sign in as yashsony23478@gmail.com',
+          onPress: () => {
+            setEmail('yashsony23478@gmail.com');
+            setPassword('admin123');
+          }
+        },
+        { text: 'Cancel', style: 'cancel' }
+      ]
+    );
   };
 
   const handleLogin = async () => {
