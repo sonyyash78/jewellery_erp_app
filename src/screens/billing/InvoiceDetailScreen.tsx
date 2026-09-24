@@ -10,6 +10,7 @@ import { generateInvoiceHtml } from '../../utils/invoicePdfUtils';
 export default function InvoiceDetailScreen({ route, navigation }: any) {
   const { invoiceId } = route.params;
   const [pdfData, setPdfData] = useState<any>(null);
+  const [settings, setSettings] = useState<any>({});
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
 
@@ -19,8 +20,17 @@ export default function InvoiceDetailScreen({ route, navigation }: any) {
 
   const fetchInvoice = async () => {
     try {
-      const response = await axiosClient.get(`/invoices/${invoiceId}/pdf-data`);
-      setPdfData(response.data);
+      setLoading(true);
+      const [invoiceRes, settingsRes] = await Promise.all([
+        axiosClient.get(`/invoices/${invoiceId}/pdf-data`),
+        axiosClient.get('/settings/').catch(() => ({ data: {} })),
+      ]);
+      const fullPdfData = {
+        ...invoiceRes.data,
+        settings: { ...(invoiceRes.data?.settings || {}), ...(settingsRes.data || {}) },
+      };
+      setPdfData(fullPdfData);
+      setSettings(settingsRes.data || {});
     } catch (error) {
       console.log('Failed to fetch invoice pdf data', error);
       Alert.alert('Error', 'Failed to load invoice details');

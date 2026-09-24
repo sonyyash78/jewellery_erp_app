@@ -9,13 +9,13 @@ export const normalizeMetal = (metalType: string | undefined): string => {
 };
 
 export const generateInvoiceHtml = (data: any): string => {
-  const company = data.company || { name: 'SAIDEEP JEWELLERS', address: '123 Jewellery Lane, City, Country', phone: '+91 98765 43210', email: 'contact@saideep.com', gstin: '22AAAAA0000A1Z5' };
-  const customer = data.customer || { name: 'Cash Customer', phone: '', address: '', email: '', gstin: '', pan: '' };
+  const company = data.company || { name: 'SAIDEEP JEWELLERS', address: 'Takhatgarh khedawas', phone: '+91 98765 43210', email: 'contact@saideep.com', gstin: '22AAAAA0000A1Z5' };
+  const customer = data.customer || { name: 'Walk-in Customer', phone: '', address: '', email: '', gstin: '', pan: '' };
   const invoice = data.invoice || { invoice_number: 'INV-001', invoice_date: new Date().toISOString(), status: 'paid', subtotal: 0, tax_amount: 0, discount_amount: 0, grand_total: 0, amount_paid: 0, balance_due: 0 };
   const items = data.items || [];
   const oldItems = data.old_items || [];
   const totals = data.totals || {};
-  const settings = {};
+  const settings = data.settings || {};
 
   const metalsArray: string[] = [];
   const goldBilled = { required: 0, fineReceived: 0, valueSettled: 0, balanceLedger: 0, price: invoice.gold_balance_metal_weight > 0 ? (totals.metal_received_value / totals.cash_received || 72500) : 72500 };
@@ -49,7 +49,7 @@ export const generateInvoiceHtml = (data: any): string => {
   finalHtml += premiumComponents.getPageWrapperStart();
 
   finalHtml += premiumComponents.renderHeader(company, invoice, '');
-  finalHtml += premiumComponents.renderCardsRow(customer, '');
+  finalHtml += premiumComponents.renderCardsRow(customer, '', settings);
 
   finalHtml += premiumComponents.renderTableHeader();
   if (items.length === 0) {
@@ -75,7 +75,7 @@ export const generateInvoiceHtml = (data: any): string => {
     if (settlementHtml) finalHtml += settlementHtml;
   }
 
-  finalHtml += premiumComponents.renderBottomRow(metalsArray, invoice, totals, settings, goldBilled, silverBilled);
+  finalHtml += premiumComponents.renderBottomRow(metalsArray, invoice, totals, settings, goldBilled, silverBilled, customer);
   finalHtml += premiumComponents.getPageWrapperEnd(company, 1, 1);
   finalHtml += `</div></body></html>`;
 

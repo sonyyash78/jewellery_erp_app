@@ -1,5 +1,4 @@
 export const getCommonStyles = (itemCount: number = 4) => {
-  // Compute dynamic scale based on number of items
   let rowPadding = '7px 5px';
   let rowFontSize = '11px';
   let titleFontSize = '12px';
@@ -18,10 +17,10 @@ export const getCommonStyles = (itemCount: number = 4) => {
     subFontSize = '10.5px';
     thPadding = '9px 5px';
     thFontSize = '10px';
-    cardPadding = '12px 14px';
-    cardMargin = '14px';
-    sectionMargin = '14px';
-    bottomMargin = '16px';
+    cardPadding = '10px 12px';
+    cardMargin = '10px';
+    sectionMargin = '10px';
+    bottomMargin = '12px';
   } else if (itemCount <= 4) {
     rowPadding = '8px 5px';
     rowFontSize = '11px';
@@ -31,8 +30,8 @@ export const getCommonStyles = (itemCount: number = 4) => {
     thFontSize = '9.5px';
     cardPadding = '8px 12px';
     cardMargin = '8px';
-    sectionMargin = '10px';
-    bottomMargin = '12px';
+    sectionMargin = '8px';
+    bottomMargin = '10px';
   } else if (itemCount <= 6) {
     rowPadding = '5px 4px';
     rowFontSize = '10.5px';
@@ -45,7 +44,6 @@ export const getCommonStyles = (itemCount: number = 4) => {
     sectionMargin = '6px';
     bottomMargin = '8px';
   } else if (itemCount <= 11) {
-    // Highly compact for 7 to 11 items to fit on 1 single page
     rowPadding = '2.5px 3px';
     rowFontSize = '9.5px';
     titleFontSize = '10.5px';
@@ -57,7 +55,6 @@ export const getCommonStyles = (itemCount: number = 4) => {
     sectionMargin = '3px';
     bottomMargin = '4px';
   } else {
-    // Multi-page standard
     rowPadding = '6px 4px';
     rowFontSize = '10px';
     titleFontSize = '11px';
@@ -150,14 +147,14 @@ export const getCommonStyles = (itemCount: number = 4) => {
     
     .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2px; }
     .logo-section { display: flex; align-items: center; gap: 12px; }
-    .logo-circle { width: ${itemCount <= 4 ? '62px' : '52px'}; height: ${itemCount <= 4 ? '62px' : '52px'}; border-radius: 50%; border: 2px solid var(--gold); display: flex; align-items: center; justify-content: center; font-family: 'Cinzel', serif; font-size: ${itemCount <= 4 ? '30px' : '26px'}; color: var(--gold); position: relative; }
-    .logo-circle::after { content: ''; position: absolute; width: ${itemCount <= 4 ? '52px' : '44px'}; height: ${itemCount <= 4 ? '52px' : '44px'}; border-radius: 50%; border: 1px solid rgba(200, 160, 69, 0.4); }
-    .logo-img { max-width: ${itemCount <= 4 ? '62px' : '52px'}; max-height: ${itemCount <= 4 ? '62px' : '52px'}; object-fit: contain; }
-    .company-info h1 { font-family: 'Cinzel', serif; font-size: ${itemCount <= 4 ? '24px' : '21px'}; font-weight: 700; color: var(--navy); line-height: 1.15; letter-spacing: 1.5px; margin-bottom: 2px; }
+    .logo-circle { width: ${itemCount <= 4 ? '60px' : '50px'}; height: ${itemCount <= 4 ? '60px' : '50px'}; border-radius: 50%; border: 2px solid var(--gold); display: flex; align-items: center; justify-content: center; font-family: 'Cinzel', serif; font-size: ${itemCount <= 4 ? '30px' : '26px'}; color: var(--gold); position: relative; }
+    .logo-circle::after { content: ''; position: absolute; width: ${itemCount <= 4 ? '50px' : '42px'}; height: ${itemCount <= 4 ? '50px' : '42px'}; border-radius: 50%; border: 1px solid rgba(200, 160, 69, 0.4); }
+    .logo-img { max-width: ${itemCount <= 4 ? '60px' : '50px'}; max-height: ${itemCount <= 4 ? '60px' : '50px'}; object-fit: contain; }
+    .company-info h1 { font-family: 'Cinzel', serif; font-size: ${itemCount <= 4 ? '23px' : '20px'}; font-weight: 700; color: var(--navy); line-height: 1.15; letter-spacing: 1.5px; margin-bottom: 2px; }
     .tagline { font-family: 'Inter', sans-serif; font-size: 8px; font-weight: 700; color: var(--gold); letter-spacing: 1.5px; text-transform: uppercase; }
     
-    .tax-invoice-badge { background: var(--navy); color: var(--gold); padding: ${itemCount <= 4 ? '9px 20px' : '7px 16px'}; border-radius: 6px 0 0 6px; font-family: 'Cinzel', serif; font-size: ${itemCount <= 4 ? '16px' : '14px'}; font-weight: 700; display: flex; align-items: center; gap: 8px; margin-right: -6mm; margin-top: -6mm; }
-    .tax-invoice-badge svg { width: 16px; height: 16px; fill: var(--gold); }
+    .tax-invoice-badge { background: var(--navy); color: var(--gold); padding: ${itemCount <= 4 ? '8px 18px' : '6px 14px'}; border-radius: 6px 0 0 6px; font-family: 'Cinzel', serif; font-size: ${itemCount <= 4 ? '15px' : '13px'}; font-weight: 700; display: flex; align-items: center; gap: 8px; margin-right: -6mm; margin-top: -6mm; }
+    .tax-invoice-badge svg { width: 15px; height: 15px; fill: var(--gold); }
     .meta-table { margin-top: 6px; font-size: 9.5px; font-weight: 600; color: var(--navy); }
     .meta-table td { padding: 2px 10px 2px 0; }
     .meta-table td:first-child { width: 90px; }
@@ -184,8 +181,8 @@ export const getCommonStyles = (itemCount: number = 4) => {
     .item-title-text { font-size: ${titleFontSize}; color: #16213E; font-weight: 700; }
     .item-sub-text { font-size: ${subFontSize}; color: #7f8c8d; font-weight: 400; margin-top: 1px; }
 
-    .settlement-section { margin-top: ${sectionMargin}; }
-    .bottom-section { margin-top: ${bottomMargin}; }
+    .settlement-section { margin-top: ${sectionMargin}; width: 100%; box-sizing: border-box; }
+    .bottom-section { margin-top: ${bottomMargin}; width: 100%; box-sizing: border-box; }
   </style>
 `;
 };
@@ -241,7 +238,7 @@ export const renderHeader = (company: any, invoice: any, logoDataUrl?: string) =
       <div class="logo-section">
         ${logoDataUrl ? `<img src="${logoDataUrl}" class="logo-img" />` : `<div class="logo-circle">SJ</div>`}
         <div class="company-info">
-          <h1>${company.name.replace(' ', '<br>')}</h1>
+          <h1>${(company.name || 'SAIDEEP JEWELLERS').replace(' ', '<br>')}</h1>
           <div class="tagline">TIMELESS BEAUTY. TRUSTED FOREVER.</div>
         </div>
       </div>
@@ -253,7 +250,7 @@ export const renderHeader = (company: any, invoice: any, logoDataUrl?: string) =
         <table class="meta-table" style="margin-left: auto;">
           <tr><td>INVOICE NO.</td><td>:</td><td style="color: var(--navy); font-weight: 700;">${invoice.invoice_number}</td></tr>
           <tr><td>DATE</td><td>:</td><td style="color: var(--navy);">${formatDate(invoice.invoice_date)}</td></tr>
-          <tr><td>PLACE</td><td>:</td><td style="color: var(--navy);">${company.address.split(',')[0] || '-'}</td></tr>
+          <tr><td>PLACE</td><td>:</td><td style="color: var(--navy);">${(company.address || 'Takhatgarh').split(',')[0]}</td></tr>
           <tr><td>GSTIN</td><td>:</td><td style="color: var(--navy);">${company.gstin || '-'}</td></tr>
         </table>
       </div>
@@ -262,14 +259,18 @@ export const renderHeader = (company: any, invoice: any, logoDataUrl?: string) =
   `;
 };
 
-export const renderCardsRow = (customer: any, qrDataUrl: string) => `
+export const renderCardsRow = (customer: any, qrDataUrl: string, settings?: any) => {
+  const upiId = settings?.upi_id || 'saideepjewellers@upi';
+  const qrUrl = settings?.qr_image_url || qrDataUrl || `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent('upi://pay?pa=' + upiId + '&pn=Saideep%20Jewellers&cu=INR')}`;
+
+  return `
     <div class="cards-row">
       <div class="info-card">
         <div class="card-header">
           <div class="card-icon"><svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg></div>
           <div class="card-title">BILL TO</div>
         </div>
-        <h3>${customer.name}</h3>
+        <h3>${customer.name || 'Walk-in Customer'}</h3>
         <div class="info-line"><svg viewBox="0 0 24 24"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg><span>${customer.phone || '-'}</span></div>
         <div class="info-line"><svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg><span>${customer.address || '-'}</span></div>
         <div class="info-line" style="margin-top: 4px; font-weight: 600;"><svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg><span>GSTIN: ${customer.gstin || '-'}</span></div>
@@ -282,19 +283,18 @@ export const renderCardsRow = (customer: any, qrDataUrl: string) => `
         <div style="display: flex; justify-content: space-between; margin-top: 2px; flex: 1;">
           <table style="font-size: 10px; font-weight: 600; color: #16213E;">
             <tr><td style="padding-bottom: 3px; width: 50px;">MODE</td><td style="padding-bottom: 3px;">:</td><td style="padding-bottom: 3px; padding-left: 8px;">NEFT / UPI / CASH</td></tr>
-            <tr><td style="padding-bottom: 3px;">UPI ID</td><td style="padding-bottom: 3px;">:</td><td style="padding-bottom: 3px; padding-left: 8px;">saideepjewellers@upi</td></tr>
+            <tr><td style="padding-bottom: 3px;">UPI ID</td><td style="padding-bottom: 3px;">:</td><td style="padding-bottom: 3px; padding-left: 8px;">${upiId}</td></tr>
             <tr><td colspan="3" style="padding-top: 6px; font-size: 9px; color: #7f8c8d; font-weight: 700;">SCAN TO PAY</td></tr>
           </table>
-          <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; width: 60px;">
-            ${qrDataUrl ? `<img src="${qrDataUrl}" style="width: 44px; height: 44px; object-fit: contain; margin-bottom: 2px;" />` : `
-              <div style="width: 44px; height: 44px; border: 1px solid #ddd; background: #eee; display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 700;">QR</div>
-            `}
+          <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; width: 64px;">
+            <img src="${qrUrl}" style="width: 46px; height: 46px; object-fit: contain; margin-bottom: 2px; border-radius: 4px;" />
             <div style="background: var(--navy); color: white; border-radius: 3px; padding: 1px 4px; font-size: 7px; font-weight: 700; text-align: center; width: 100%;">SCAN TO PAY</div>
           </div>
         </div>
       </div>
     </div>
-`;
+  `;
+};
 
 export const renderTableHeader = () => `
   <div class="table-container">
@@ -359,7 +359,7 @@ export const renderSettlements = (metals: string[], goldSettlement: any, silverS
     const titleColor = isGold ? '#D4AF37' : '#9CA3AF';
 
     return `
-      <div style="flex: 1; border: ${border}; border-radius: 6px; background: ${bg}; display: flex; flex-direction: column; ${fullWidth ? 'width: 100%;' : ''}">
+      <div style="flex: 1; border: ${border}; border-radius: 6px; background: ${bg}; display: flex; flex-direction: column; box-sizing: border-box; overflow: hidden; ${fullWidth ? 'width: 100%;' : ''}">
         <div style="padding: 4px 6px; flex: 1;">
           <div style="font-family: 'Cinzel', serif; font-size: 9.5px; font-weight: 800; color: ${color}; display: flex; align-items: center; gap: 4px; margin-bottom: 2px; border-bottom: ${border}; padding-bottom: 2px;">
             <svg viewBox="0 0 24 24" style="width: 10px; height: 10px; fill: ${titleColor};"><path d="M12 2L4 6v2h16V6l-8-4zm0 2.5l5.5 2.75h-11L12 4.5zM4 10v9h16v-9H4zm14 7H6v-5h12v5z"/></svg>
@@ -394,7 +394,7 @@ export const renderSettlements = (metals: string[], goldSettlement: any, silverS
           <svg viewBox="0 0 24 24" style="width: 10px; height: 10px; fill: currentColor; vertical-align: middle; margin-right: 4px;"><path d="M12 2L4 6v2h16V6l-8-4zm0 2.5l5.5 2.75h-11L12 4.5zM4 10v9h16v-9H4zm14 7H6v-5h12v5z"/></svg>
           METAL SETTLEMENT
       </div>
-      <div style="display: flex; gap: 6px;">
+      <div style="display: flex; gap: 6px; width: 100%; box-sizing: border-box;">
           ${showGold ? generateBox('GOLD', goldSettlement, fullWidth) : ''}
           ${showSilver ? generateBox('SILVER', silverSettlement, fullWidth) : ''}
       </div>
@@ -405,7 +405,15 @@ export const renderSettlements = (metals: string[], goldSettlement: any, silverS
   `;
 };
 
-export const renderBottomRow = (metals: string[], invoice: any, totals: any, settings: any, goldBilled?: any, silverBilled?: any) => {
+export const renderBottomRow = (
+  metals: string[],
+  invoice: any,
+  totals: any,
+  settings: any,
+  goldBilled?: any,
+  silverBilled?: any,
+  customer?: any
+) => {
   const taxableAmount  = invoice.subtotal || totals.taxableAmount || 0;
   const gstAmount      = invoice.tax_amount || totals.totalGst || 0;
   const grandTotal     = invoice.grand_total || (taxableAmount + gstAmount);
@@ -414,7 +422,10 @@ export const renderBottomRow = (metals: string[], invoice: any, totals: any, set
   const balanceDue     = invoice.balance_due ?? invoice.balance_amount ?? 0;
   const goldLedger     = invoice.gold_balance_metal_weight || 0;
   const silverLedger   = invoice.silver_balance_metal_weight || 0;
-  const metalRecStr    = invoice.metal_received_str || '';
+
+  // Previous Balance / Prev Bill
+  const prevBalance    = Number(customer?.previous_balance || invoice.previous_balance || totals.previous_balance || 0);
+  const netPayableWithPrev = Math.max(0, balanceDue + cashPaid + prevBalance);
 
   const hasGold   = metals.includes('Gold');
   const hasSilver = metals.includes('Silver');
@@ -428,7 +439,7 @@ export const renderBottomRow = (metals: string[], invoice: any, totals: any, set
 
   if (cashPaid > 0) {
     paymentCards += `
-      <div style="background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 6px; padding: 4px 6px; display: flex; align-items: center; gap: 6px;">
+      <div style="background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 6px; padding: 4px 6px; display: flex; align-items: center; gap: 6px; width: 100%; box-sizing: border-box;">
         <div style="width: 26px; height: 26px; border-radius: 50%; background: #10B981; color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
           <svg viewBox="0 0 24 24" style="width: 14px; height: 14px; fill: white;"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
         </div>
@@ -444,7 +455,7 @@ export const renderBottomRow = (metals: string[], invoice: any, totals: any, set
   const fineSilverRec = silverBilled?.fineReceived || 0;
   if (fineGoldRec > 0 || fineSilverRec > 0) {
     paymentCards += `
-      <div style="background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 6px; padding: 4px 6px; display: flex; align-items: center; gap: 6px;">
+      <div style="background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 6px; padding: 4px 6px; display: flex; align-items: center; gap: 6px; width: 100%; box-sizing: border-box;">
         <div style="width: 26px; height: 26px; border-radius: 6px; background: #F59E0B; color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
           <svg viewBox="0 0 24 24" style="width: 14px; height: 14px; fill: white;"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
         </div>
@@ -463,7 +474,7 @@ export const renderBottomRow = (metals: string[], invoice: any, totals: any, set
   let settlementContent = '';
   if (goldLedger > 0 || silverLedger > 0) {
     settlementContent = `
-      <div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 6px; padding: 4px 6px; display: flex; align-items: center; gap: 6px;">
+      <div style="background: #FEF2F2; border: 1px solid #FECACA; border-radius: 6px; padding: 4px 6px; display: flex; align-items: center; gap: 6px; width: 100%; box-sizing: border-box;">
         <div style="width: 26px; height: 26px; border-radius: 50%; background: #EF4444; color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
           <svg viewBox="0 0 24 24" style="width: 14px; height: 14px; fill: white;"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
         </div>
@@ -493,11 +504,11 @@ export const renderBottomRow = (metals: string[], invoice: any, totals: any, set
   `;
 
   return `
-    <div class="bottom-section" style="display: flex; gap: 8px;">
+    <div class="bottom-section" style="display: flex; gap: 8px; width: 100%; box-sizing: border-box; align-items: stretch;">
 
       <!-- AMOUNT SUMMARY -->
-      <div style="flex: 1; border: 1px solid #E5E7EB; border-radius: 6px; background: #FAFAFA; display: flex; flex-direction: column;">
-        <div style="padding: 3px 6px; flex: 1;">
+      <div style="flex: 1; border: 1px solid #E5E7EB; border-radius: 6px; background: #FAFAFA; display: flex; flex-direction: column; box-sizing: border-box;">
+        <div style="padding: 4px 6px; flex: 1;">
           <div style="font-family: 'Cinzel', serif; font-size: 9.5px; font-weight: 700; color: var(--gold); display: flex; align-items: center; gap: 4px; margin-bottom: 2px;">
             <svg viewBox="0 0 24 24" style="width: 10px; height: 10px; fill: currentColor;"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
             AMOUNT SUMMARY
@@ -519,22 +530,34 @@ export const renderBottomRow = (metals: string[], invoice: any, totals: any, set
                 <td style="text-align:right; color: var(--red); font-weight: 700;">- &#8377; ${formatCurrency(metalValue)}</td>
               </tr>
             ` : ''}
+            ${prevBalance > 0 ? `
+              <tr><td colspan="3"><hr style="border: none; border-top: 1px dashed #E5E7EB; margin: 2px 0;"></td></tr>
+              <tr>
+                <td style="color: #B45309; font-weight: 700;">Prev Bill / Old Due</td>
+                <td style="text-align:right;">:</td>
+                <td style="text-align:right; color: #B45309; font-weight: 700;">+ &#8377; ${formatCurrency(prevBalance)}</td>
+              </tr>
+            ` : ''}
           </table>
         </div>
         <div style="background: var(--gold); border-radius: 0 0 6px 6px; padding: 3px; text-align: center; color: #16213E;">
           <div style="font-family: 'Cinzel', serif; font-size: 9px; font-weight: 700; margin-bottom: 1px;">PAYABLE AMOUNT</div>
-          <div style="font-size: 13px; font-weight: 800;">&#8377; ${formatCurrency(Math.max(0, balanceDue + cashPaid))}</div>
+          <div style="font-size: 13px; font-weight: 800;">&#8377; ${formatCurrency(prevBalance > 0 ? netPayableWithPrev : Math.max(0, balanceDue + cashPaid))}</div>
         </div>
       </div>
 
       <!-- PAYMENT STATUS COLUMN -->
-      <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
-        ${paymentCards}
+      <div style="flex: 1; display: flex; flex-direction: column; gap: 4px; box-sizing: border-box;">
+        ${paymentCards || `
+          <div style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; padding: 6px; display: flex; align-items: center; justify-content: center; flex: 1;">
+            <div style="color: #9CA3AF; font-size: 9px; text-align: center; font-weight: 600;">Standard Settlement</div>
+          </div>
+        `}
         ${settlementContent}
       </div>
 
       <!-- PAYMENT DETAILS + OTHER DETAILS -->
-      <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+      <div style="flex: 1; display: flex; flex-direction: column; gap: 4px; box-sizing: border-box;">
 
         <!-- Payment Details -->
         <div style="border: 1px solid #E5E7EB; border-radius: 6px; background: #FAFAFA; padding: 3px 6px;">
@@ -554,10 +577,10 @@ export const renderBottomRow = (metals: string[], invoice: any, totals: any, set
             OTHER DETAILS
           </div>
           <table style="width: 100%; font-size: 8.5px; font-weight: 600; color: #16213E; line-height: 1.3;">
-            <tr><td style="vertical-align:top;width:40%;">Hallmark</td><td style="text-align:right;vertical-align:top;width:10%;">:</td><td style="text-align:right;vertical-align:top;white-space:pre-wrap;">${settings.print_hallmark || 'BIS 916 (Gold)\nBIS 925 (Silver)'}</td></tr>
-            <tr><td style="vertical-align:top;">Wastage</td><td style="text-align:right;vertical-align:top;">:</td><td style="text-align:right;vertical-align:top;white-space:pre-wrap;">${settings.print_wastage || '0.00%'}</td></tr>
-            <tr><td style="vertical-align:top;">Making Charges</td><td style="text-align:right;vertical-align:top;">:</td><td style="text-align:right;vertical-align:top;white-space:pre-wrap;">${settings.print_making_charges || 'Gold &#8377; 1,000.00/gm\nSilver &#8377; 20.00/gm'}</td></tr>
-            <tr><td style="vertical-align:top;">Remarks</td><td style="text-align:right;vertical-align:top;">:</td><td style="text-align:right;vertical-align:top;white-space:pre-wrap;">${settings.print_remarks || '-'}</td></tr>
+            <tr><td style="vertical-align:top;width:40%;">Hallmark</td><td style="text-align:right;vertical-align:top;width:10%;">:</td><td style="text-align:right;vertical-align:top;white-space:pre-wrap;">${settings?.print_hallmark || 'BIS 916 (Gold)\nBIS 925 (Silver)'}</td></tr>
+            <tr><td style="vertical-align:top;">Wastage</td><td style="text-align:right;vertical-align:top;">:</td><td style="text-align:right;vertical-align:top;white-space:pre-wrap;">${settings?.print_wastage || '0.00%'}</td></tr>
+            <tr><td style="vertical-align:top;">Making Charges</td><td style="text-align:right;vertical-align:top;">:</td><td style="text-align:right;vertical-align:top;white-space:pre-wrap;">${settings?.print_making_charges || 'Gold &#8377; 1,000.00/gm\nSilver &#8377; 20.00/gm'}</td></tr>
+            <tr><td style="vertical-align:top;">Remarks</td><td style="text-align:right;vertical-align:top;">:</td><td style="text-align:right;vertical-align:top;white-space:pre-wrap;">${settings?.print_remarks || '-'}</td></tr>
           </table>
         </div>
       </div>

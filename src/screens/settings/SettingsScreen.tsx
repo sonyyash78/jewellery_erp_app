@@ -1,17 +1,35 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { axiosClient } from '../../api/axiosClient';
 
-const SETTING_KEYS = [
-  { key: 'store_name', label: 'Store Name' },
-  { key: 'store_address', label: 'Store Address' },
-  { key: 'store_phone', label: 'Store Phone' },
-  { key: 'store_email', label: 'Store Email' },
-  { key: 'store_gstin', label: 'GSTIN' },
-  { key: 'print_hallmark', label: 'Print Hallmark Text' },
-  { key: 'print_wastage', label: 'Print Wastage Text' },
-  { key: 'print_making_charges', label: 'Print Making Charges Text' },
-  { key: 'print_remarks', label: 'Print Remarks' },
+const SETTING_GROUPS = [
+  {
+    title: 'Store Information',
+    keys: [
+      { key: 'store_name', label: 'Store / Business Name' },
+      { key: 'store_address', label: 'Store Address' },
+      { key: 'store_phone', label: 'Store Phone' },
+      { key: 'store_email', label: 'Store Email' },
+      { key: 'store_gstin', label: 'GSTIN' },
+    ]
+  },
+  {
+    title: 'Bill QR Code & Payment Info',
+    keys: [
+      { key: 'upi_id', label: 'UPI ID for QR Code (e.g. 9876543210@upi)' },
+      { key: 'upi_name', label: 'UPI Payee Name (e.g. Saideep Jewellers)' },
+      { key: 'qr_image_url', label: 'Custom QR Code Image URL (Optional)' },
+    ]
+  },
+  {
+    title: 'Print & Invoice Terms',
+    keys: [
+      { key: 'print_hallmark', label: 'Print Hallmark Text' },
+      { key: 'print_wastage', label: 'Print Wastage Text' },
+      { key: 'print_making_charges', label: 'Print Making Charges Text' },
+      { key: 'print_remarks', label: 'Print Remarks' },
+    ]
+  }
 ];
 
 export default function SettingsScreen() {
@@ -27,7 +45,7 @@ export default function SettingsScreen() {
     try {
       setLoading(true);
       const res = await axiosClient.get('/settings/');
-      setSettings(res.data);
+      setSettings(res.data || {});
     } catch (error) {
       console.log('Failed to fetch settings', error);
       Alert.alert('Error', 'Failed to load settings');
@@ -41,7 +59,7 @@ export default function SettingsScreen() {
       setSaving(true);
       const payload = Object.entries(settings).map(([key, value]) => ({ key, value }));
       await axiosClient.post('/settings/', payload);
-      Alert.alert('Success', 'Settings saved successfully');
+      Alert.alert('Success', 'Settings & QR Code configuration saved successfully!');
     } catch (error) {
       console.log('Failed to save settings', error);
       Alert.alert('Error', 'Failed to save settings');
@@ -64,35 +82,40 @@ export default function SettingsScreen() {
 
   return (
     <ScrollView style={styles.container}>
-      <View style={styles.card}>
-        <Text style={styles.headerTitle}>Global Settings</Text>
-        
-        {SETTING_KEYS.map((item) => (
-          <View key={item.key} style={styles.inputGroup}>
-            <Text style={styles.label}>{item.label}</Text>
-            <TextInput
-              style={styles.input}
-              value={settings[item.key] || ''}
-              onChangeText={(text) => handleChange(item.key, text)}
-              placeholder={`Enter ${item.label}`}
-              placeholderTextColor="#555"
-              multiline={item.key.includes('address') || item.key.includes('print')}
-            />
-          </View>
-        ))}
+      {SETTING_GROUPS.map((group, gIdx) => (
+        <View key={gIdx} style={styles.card}>
+          <Text style={styles.headerTitle}>{group.title}</Text>
+          
+          {group.keys.map((item) => (
+            <View key={item.key} style={styles.inputGroup}>
+              <Text style={styles.label}>{item.label}</Text>
+              <TextInput
+                style={styles.input}
+                value={settings[item.key] || ''}
+                onChangeText={(text) => handleChange(item.key, text)}
+                placeholder={`Enter ${item.label}`}
+                placeholderTextColor="#555"
+                multiline={item.key.includes('address') || item.key.includes('print')}
+                autoCapitalize={item.key === 'upi_id' ? 'none' : 'sentences'}
+              />
+            </View>
+          ))}
+        </View>
+      ))}
 
-        <TouchableOpacity 
-          style={styles.saveButton} 
-          onPress={handleSave}
-          disabled={saving}
-        >
-          {saving ? (
-            <ActivityIndicator color="#0a0a0a" />
-          ) : (
-            <Text style={styles.saveButtonText}>Save Settings</Text>
-          )}
-        </TouchableOpacity>
-      </View>
+      <TouchableOpacity 
+        style={styles.saveButton} 
+        onPress={handleSave}
+        disabled={saving}
+      >
+        {saving ? (
+          <ActivityIndicator color="#0a0a0a" />
+        ) : (
+          <Text style={styles.saveButtonText}>Save Settings & QR</Text>
+        )}
+      </TouchableOpacity>
+      
+      <View style={{ height: 40 }} />
     </ScrollView>
   );
 }
@@ -115,24 +138,24 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     borderColor: '#333',
-    marginBottom: 30,
+    marginBottom: 16,
   },
   headerTitle: {
     color: '#d4af37',
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
-    marginBottom: 20,
+    marginBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#333',
-    paddingBottom: 10,
+    borderBottomColor: '#262626',
+    paddingBottom: 8,
   },
   inputGroup: {
-    marginBottom: 16,
+    marginBottom: 14,
   },
   label: {
-    color: '#888',
-    fontSize: 14,
-    marginBottom: 8,
+    color: '#aaa',
+    fontSize: 13,
+    marginBottom: 6,
     fontWeight: '600',
   },
   input: {
@@ -142,14 +165,14 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
     color: '#fff',
-    fontSize: 16,
+    fontSize: 15,
   },
   saveButton: {
     backgroundColor: '#d4af37',
     padding: 16,
     borderRadius: 8,
     alignItems: 'center',
-    marginTop: 20,
+    marginTop: 4,
   },
   saveButtonText: {
     color: '#0a0a0a',
