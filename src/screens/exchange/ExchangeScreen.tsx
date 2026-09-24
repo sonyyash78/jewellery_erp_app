@@ -43,11 +43,11 @@ export default function ExchangeScreen({ navigation }: any) {
       <View style={styles.amountsRow}>
         <View>
           <Text style={styles.amountLabel}>Old Metal Value</Text>
-          <Text style={styles.amountValue}>₹ {item.total_old_value.toFixed(2)}</Text>
+          <Text style={styles.amountValue}>₹ {(item.total_old_value || 0).toFixed(2)}</Text>
         </View>
         <View style={{ alignItems: 'flex-end' }}>
           <Text style={styles.amountLabel}>New Items Value</Text>
-          <Text style={styles.amountValue}>₹ {item.grand_total.toFixed(2)}</Text>
+          <Text style={styles.amountValue}>₹ {(item.grand_total || 0).toFixed(2)}</Text>
         </View>
       </View>
       <View style={styles.statusRow}>
