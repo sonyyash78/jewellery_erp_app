@@ -9,35 +9,18 @@ export const normalizeMetal = (metalType: string | undefined): string => {
 };
 
 export const generateInvoiceHtml = (data: any): string => {
-  const company = data.company || { name: 'SAIDEEP JEWELLERS', address: 'Takhatgarh khedawas', phone: '+91 98765 43210', email: 'contact@saideep.com', gstin: '22AAAAA0000A1Z5' };
+  const settings = { ...(data.company || {}), ...(data.settings || {}) };
+  const company = {
+    name: settings.business_name || settings.name || data.company?.name || 'SAIDEEP JEWELLERS',
+    address: settings.address || data.company?.address || 'Takhatgarh khedawas',
+    phone: settings.phone || data.company?.phone || '+91 98765 43210',
+    email: settings.email || data.company?.email || 'contact@saideep.com',
+    gstin: settings.gstin || data.company?.gstin || '22AAAAA0000A1Z5',
+    tagline: settings.tagline || data.company?.tagline || 'TIMELESS BEAUTY. TRUSTED FOREVER.',
+    ...settings
+  };
   const customer = data.customer || { name: 'Walk-in Customer', phone: '', address: '', email: '', gstin: '', pan: '' };
   const invoice = data.invoice || { invoice_number: 'INV-001', invoice_date: new Date().toISOString(), status: 'paid', subtotal: 0, tax_amount: 0, discount_amount: 0, grand_total: 0, amount_paid: 0, balance_due: 0 };
-  
-  const allItems = data.items || [];
-  const isOldOrDeposit = (item: any) => {
-    const name = (item.item_name || '').toLowerCase();
-    const cat = (item.category || '').toLowerCase();
-    return /\b(old|deposit|metal given)\b/i.test(name) || cat === 'deposit' || cat === 'old';
-  };
-
-  const hasExplicitOldItems = Array.isArray(data.old_items) && data.old_items.length > 0;
-  const items = hasExplicitOldItems ? allItems : allItems.filter((i: any) => !isOldOrDeposit(i));
-  const oldItems = hasExplicitOldItems ? data.old_items : allItems.filter((i: any) => isOldOrDeposit(i));
-
-  const detectedMetals = new Set<string>();
-  const goldBilled = { required: 0, fineBilled: 0, fineReceived: 0, valueSettled: 0, balanceLedger: 0, price: 0 };
-  const silverBilled = { required: 0, fineBilled: 0, fineReceived: 0, valueSettled: 0, balanceLedger: 0, price: 0 };
-  let totals = {
-    totalGoldAmount: 0,
-    totalSilverAmount: 0,
-    totalMakingCharges: 0,
-    totalOtherCharges: 0,
-    taxableAmount: invoice.subtotal || 0,
-    totalGst: invoice.tax_amount || 0,
-    metal_received_value: invoice.metal_given_value || invoice.metal_received_value || 0,
-    ...(data.totals || {})
-  };
-  const settings = data.settings || {};
 
   items.forEach((item: any) => {
     const isGold = item.item_type === 'Gold' || normalizeMetal(item.metal_type) === 'Gold';
@@ -103,7 +86,7 @@ export const generateInvoiceHtml = (data: any): string => {
   finalHtml += premiumComponents.getPageWrapperStart();
 
   finalHtml += premiumComponents.renderHeader(company, invoice, '');
-  finalHtml += premiumComponents.renderCardsRow(customer, '', settings);
+  finalHtml += premiumComponents.renderCardsRow(customer, '', settings, invoice);
 
   finalHtml += premiumComponents.renderTableHeader();
   if (items.length === 0) {
