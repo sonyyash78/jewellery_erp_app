@@ -233,6 +233,56 @@ export default function ReportsScreen() {
     }
   };
 
+  const handleExportExcel = async () => {
+    if (!data) {
+      Alert.alert('No Data', 'No report data available to export.');
+      return;
+    }
+    try {
+      setExporting(true);
+      const currentTab = REPORT_TABS.find(t => t.id === activeTab)?.label || 'Report';
+      const timestamp = new Date().toISOString().slice(0, 10);
+      
+      let csvContent = '\uFEFF'; // UTF-8 BOM for Excel compatibility
+      csvContent += `SAIDEEP JEWELLERS - ${currentTab.toUpperCase()} REPORT\n`;
+      csvContent += `Timeframe: ${timeFilter}, Generated: ${new Date().toLocaleString('en-IN')}\n\n`;
+      csvContent += `Metric / Category,Value\n`;
+
+      Object.entries(data).forEach(([key, val]) => {
+        if (key === 'chart') return;
+        const formattedKey = key.replace(/_/g, ' ').toUpperCase();
+        if (typeof val === 'object' && val !== null) {
+          csvContent += `"${formattedKey}",\n`;
+          Object.entries(val).forEach(([subKey, subVal]) => {
+            csvContent += `  "${subKey.replace(/_/g, ' ')}","${subVal}"\n`;
+          });
+        } else if (typeof val === 'number') {
+          csvContent += `"${formattedKey}","${val}"\n`;
+        } else {
+          csvContent += `"${formattedKey}","${val ?? '-'}"\n`;
+        }
+      });
+
+      const fileUri = `${FileSystem.documentDirectory}${currentTab}_Report_${timeFilter}_${timestamp}.csv`;
+      await FileSystem.writeAsStringAsync(fileUri, csvContent, { encoding: FileSystem.EncodingType.UTF8 });
+      
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(fileUri, {
+          mimeType: 'text/csv',
+          dialogTitle: `Share ${currentTab} Excel Report`,
+          UTI: 'public.comma-separated-values-text'
+        });
+      } else {
+        Alert.alert('Success', `Report saved to: ${fileUri}`);
+      }
+    } catch (error) {
+      console.log('Export to Excel error', error);
+      Alert.alert('Error', 'Failed to export Excel report');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const renderKPIs = () => {
     if (!data) {
       return (
@@ -307,11 +357,20 @@ export default function ReportsScreen() {
 
         <View style={styles.actionButtons}>
           <TouchableOpacity 
+            style={[styles.actionBtn, { borderColor: 'rgba(34, 197, 94, 0.4)', backgroundColor: 'rgba(34, 197, 94, 0.12)' }]} 
+            onPress={handleExportExcel}
+            disabled={exporting}
+          >
+            <Ionicons name="grid-outline" size={14} color="#22c55e" />
+            <Text style={[styles.actionBtnText, { color: '#22c55e' }]}>Excel</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
             style={styles.actionBtn} 
             onPress={handleSharePDF}
             disabled={exporting}
           >
-            <Ionicons name="document-text-outline" size={16} color="#ef4444" />
+            <Ionicons name="document-text-outline" size={15} color="#ef4444" />
             <Text style={[styles.actionBtnText, { color: '#ef4444' }]}>PDF</Text>
           </TouchableOpacity>
 
@@ -320,7 +379,7 @@ export default function ReportsScreen() {
             onPress={handlePrint}
             disabled={exporting}
           >
-            <Ionicons name="print-outline" size={16} color="#38bdf8" />
+            <Ionicons name="print-outline" size={15} color="#38bdf8" />
             <Text style={[styles.actionBtnText, { color: '#38bdf8' }]}>Print</Text>
           </TouchableOpacity>
         </View>

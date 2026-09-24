@@ -259,9 +259,12 @@ export const renderHeader = (company: any, invoice: any, logoDataUrl?: string) =
   `;
 };
 
-export const renderCardsRow = (customer: any, qrDataUrl: string, settings?: any) => {
+export const renderCardsRow = (customer: any, qrDataUrl: string, settings?: any, invoice?: any) => {
   const upiId = settings?.upi_id || 'saideepjewellers@upi';
-  const qrUrl = settings?.qr_image_url || qrDataUrl || `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent('upi://pay?pa=' + upiId + '&pn=Saideep%20Jewellers&cu=INR')}`;
+  const upiName = settings?.upi_name || settings?.business_name || 'SAIDEEP JEWELLERS';
+  const amount = Number(invoice?.grand_total || invoice?.balance_due || 0);
+  const upiDeepLink = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(upiName)}${amount > 0 ? `&am=${amount.toFixed(2)}` : ''}&cu=INR&tn=${encodeURIComponent(invoice?.invoice_number || 'Tax Invoice')}`;
+  const qrUrl = settings?.qr_image_url || qrDataUrl || `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(upiDeepLink)}`;
 
   return `
     <div class="cards-row">
@@ -283,11 +286,13 @@ export const renderCardsRow = (customer: any, qrDataUrl: string, settings?: any)
         <div style="display: flex; justify-content: space-between; margin-top: 2px; flex: 1;">
           <table style="font-size: 10px; font-weight: 600; color: #16213E;">
             <tr><td style="padding-bottom: 3px; width: 50px;">MODE</td><td style="padding-bottom: 3px;">:</td><td style="padding-bottom: 3px; padding-left: 8px;">NEFT / UPI / CASH</td></tr>
-            <tr><td style="padding-bottom: 3px;">UPI ID</td><td style="padding-bottom: 3px;">:</td><td style="padding-bottom: 3px; padding-left: 8px;">${upiId}</td></tr>
+            <tr><td style="padding-bottom: 3px;">UPI ID</td><td style="padding-bottom: 3px;">:</td><td style="padding-bottom: 3px; padding-left: 8px; font-family: monospace;">${upiId}</td></tr>
+            ${settings?.bank_account_no ? `<tr><td style="padding-bottom: 3px;">A/C NO</td><td style="padding-bottom: 3px;">:</td><td style="padding-bottom: 3px; padding-left: 8px; font-family: monospace;">${settings.bank_account_no}</td></tr>` : ''}
+            ${settings?.bank_ifsc ? `<tr><td style="padding-bottom: 3px;">IFSC</td><td style="padding-bottom: 3px;">:</td><td style="padding-bottom: 3px; padding-left: 8px; font-family: monospace;">${settings.bank_ifsc}</td></tr>` : ''}
             <tr><td colspan="3" style="padding-top: 6px; font-size: 9px; color: #7f8c8d; font-weight: 700;">SCAN TO PAY</td></tr>
           </table>
-          <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; width: 64px;">
-            <img src="${qrUrl}" style="width: 46px; height: 46px; object-fit: contain; margin-bottom: 2px; border-radius: 4px;" />
+          <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; width: 68px;">
+            <img src="${qrUrl}" style="width: 50px; height: 50px; object-fit: contain; margin-bottom: 2px; border-radius: 4px;" />
             <div style="background: var(--navy); color: white; border-radius: 3px; padding: 1px 4px; font-size: 7px; font-weight: 700; text-align: center; width: 100%;">SCAN TO PAY</div>
           </div>
         </div>
