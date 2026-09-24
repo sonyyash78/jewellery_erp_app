@@ -25,13 +25,19 @@ export default function CustomersScreen({ route, navigation }: any) {
       ]);
       
       setCustomers(custRes.data.items || []);
-      setSuppliers(suppRes.data.items || []);
+      setSuppliers(Array.isArray(suppRes.data) ? suppRes.data : suppRes.data.items || []);
     } catch (error) {
       console.log('Failed to fetch CRM data', error);
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (route.params?.initialTab) {
+      setActiveTab(route.params.initialTab);
+    }
+  }, [route.params?.initialTab]);
 
   useFocusEffect(
     useCallback(() => {
