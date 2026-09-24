@@ -1,4 +1,76 @@
-export const getCommonStyles = () => `
+export const getCommonStyles = (itemCount: number = 4) => {
+  // Compute dynamic scale based on number of items
+  let rowPadding = '7px 5px';
+  let rowFontSize = '11px';
+  let titleFontSize = '12px';
+  let subFontSize = '9.5px';
+  let thPadding = '6px 4px';
+  let thFontSize = '9.5px';
+  let cardPadding = '8px 12px';
+  let cardMargin = '8px';
+  let sectionMargin = '8px';
+  let bottomMargin = '10px';
+
+  if (itemCount <= 2) {
+    rowPadding = '12px 6px';
+    rowFontSize = '12px';
+    titleFontSize = '13.5px';
+    subFontSize = '10.5px';
+    thPadding = '9px 5px';
+    thFontSize = '10px';
+    cardPadding = '12px 14px';
+    cardMargin = '14px';
+    sectionMargin = '14px';
+    bottomMargin = '16px';
+  } else if (itemCount <= 4) {
+    rowPadding = '8px 5px';
+    rowFontSize = '11px';
+    titleFontSize = '12.5px';
+    subFontSize = '9.5px';
+    thPadding = '7px 4px';
+    thFontSize = '9.5px';
+    cardPadding = '8px 12px';
+    cardMargin = '8px';
+    sectionMargin = '10px';
+    bottomMargin = '12px';
+  } else if (itemCount <= 6) {
+    rowPadding = '5px 4px';
+    rowFontSize = '10.5px';
+    titleFontSize = '11.5px';
+    subFontSize = '9px';
+    thPadding = '5px 3px';
+    thFontSize = '9px';
+    cardPadding = '6px 10px';
+    cardMargin = '6px';
+    sectionMargin = '6px';
+    bottomMargin = '8px';
+  } else if (itemCount <= 11) {
+    // Highly compact for 7 to 11 items to fit on 1 single page
+    rowPadding = '2.5px 3px';
+    rowFontSize = '9.5px';
+    titleFontSize = '10.5px';
+    subFontSize = '8px';
+    thPadding = '3.5px 2px';
+    thFontSize = '8px';
+    cardPadding = '4px 8px';
+    cardMargin = '3px';
+    sectionMargin = '3px';
+    bottomMargin = '4px';
+  } else {
+    // Multi-page standard
+    rowPadding = '6px 4px';
+    rowFontSize = '10px';
+    titleFontSize = '11px';
+    subFontSize = '8.5px';
+    thPadding = '5px 3px';
+    thFontSize = '9px';
+    cardPadding = '6px 10px';
+    cardMargin = '6px';
+    sectionMargin = '6px';
+    bottomMargin = '8px';
+  }
+
+  return `
   <style>
     :root {
       --navy: #0B132B;
@@ -43,15 +115,15 @@ export const getCommonStyles = () => `
 
     .invoice-wrapper {
       width: 210mm;
-      height: 296mm;
-      max-height: 296mm;
+      min-height: 296mm;
+      ${itemCount <= 11 ? 'height: 296mm; max-height: 296mm; overflow: hidden;' : ''}
       background: white;
       position: relative;
       padding: 6mm 6mm 0mm 6mm;
       box-sizing: border-box;
-      overflow: hidden;
       display: flex;
       flex-direction: column;
+      justify-content: space-between;
     }
 
     .watermark {
@@ -73,42 +145,50 @@ export const getCommonStyles = () => `
       display: flex;
       flex-direction: column;
       flex: 1;
+      justify-content: space-between;
     }
     
     .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2px; }
     .logo-section { display: flex; align-items: center; gap: 12px; }
-    .logo-circle { width: 56px; height: 56px; border-radius: 50%; border: 2px solid var(--gold); display: flex; align-items: center; justify-content: center; font-family: 'Cinzel', serif; font-size: 28px; color: var(--gold); position: relative; }
-    .logo-circle::after { content: ''; position: absolute; width: 48px; height: 48px; border-radius: 50%; border: 1px solid rgba(200, 160, 69, 0.4); }
-    .logo-img { max-width: 56px; max-height: 56px; object-fit: contain; }
-    .company-info h1 { font-family: 'Cinzel', serif; font-size: 22px; font-weight: 700; color: var(--navy); line-height: 1.15; letter-spacing: 1.5px; margin-bottom: 2px; }
+    .logo-circle { width: ${itemCount <= 4 ? '62px' : '52px'}; height: ${itemCount <= 4 ? '62px' : '52px'}; border-radius: 50%; border: 2px solid var(--gold); display: flex; align-items: center; justify-content: center; font-family: 'Cinzel', serif; font-size: ${itemCount <= 4 ? '30px' : '26px'}; color: var(--gold); position: relative; }
+    .logo-circle::after { content: ''; position: absolute; width: ${itemCount <= 4 ? '52px' : '44px'}; height: ${itemCount <= 4 ? '52px' : '44px'}; border-radius: 50%; border: 1px solid rgba(200, 160, 69, 0.4); }
+    .logo-img { max-width: ${itemCount <= 4 ? '62px' : '52px'}; max-height: ${itemCount <= 4 ? '62px' : '52px'}; object-fit: contain; }
+    .company-info h1 { font-family: 'Cinzel', serif; font-size: ${itemCount <= 4 ? '24px' : '21px'}; font-weight: 700; color: var(--navy); line-height: 1.15; letter-spacing: 1.5px; margin-bottom: 2px; }
     .tagline { font-family: 'Inter', sans-serif; font-size: 8px; font-weight: 700; color: var(--gold); letter-spacing: 1.5px; text-transform: uppercase; }
     
-    .tax-invoice-badge { background: var(--navy); color: var(--gold); padding: 8px 18px; border-radius: 6px 0 0 6px; font-family: 'Cinzel', serif; font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px; margin-right: -6mm; margin-top: -6mm; }
+    .tax-invoice-badge { background: var(--navy); color: var(--gold); padding: ${itemCount <= 4 ? '9px 20px' : '7px 16px'}; border-radius: 6px 0 0 6px; font-family: 'Cinzel', serif; font-size: ${itemCount <= 4 ? '16px' : '14px'}; font-weight: 700; display: flex; align-items: center; gap: 8px; margin-right: -6mm; margin-top: -6mm; }
     .tax-invoice-badge svg { width: 16px; height: 16px; fill: var(--gold); }
     .meta-table { margin-top: 6px; font-size: 9.5px; font-weight: 600; color: var(--navy); }
     .meta-table td { padding: 2px 10px 2px 0; }
     .meta-table td:first-child { width: 90px; }
     
-    .diamond-divider { display: flex; align-items: center; margin: 3px 0 6px; }
+    .diamond-divider { display: flex; align-items: center; margin: 3px 0 ${cardMargin}; }
     .diamond-divider::before, .diamond-divider::after { content: ''; flex: 1; height: 1px; background: var(--gold); opacity: 0.3; }
     .diamond { width: 5px; height: 5px; background: var(--gold); transform: rotate(45deg); margin: 0 8px; }
     
-    .cards-row { display: flex; gap: 10px; margin-bottom: 4px; }
-    .info-card { flex: 1; border: 1px solid var(--border); border-radius: 8px; padding: 5px 10px; background: #FAFAFA; position: relative; }
-    .card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+    .cards-row { display: flex; gap: 10px; margin-bottom: ${cardMargin}; }
+    .info-card { flex: 1; border: 1px solid var(--border); border-radius: 8px; padding: ${cardPadding}; background: #FAFAFA; position: relative; }
+    .card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
     .card-icon { background: var(--navy); color: var(--gold); width: 22px; height: 22px; border-radius: 4px; display: flex; align-items: center; justify-content: center; }
     .card-icon svg { width: 13px; height: 13px; fill: currentColor; }
     .card-title { font-family: 'Cinzel', serif; font-size: 11px; font-weight: 700; color: var(--gold); letter-spacing: 1px; }
-    .info-card h3 { font-size: 14px; font-weight: 700; color: var(--navy); margin-bottom: 4px; }
-    .info-line { display: flex; align-items: flex-start; gap: 8px; font-size: 10.5px; color: var(--text); margin-bottom: 3px; }
+    .info-card h3 { font-size: 14px; font-weight: 700; color: var(--navy); margin-bottom: 3px; }
+    .info-line { display: flex; align-items: flex-start; gap: 8px; font-size: 10.5px; color: var(--text); margin-bottom: 2.5px; }
     .info-line svg { width: 12px; height: 12px; fill: var(--text); opacity: 0.7; margin-top: 2px; flex-shrink: 0; }
     
+    .table-container { width: 100%; flex: 1; display: flex; flex-direction: column; }
     .items-table { width: 100%; border-collapse: separate; border-spacing: 0 2px; margin-top: 2px; }
-    .items-table th { background: var(--navy); color: var(--gold); padding: 4px 3px; font-size: 8.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-    .items-table tbody td { background: #FAFAFA; padding: 3px 4px; font-size: 10px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); text-align: center; color: var(--navy-light); }
+    .items-table th { background: var(--navy); color: var(--gold); padding: ${thPadding}; font-size: ${thFontSize}; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+    .items-table tbody td { background: #FAFAFA; padding: ${rowPadding}; font-size: ${rowFontSize}; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); text-align: center; color: var(--navy-light); }
     .items-table th:nth-child(2), .items-table td:nth-child(2) { text-align: left; }
+    .item-title-text { font-size: ${titleFontSize}; color: #16213E; font-weight: 700; }
+    .item-sub-text { font-size: ${subFontSize}; color: #7f8c8d; font-weight: 400; margin-top: 1px; }
+
+    .settlement-section { margin-top: ${sectionMargin}; }
+    .bottom-section { margin-top: ${bottomMargin}; }
   </style>
 `;
+};
 
 export const getPageWrapperStart = () => `
 <div class="invoice-wrapper">
@@ -117,7 +197,7 @@ export const getPageWrapperStart = () => `
 `;
 
 export const getPageWrapperEnd = (company: any, pageNum: any, totalPages: any) => `
-    <div style="text-align: center; margin-top: auto; padding-bottom: 42px; font-family: 'Cinzel', serif; font-size: 10px; font-weight: 700; color: var(--gold); letter-spacing: 1px;">
+    <div style="text-align: center; margin-top: auto; padding-top: 8px; padding-bottom: 42px; font-family: 'Cinzel', serif; font-size: 10px; font-weight: 700; color: var(--gold); letter-spacing: 1px;">
       PURITY YOU TRUST, ELEGANCE YOU DESERVE.
     </div>
 
@@ -217,7 +297,7 @@ export const renderCardsRow = (customer: any, qrDataUrl: string) => `
 `;
 
 export const renderTableHeader = () => `
-  <div style="width: 100%;">
+  <div class="table-container">
     <table class="items-table">
       <thead>
         <tr>
@@ -239,8 +319,8 @@ export const renderTableRow = (item: any, index: number, isGold: boolean) => {
         <tr>
           <td>${index + 1}</td>
           <td style="text-align: left; font-weight: 600;">
-            <div style="font-size: 11px; color: #16213E; font-weight: 700;">${item.item_name}</div>
-            <div style="font-size: 9px; color: #7f8c8d; font-weight: 400;">Gross: ${item.gross_weight || 0}g</div>
+            <div class="item-title-text">${item.item_name}</div>
+            <div class="item-sub-text">Gross: ${item.gross_weight || 0}g</div>
           </td>
           <td>${item.metal_type || '-'}</td>
           <td>${(item.tanch_percentage || item.touch_purity) ? (item.tanch_percentage || item.touch_purity) + '%' : '-'}${item.wastage ? ` + ${item.wastage}%` : ''}</td>
@@ -280,12 +360,12 @@ export const renderSettlements = (metals: string[], goldSettlement: any, silverS
 
     return `
       <div style="flex: 1; border: ${border}; border-radius: 6px; background: ${bg}; display: flex; flex-direction: column; ${fullWidth ? 'width: 100%;' : ''}">
-        <div style="padding: 3px 6px; flex: 1;">
+        <div style="padding: 4px 6px; flex: 1;">
           <div style="font-family: 'Cinzel', serif; font-size: 9.5px; font-weight: 800; color: ${color}; display: flex; align-items: center; gap: 4px; margin-bottom: 2px; border-bottom: ${border}; padding-bottom: 2px;">
             <svg viewBox="0 0 24 24" style="width: 10px; height: 10px; fill: ${titleColor};"><path d="M12 2L4 6v2h16V6l-8-4zm0 2.5l5.5 2.75h-11L12 4.5zM4 10v9h16v-9H4zm14 7H6v-5h12v5z"/></svg>
             ${metal} SETTLEMENT ${isGold ? '(22K)' : '(92.5)'}
           </div>
-          <table style="width: 100%; font-size: 9px; font-weight: 600; color: #16213E; line-height: 1.3;">
+          <table style="width: 100%; font-size: 9px; font-weight: 600; color: #16213E; line-height: 1.35;">
             <tr><td>Total ${isGold ? 'Gold' : 'Silver'} Required</td><td style="text-align: right; width: 5%;">:</td><td style="text-align: right;">${fineBilled.toFixed(3)} gm</td></tr>
             <tr><td>${isGold ? 'Gold' : 'Silver'} Received</td><td style="text-align: right;">:</td><td style="text-align: right;">${fineReceived.toFixed(3)} gm</td></tr>
             <tr><td colspan="3"><hr style="border: none; border-top: 1px dashed rgba(0,0,0,0.1); margin: 2px 0;"></td></tr>
@@ -309,7 +389,7 @@ export const renderSettlements = (metals: string[], goldSettlement: any, silverS
   const fullWidth = (showGold && !showSilver) || (!showGold && showSilver);
 
   return `
-    <div style="margin-top: 4px;">
+    <div class="settlement-section">
       <div style="text-align: center; color: var(--gold); font-family: 'Cinzel', serif; font-weight: 700; font-size: 9.5px; margin-bottom: 2px;">
           <svg viewBox="0 0 24 24" style="width: 10px; height: 10px; fill: currentColor; vertical-align: middle; margin-right: 4px;"><path d="M12 2L4 6v2h16V6l-8-4zm0 2.5l5.5 2.75h-11L12 4.5zM4 10v9h16v-9H4zm14 7H6v-5h12v5z"/></svg>
           METAL SETTLEMENT
@@ -413,7 +493,7 @@ export const renderBottomRow = (metals: string[], invoice: any, totals: any, set
   `;
 
   return `
-    <div style="display: flex; gap: 8px; margin-top: 6px;">
+    <div class="bottom-section" style="display: flex; gap: 8px;">
 
       <!-- AMOUNT SUMMARY -->
       <div style="flex: 1; border: 1px solid #E5E7EB; border-radius: 6px; background: #FAFAFA; display: flex; flex-direction: column;">

@@ -39,9 +39,12 @@ export const generateInvoiceHtml = (data: any): string => {
   if (invoice.gold_balance_metal_weight > 0) goldBilled.balanceLedger = invoice.gold_balance_metal_weight;
   if (invoice.silver_balance_metal_weight > 0) silverBilled.balanceLedger = invoice.silver_balance_metal_weight;
 
+  const explicitOldItems = oldItems.filter((i: any) => i.item_name && !i.item_name.includes('Metal Given Now'));
+  const totalItemCount = Math.max(1, items.length + explicitOldItems.length);
+
   let finalHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">`;
   finalHtml += `<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">`;
-  finalHtml += premiumComponents.getCommonStyles();
+  finalHtml += premiumComponents.getCommonStyles(totalItemCount);
   finalHtml += `</head><body><div class="pdf-container">`;
   finalHtml += premiumComponents.getPageWrapperStart();
 
@@ -58,9 +61,8 @@ export const generateInvoiceHtml = (data: any): string => {
     });
   }
 
-  const explicitOldItems = oldItems.filter((i: any) => i.item_name && !i.item_name.includes('Metal Given Now'));
   if (explicitOldItems.length > 0) {
-    finalHtml += `<tr><td colspan="9" style="background: #FFFBEB; text-align: center; font-weight: 800; color: #92400E; padding: 6px; font-size: 10px; letter-spacing: 1px;">OLD ITEMS DEPOSITED</td></tr>`;
+    finalHtml += `<tr><td colspan="9" style="background: #FFFBEB; text-align: center; font-weight: 800; color: #92400E; padding: 4px; font-size: 9px; letter-spacing: 1px;">OLD ITEMS DEPOSITED</td></tr>`;
     explicitOldItems.forEach((item: any, index: number) => {
       const isGold = item.item_type === 'Gold' || normalizeMetal(item.metal_type) === 'Gold';
       finalHtml += premiumComponents.renderTableRow(item, index + items.length, isGold);
