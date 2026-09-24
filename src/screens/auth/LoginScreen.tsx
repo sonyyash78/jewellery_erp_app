@@ -10,8 +10,7 @@ import { useAuthStore } from '../../store/authStore';
 WebBrowser.maybeCompleteAuthSession();
 
 export default function LoginScreen({ navigation }: any) {
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [fullName, setFullName] = useState('');
+  const [isRegister, setIsRegister] = useState(false);
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -72,117 +71,84 @@ export default function LoginScreen({ navigation }: any) {
   };
 
   const handleGoogleSignInPress = async () => {
-    Alert.alert(
-      'Google Account Sign-In / Sign-Up',
-      'Select how you would like to proceed with Google:',
-      [
-        {
-          text: 'Google Web Browser OAuth',
-          onPress: async () => {
-            try {
-              setGoogleLoading(true);
-              if (promptAsync) {
-                await promptAsync();
-              }
-            } catch (e: any) {
-              Alert.alert('Google Sign-In Error', e.message || 'Could not launch Google Sign-In');
-            } finally {
-              setGoogleLoading(false);
-            }
-          }
-        },
-        {
-          text: 'Quick Sign-In (yashsony23478@gmail.com)',
-          onPress: () => {
-            setEmail('yashsony23478@gmail.com');
-            setUsername('yashsony23478');
-            setPassword('admin123');
-            setIsSignUp(false);
-          }
-        },
-        { text: 'Cancel', style: 'cancel' }
-      ]
-    );
+    try {
+      setGoogleLoading(true);
+      if (promptAsync) {
+        await promptAsync();
+      } else {
+        Alert.alert('Google Sign-In', 'Google Sign-In is initializing. Please try again.');
+      }
+    } catch (e: any) {
+      Alert.alert('Google Sign-In Error', e.message || 'Could not launch Google Sign-In');
+    } finally {
+      setGoogleLoading(false);
+    }
   };
 
-  const handleEmailAuth = async () => {
-    if (isSignUp) {
-      // Sign Up Flow
-      if (!username.trim() || !password.trim()) {
-        Alert.alert('Validation Error', 'Please enter both a username and password');
-        return;
-      }
+  const handleAuth = async () => {
+    const userVal = username.trim();
+    const passVal = password.trim();
+    const emailVal = email.trim();
 
-      setLoading(true);
-      try {
+    if (!userVal) {
+      Alert.alert('Validation Error', 'Please enter your username');
+      return;
+    }
+    if (isRegister && !emailVal) {
+      Alert.alert('Validation Error', 'Please enter your email address');
+      return;
+    }
+    if (!passVal) {
+      Alert.alert('Validation Error', 'Please enter your password');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      if (isRegister) {
+        // 1. Register new user
         await axiosClient.post('/auth/register', {
-          username: username.trim(),
-          email: email.trim() || undefined,
-          full_name: fullName.trim() || username.trim(),
-          password: password.trim()
+          username: userVal,
+          email: emailVal,
+          password: passVal
         }, {
           headers: { 'Bypass-Tunnel-Reminder': 'true' }
         });
-
-        // Auto login after successful registration
-        const encodedData = `username=${encodeURIComponent(username.trim())}&password=${encodeURIComponent(password.trim())}`;
-        const response = await axiosClient.post('/auth/login', encodedData, {
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Bypass-Tunnel-Reminder': 'true'
-          },
-        });
-
-        const token = response.data.access_token;
-        const userResponse = await axiosClient.get('/auth/me', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-
-        const { signIn } = useAuthStore.getState();
-        await signIn(token, userResponse.data);
-        Alert.alert('Success', 'Account registered and signed in successfully!');
-
-      } catch (error: any) {
-        Alert.alert('Sign Up Failed', error.response?.data?.detail || 'Could not create account');
-      } finally {
-        setLoading(false);
       }
 
-    } else {
-      // Sign In Flow
-      const loginId = username.trim() || email.trim();
-      if (!loginId || !password.trim()) {
-        Alert.alert('Validation Error', 'Please enter your username/email and password');
-        return;
+      // 2. Login with credentials (sends JSON payload to match FastAPI endpoint)
+      const response = await axiosClient.post('/auth/login', {
+        username: userVal,
+        password: passVal
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Bypass-Tunnel-Reminder': 'true'
+        },
+      });
+
+      const token = response.data.access_token;
+      
+      // 3. Fetch user profile
+      const userResponse = await axiosClient.get('/auth/me', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      // 4. Update global auth state
+      const { signIn } = useAuthStore.getState();
+      await signIn(token, userResponse.data);
+
+    } catch (error: any) {
+      const errorDetail = error.response?.data?.detail;
+      if (errorDetail) {
+        Alert.alert(isRegister ? 'Registration Failed' : 'Login Failed', errorDetail);
+      } else if (error.response?.status === 401 || error.response?.status === 400) {
+        Alert.alert('Login Failed', isRegister ? 'Could not create account.' : 'Incorrect username, email, or password.');
+      } else {
+        Alert.alert('Connection Error', 'Could not connect to the backend server. Please verify your internet connection.');
       }
-
-      setLoading(true);
-      try {
-        const encodedData = `username=${encodeURIComponent(loginId)}&password=${encodeURIComponent(password.trim())}`;
-        const response = await axiosClient.post('/auth/login', encodedData, {
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Bypass-Tunnel-Reminder': 'true'
-          },
-        });
-
-        const token = response.data.access_token;
-        const userResponse = await axiosClient.get('/auth/me', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-
-        const { signIn } = useAuthStore.getState();
-        await signIn(token, userResponse.data);
-
-      } catch (error: any) {
-        if (error.response?.status === 401 || error.response?.status === 400) {
-          Alert.alert('Login Failed', error.response?.data?.detail || 'Incorrect username or password');
-        } else {
-          Alert.alert('Connection Error', 'Could not connect to server. Please check connection.');
-        }
-      } finally {
-        setLoading(false);
-      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -193,65 +159,29 @@ export default function LoginScreen({ navigation }: any) {
     >
       <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
         <View style={styles.card}>
+          {/* Header */}
           <Text style={styles.title}>SAIDEEP JEWELLERS</Text>
           <Text style={styles.subtitle}>
-            {isSignUp ? 'Create a New Account' : 'Sign in to your account'}
+            {isRegister ? 'Create New Account' : 'Secure Portal Access'}
           </Text>
 
-          {/* 1. Primary Top Action: Sign in / Sign up with Google */}
-          <TouchableOpacity 
-            style={[styles.googleButton, (loading || googleLoading) && styles.buttonDisabled]} 
-            onPress={handleGoogleSignInPress}
-            disabled={loading || googleLoading}
-          >
-            {googleLoading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <View style={styles.googleButtonContent}>
-                <Ionicons name="logo-google" size={22} color="#EA4335" style={{ marginRight: 10 }} />
-                <Text style={styles.googleButtonText}>
-                  {isSignUp ? 'Sign Up with Google' : 'Sign In with Google'}
-                </Text>
-              </View>
-            )}
-          </TouchableOpacity>
-
-          {/* Divider */}
-          <View style={styles.dividerRow}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>OR WITH EMAIL</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          {/* 2. Email & Password Input Fields */}
-          {isSignUp && (
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Full Name</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Yash Soni"
-                placeholderTextColor="#666"
-                value={fullName}
-                onChangeText={setFullName}
-                editable={!loading && !googleLoading}
-              />
-            </View>
-          )}
-
+          {/* Username */}
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Username</Text>
             <TextInput
               style={styles.input}
-              placeholder="admin / your username"
+              placeholder="e.g. admin or your username"
               placeholderTextColor="#666"
               value={username}
               onChangeText={setUsername}
               autoCapitalize="none"
+              autoCorrect={false}
               editable={!loading && !googleLoading}
             />
           </View>
 
-          {isSignUp && (
+          {/* Email (only in Register mode) */}
+          {isRegister && (
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Email Address</Text>
               <TextInput
@@ -262,11 +192,13 @@ export default function LoginScreen({ navigation }: any) {
                 onChangeText={setEmail}
                 keyboardType="email-address"
                 autoCapitalize="none"
+                autoCorrect={false}
                 editable={!loading && !googleLoading}
               />
             </View>
           )}
 
+          {/* Password */}
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Password</Text>
             <TextInput
@@ -280,31 +212,57 @@ export default function LoginScreen({ navigation }: any) {
             />
           </View>
 
+          {/* Primary Action Button */}
           <TouchableOpacity 
             style={[styles.button, (loading || googleLoading) && styles.buttonDisabled]} 
-            onPress={handleEmailAuth}
+            onPress={handleAuth}
             disabled={loading || googleLoading}
           >
             {loading ? (
               <ActivityIndicator color="#000" />
             ) : (
               <Text style={styles.buttonText}>
-                {isSignUp ? 'Create Account' : 'Sign In'}
+                {isRegister ? 'Sign Up' : 'Sign In'}
               </Text>
             )}
           </TouchableOpacity>
 
-          {/* 3. Switch between Sign In and Sign Up */}
+          {/* Toggle between Sign In and Sign Up */}
           <View style={styles.toggleRow}>
-            <Text style={styles.toggleText}>
-              {isSignUp ? 'Already have an account? ' : "Don't have an account? "}
-            </Text>
-            <TouchableOpacity onPress={() => setIsSignUp(!isSignUp)}>
+            <TouchableOpacity 
+              onPress={() => setIsRegister(!isRegister)}
+              disabled={loading || googleLoading}
+            >
               <Text style={styles.toggleLink}>
-                {isSignUp ? 'Sign In' : 'Sign Up with Email'}
+                {isRegister ? 'Already have an account? Sign In' : 'Need an account? Sign Up'}
               </Text>
             </TouchableOpacity>
           </View>
+
+          {/* Divider */}
+          <View style={styles.dividerRow}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>OR</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          {/* Google Sign-In */}
+          <TouchableOpacity 
+            style={[styles.googleButton, (loading || googleLoading) && styles.buttonDisabled]} 
+            onPress={handleGoogleSignInPress}
+            disabled={loading || googleLoading}
+          >
+            {googleLoading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <View style={styles.googleButtonContent}>
+                <Ionicons name="logo-google" size={20} color="#EA4335" style={{ marginRight: 10 }} />
+                <Text style={styles.googleButtonText}>
+                  {isRegister ? 'Sign up with Google' : 'Sign in with Google'}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -346,56 +304,15 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#888',
     textAlign: 'center',
-    marginBottom: 22,
-  },
-  googleButton: {
-    backgroundColor: '#1f1f1f',
-    borderWidth: 1,
-    borderColor: '#444',
-    padding: 15,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  googleButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  googleButtonText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 20,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#2a2a2a',
-  },
-  dividerText: {
-    marginHorizontal: 10,
-    color: '#666',
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1,
+    marginBottom: 24,
   },
   inputContainer: {
-    marginBottom: 14,
+    marginBottom: 16,
   },
   label: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: 'bold',
-    color: '#888',
+    color: '#aaa',
     textTransform: 'uppercase',
     marginBottom: 6,
   },
@@ -432,16 +349,47 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 20,
-  },
-  toggleText: {
-    color: '#888',
-    fontSize: 13,
+    marginTop: 16,
   },
   toggleLink: {
     color: '#d4af37',
     fontSize: 13,
-    fontWeight: 'bold',
+    fontWeight: '600',
     textDecorationLine: 'underline',
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 20,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#2a2a2a',
+  },
+  dividerText: {
+    marginHorizontal: 12,
+    color: '#666',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  googleButton: {
+    backgroundColor: '#1f1f1f',
+    borderWidth: 1,
+    borderColor: '#444',
+    padding: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  googleButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  googleButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   }
 });
