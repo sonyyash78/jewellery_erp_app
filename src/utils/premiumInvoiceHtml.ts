@@ -262,8 +262,19 @@ export const renderHeader = (company: any, invoice: any, logoDataUrl?: string) =
 export const renderCardsRow = (customer: any, qrDataUrl: string, settings?: any, invoice?: any) => {
   const upiId = settings?.upi_id || 'saideepjewellers@upi';
   const upiName = settings?.upi_name || settings?.business_name || 'SAIDEEP JEWELLERS';
-  const amount = Number(invoice?.grand_total || invoice?.balance_due || 0);
-  const upiDeepLink = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(upiName)}${amount > 0 ? `&am=${amount.toFixed(2)}` : ''}&cu=INR&tn=${encodeURIComponent(invoice?.invoice_number || 'Tax Invoice')}`;
+  const isCustomAmount = settings?.qr_amount_type === 'custom';
+
+  // Exact payable amount: balance due or difference or grand total
+  const payableAmount = Number(
+    invoice?.balance_due ?? invoice?.balance_amount ?? invoice?.difference_amount ?? invoice?.grand_total ?? 0
+  );
+
+  let upiDeepLink = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(upiName)}`;
+  if (!isCustomAmount && payableAmount > 0) {
+    upiDeepLink += `&am=${payableAmount.toFixed(2)}`;
+  }
+  upiDeepLink += `&cu=INR&tn=${encodeURIComponent(invoice?.invoice_number || 'Tax Invoice')}`;
+  
   const qrUrl = settings?.qr_image_url || qrDataUrl || `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(upiDeepLink)}`;
 
   return `

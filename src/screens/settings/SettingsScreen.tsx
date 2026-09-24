@@ -365,6 +365,62 @@ export default function SettingsScreen() {
             />
           </View>
         </View>
+
+        {/* Amount Type Options */}
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Invoice QR Amount Mode</Text>
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+            <TouchableOpacity 
+              style={{
+                flex: 1,
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: (!settings['qr_amount_type'] || settings['qr_amount_type'] === 'exact') ? 'rgba(212, 175, 55, 0.15)' : '#1a1a1a',
+                borderWidth: 1,
+                borderColor: (!settings['qr_amount_type'] || settings['qr_amount_type'] === 'exact') ? '#d4af37' : '#333',
+                padding: 10,
+                borderRadius: 8,
+                gap: 8
+              }}
+              onPress={() => handleChange('qr_amount_type', 'exact')}
+            >
+              <Ionicons 
+                name={(!settings['qr_amount_type'] || settings['qr_amount_type'] === 'exact') ? 'radio-button-on' : 'radio-button-off'} 
+                size={18} 
+                color={(!settings['qr_amount_type'] || settings['qr_amount_type'] === 'exact') ? '#d4af37' : '#666'} 
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: '#fff', fontSize: 13, fontWeight: 'bold' }}>Auto-Fill Bill Amount</Text>
+                <Text style={{ color: '#888', fontSize: 10 }}>Exact bill amount pre-filled</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={{
+                flex: 1,
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: settings['qr_amount_type'] === 'custom' ? 'rgba(212, 175, 55, 0.15)' : '#1a1a1a',
+                borderWidth: 1,
+                borderColor: settings['qr_amount_type'] === 'custom' ? '#d4af37' : '#333',
+                padding: 10,
+                borderRadius: 8,
+                gap: 8
+              }}
+              onPress={() => handleChange('qr_amount_type', 'custom')}
+            >
+              <Ionicons 
+                name={settings['qr_amount_type'] === 'custom' ? 'radio-button-on' : 'radio-button-off'} 
+                size={18} 
+                color={settings['qr_amount_type'] === 'custom' ? '#d4af37' : '#666'} 
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: '#fff', fontSize: 13, fontWeight: 'bold' }}>Custom Amount</Text>
+                <Text style={{ color: '#888', fontSize: 10 }}>Customer enters amount</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
 
       {/* 3. Invoice Print Settings */}
