@@ -414,9 +414,12 @@ export const renderBottomRow = (
   silverBilled?: any,
   customer?: any
 ) => {
+  const isExchange = (invoice.invoice_number || '').startsWith('EXC-') || invoice.bill_type === 'Exchange' || totals.type === 'exchange';
   const taxableAmount  = invoice.subtotal || totals.taxableAmount || 0;
   const gstAmount      = invoice.tax_amount || totals.totalGst || 0;
-  const grandTotal     = invoice.grand_total || (taxableAmount + gstAmount);
+  const grossTotal     = taxableAmount + gstAmount;
+  const grandTotal     = invoice.grand_total || grossTotal;
+  const roundOff       = Math.abs(grandTotal - grossTotal) > 0.01 ? (grandTotal - grossTotal) : 0;
   const cashPaid       = invoice.amount_paid || invoice.cash_received || 0;
   const metalValue     = invoice.metal_received_value || totals.metal_received_value || 0;
   const balanceDue     = invoice.balance_due ?? invoice.balance_amount ?? 0;
@@ -552,11 +555,11 @@ export const renderBottomRow = (
             <tr><td colspan="3"><hr style="border: none; border-top: 1px dashed #E5E7EB; margin: 2px 0;"></td></tr>
             <tr><td>Taxable Amount</td><td style="text-align:right;">:</td><td style="text-align:right;">&#8377; ${formatCurrency(taxableAmount)}</td></tr>
             <tr><td>GST</td><td style="text-align:right;">:</td><td style="text-align:right;">&#8377; ${formatCurrency(gstAmount)}</td></tr>
-            <tr><td>Round Off</td><td style="text-align:right;">:</td><td style="text-align:right;">&#8377; ${formatCurrency(grandTotal - (taxableAmount + gstAmount))}</td></tr>
+            ${roundOff !== 0 ? `<tr><td>Round Off</td><td style="text-align:right;">:</td><td style="text-align:right;">&#8377; ${formatCurrency(roundOff)}</td></tr>` : ''}
             ${metalValue > 0 ? `
               <tr><td colspan="3"><hr style="border: none; border-top: 1px dashed #E5E7EB; margin: 2px 0;"></td></tr>
               <tr>
-                <td>Ledger / Metal Settled</td>
+                <td>${isExchange ? 'Less: Old Items Deposited' : 'Ledger / Metal Settled'}</td>
                 <td style="text-align:right;">:</td>
                 <td style="text-align:right; color: var(--red); font-weight: 700;">- &#8377; ${formatCurrency(metalValue)}</td>
               </tr>
@@ -572,8 +575,8 @@ export const renderBottomRow = (
           </table>
         </div>
         <div style="background: var(--gold); border-radius: 0 0 6px 6px; padding: 3px 6px; display: flex; justify-content: space-between; align-items: center; color: #16213E;">
-          <span style="font-family: 'Cinzel', serif; font-size: 8.5px; font-weight: 700;">GRAND TOTAL:</span>
-          <span style="font-size: 11.5px; font-weight: 800;">&#8377; ${formatCurrency(grandTotal)}</span>
+          <span style="font-family: 'Cinzel', serif; font-size: 8.5px; font-weight: 700;">${isExchange ? 'NET DIFFERENCE:' : 'GRAND TOTAL:'}</span>
+          <span style="font-size: 11.5px; font-weight: 800;">&#8377; ${formatCurrency(isExchange ? Math.max(0, grossTotal - metalValue) : grandTotal)}</span>
         </div>
       </div>
 

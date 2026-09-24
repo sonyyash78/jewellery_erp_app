@@ -11,7 +11,7 @@ export const ENV = {
   // Internet Testing via Cloudflare Tunnel (RECOMMENDED):
   // 1. Run `cloudflared tunnel --url http://localhost:8000` on your PC
   // 2. Paste the generated HTTPS URL below and add `/api/v1`
-  API_BASE_URL: 'https://clouds-off-dental-somebody.trycloudflare.com/api/v1',
+  API_BASE_URL: 'https://memorabilia-dig-previous-university.trycloudflare.com/api/v1',
   
   // Production
   // API_BASE_URL: 'https://api.yourdomain.com/api/v1',

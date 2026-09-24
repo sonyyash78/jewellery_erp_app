@@ -153,44 +153,61 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
   // Grand Total (New Items + GST) - Old Items Total - Additional Metal Given
   const monetaryBeforeCash = grand_total - total_old_value - totalAdditionalMetalValue;
   const parsedCash = parseFloat(cashReceived) || 0;
-  const cashBalanceDue = monetaryBeforeCash - parsedCash;
+  const cashBalanceDue = Math.max(0, monetaryBeforeCash - parsedCash);
 
   // Settlement Options (How to settle cash due)
-  const maxGoldMetalGrams = goldRequired > 0 ? Math.max(0, goldRequired - fineGoldGiven) : 0;
-  const maxSilverMetalGrams = silverRequired > 0 ? Math.max(0, silverRequired - fineSilverGiven) : 0;
+  // Option 2: Convert entire remaining cash balance to Gold Ledger
+  const cashToGoldGrams = goldRate > 0 ? (cashBalanceDue / (goldRate / 10)) : 0;
+  const cashDueAfterGold = 0;
 
-  const cashToGoldGrams = Math.min(
-    maxGoldMetalGrams > 0 ? maxGoldMetalGrams : 9999,
-    goldRate > 0 ? (Math.max(0, cashBalanceDue) / (goldRate / 10)) : 0
-  );
-  const cashDueAfterGold = cashBalanceDue - (cashToGoldGrams * (goldRate / 10));
+  // Option 3: Convert entire remaining cash balance to Silver Ledger
+  const cashToSilverGrams = silverRate > 0 ? (cashBalanceDue / (silverRate / 1000)) : 0;
+  const cashDueAfterSilver = 0;
 
-  const cashToSilverGrams = Math.min(
-    maxSilverMetalGrams > 0 ? maxSilverMetalGrams : 9999,
-    silverRate > 0 ? (Math.max(0, cashBalanceDue) / (silverRate / 1000)) : 0
-  );
-  const cashDueAfterSilver = cashBalanceDue - (cashToSilverGrams * (silverRate / 1000));
-
-  const bothGoldGrams = maxGoldMetalGrams > 0 ? maxGoldMetalGrams : cashToGoldGrams / 2;
-  const remCashForSilver = Math.max(0, cashBalanceDue - (bothGoldGrams * (goldRate / 10)));
-  const bothSilverGrams = silverRate > 0 ? remCashForSilver / (silverRate / 1000) : 0;
-  const cashDueAfterBoth = cashBalanceDue - (bothGoldGrams * (goldRate / 10)) - (bothSilverGrams * (silverRate / 1000));
+  // Option 4: Convert both metals (satisfy gold required first if any, remainder to silver)
+  let bothGoldGrams = 0;
+  let bothSilverGrams = 0;
+  if (goldRequired > 0 && goldRate > 0) {
+    const goldReqVal = goldRequired * (goldRate / 10);
+    if (cashBalanceDue <= goldReqVal) {
+      bothGoldGrams = cashBalanceDue / (goldRate / 10);
+      bothSilverGrams = 0;
+    } else {
+      bothGoldGrams = goldRequired;
+      const remCash = cashBalanceDue - goldReqVal;
+      bothSilverGrams = silverRate > 0 ? (remCash / (silverRate / 1000)) : 0;
+    }
+  } else {
+    // 50/50 split if no specific gold requirement
+    const halfCash = cashBalanceDue / 2;
+    bothGoldGrams = goldRate > 0 ? (halfCash / (goldRate / 10)) : 0;
+    bothSilverGrams = silverRate > 0 ? (halfCash / (silverRate / 1000)) : 0;
+  }
+  const cashDueAfterBoth = 0;
 
   let finalGoldDebt = 0;
   let finalSilverDebt = 0;
-  if (cashBalanceAction === 'metal_gold') finalGoldDebt = cashToGoldGrams;
-  if (cashBalanceAction === 'metal_silver') finalSilverDebt = cashToSilverGrams;
-  if (cashBalanceAction === 'metal_both') {
+  let finalBalanceAmount = cashBalanceDue;
+
+  if (cashBalanceAction === 'metal_gold') {
+    finalGoldDebt = cashToGoldGrams;
+    finalSilverDebt = 0;
+    finalBalanceAmount = cashDueAfterGold;
+  } else if (cashBalanceAction === 'metal_silver') {
+    finalGoldDebt = 0;
+    finalSilverDebt = cashToSilverGrams;
+    finalBalanceAmount = cashDueAfterSilver;
+  } else if (cashBalanceAction === 'metal_both') {
     finalGoldDebt = bothGoldGrams;
     finalSilverDebt = bothSilverGrams;
+    finalBalanceAmount = cashDueAfterBoth;
+  } else {
+    finalGoldDebt = 0;
+    finalSilverDebt = 0;
+    finalBalanceAmount = cashBalanceDue;
   }
 
-  let finalBalanceAmount = cashBalanceDue;
-  if (cashBalanceAction === 'metal_gold') finalBalanceAmount = cashDueAfterGold;
-  if (cashBalanceAction === 'metal_silver') finalBalanceAmount = cashDueAfterSilver;
-  if (cashBalanceAction === 'metal_both') finalBalanceAmount = cashDueAfterBoth;
-
-  const isFullySettled = Math.abs(cashBalanceDue) < 0.01;
+  const isFullySettled = finalBalanceAmount < 0.01 && finalGoldDebt === 0 && finalSilverDebt === 0;
 
   const fmt = (n?: any) => {
     const num = Number(n);
@@ -403,6 +420,21 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
         {/* METAL RECEIVED FROM CUSTOMER */}
         <View style={styles.card}>
           <Text style={styles.sectionHeaderTitle}>METAL RECEIVED FROM CUSTOMER</Text>
+
+          {oldItemsRaw.length > 0 && (
+            <View style={{ backgroundColor: '#18181b', padding: 10, borderRadius: 6, marginBottom: 12, borderWidth: 1, borderColor: '#333' }}>
+              <Text style={{ color: '#d4af37', fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
+                ✓ OLD ITEMS DEPOSITED IN CART ({oldItemsRaw.length} Items):
+              </Text>
+              <Text style={{ color: '#aaa', fontSize: 10 }}>
+                Gold Fine: <Text style={{ color: '#eab308', fontWeight: '700' }}>{totalOldGoldFine.toFixed(3)}g</Text> | Silver Fine: <Text style={{ color: '#e2e8f0', fontWeight: '700' }}>{totalOldSilverFine.toFixed(3)}g</Text> | Trade-in Value: <Text style={{ color: '#4ade80', fontWeight: '700' }}>₹ {fmt(total_old_value)}</Text>
+              </Text>
+            </View>
+          )}
+
+          <Text style={{ color: '#888', fontSize: 10, marginBottom: 8, fontStyle: 'italic' }}>
+            Enter below only if customer is handing over additional metal right now at checkout:
+          </Text>
 
           {/* Gold Row */}
           <View style={styles.metalItemBlock}>

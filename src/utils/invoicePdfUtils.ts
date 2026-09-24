@@ -20,8 +20,9 @@ export const generateInvoiceHtml = (data: any): string => {
     return /\b(old|deposit|metal given)\b/i.test(name) || cat === 'deposit' || cat === 'old';
   };
 
-  const items = allItems.filter((i: any) => !isOldOrDeposit(i));
-  const oldItems = [...(data.old_items || []), ...allItems.filter((i: any) => isOldOrDeposit(i))];
+  const hasExplicitOldItems = Array.isArray(data.old_items) && data.old_items.length > 0;
+  const items = hasExplicitOldItems ? allItems : allItems.filter((i: any) => !isOldOrDeposit(i));
+  const oldItems = hasExplicitOldItems ? data.old_items : allItems.filter((i: any) => isOldOrDeposit(i));
 
   const detectedMetals = new Set<string>();
   const goldBilled = { required: 0, fineBilled: 0, fineReceived: 0, valueSettled: 0, balanceLedger: 0, price: 0 };
