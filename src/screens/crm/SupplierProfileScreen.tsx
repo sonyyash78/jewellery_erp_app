@@ -7,6 +7,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import { generateLedgerVoucherHtml, generateLedgerStatementHtml } from '../../utils/ledgerPdfUtils';
+import { generateInvoiceHtml } from '../../utils/invoicePdfUtils';
 
 const formatAmount = (num: number) => {
   if (!num) return '0';
@@ -57,11 +58,42 @@ export default function SupplierProfileScreen({ route, navigation }: any) {
   const outstanding = data?.outstanding_balance || 0;
   const isDr = outstanding > 0;
 
+  const getVoucherHtml = async (bill: any) => {
+    let html = '';
+    try {
+      if (bill.bill_no && (bill.bill_no.startsWith('INV-') || bill.bill_no.startsWith('PUR-') || bill.bill_no.startsWith('EXC-') || bill.bill_no.startsWith('PAY-'))) {
+        const res = await axiosClient.get(`/invoices/pdf-by-voucher/${bill.bill_no}`);
+        if (res.data) {
+          html = generateInvoiceHtml(res.data);
+        }
+      }
+    } catch (e) {
+      // fallback
+    }
+    if (!html) {
+      const party = item || { name: supplierName, first_name: supplierName };
+      html = generateLedgerVoucherHtml('Supplier', party, bill);
+    }
+    return html;
+  };
+
+  const handlePreviewVoucher = async (bill: any) => {
+    try {
+      setPdfGenerating(true);
+      const html = await getVoucherHtml(bill);
+      await Print.printAsync({ html });
+    } catch (error: any) {
+      console.error('Error previewing voucher:', error);
+      Alert.alert('Error', 'Failed to open preview');
+    } finally {
+      setPdfGenerating(false);
+    }
+  };
+
   const handleDownloadVoucherPdf = async (bill: any) => {
     try {
       setPdfGenerating(true);
-      const party = item || { name: supplierName, first_name: supplierName };
-      const html = generateLedgerVoucherHtml('Supplier', party, bill);
+      const html = await getVoucherHtml(bill);
       
       const { base64 } = await Print.printToFileAsync({ html, base64: true });
       const sanitizedBillNo = (bill?.bill_no || `VOUCHER_${bill?.id || Date.now()}`).replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -78,7 +110,7 @@ export default function SupplierProfileScreen({ route, navigation }: any) {
         await Sharing.shareAsync(newUri, {
           UTI: '.pdf',
           mimeType: 'application/pdf',
-          dialogTitle: `Download Voucher ${bill?.bill_no || ''}`,
+          dialogTitle: `Share Voucher ${bill?.bill_no || ''}`,
         });
       } else {
         Alert.alert('PDF Saved', `Voucher PDF saved to: ${newUri}`);
@@ -86,6 +118,20 @@ export default function SupplierProfileScreen({ route, navigation }: any) {
     } catch (error: any) {
       console.error('Error generating voucher PDF:', error);
       Alert.alert('Error', 'Failed to generate voucher PDF. Please try again.');
+    } finally {
+      setPdfGenerating(false);
+    }
+  };
+
+  const handlePreviewStatement = async () => {
+    try {
+      setPdfGenerating(true);
+      const party = item || { name: supplierName, first_name: supplierName };
+      const html = generateLedgerStatementHtml('Supplier', party, data);
+      await Print.printAsync({ html });
+    } catch (error: any) {
+      console.error('Error previewing statement:', error);
+      Alert.alert('Error', 'Failed to open statement preview');
     } finally {
       setPdfGenerating(false);
     }
@@ -126,7 +172,7 @@ export default function SupplierProfileScreen({ route, navigation }: any) {
   };
   
   const renderBill = ({ item: bill }: { item: any }) => {
-    let typeColor = '#3b82f6'; // INVOICE
+    let typeColor = '#3b82f6';
     if (bill.type === 'EXCHANGE') typeColor = '#a855f7';
     else if (bill.type === 'PURCHASE') typeColor = '#f59e0b';
     else if (bill.type === 'SETTLEMENT' || bill.type === 'Payment' || bill.type === 'Receipt') typeColor = '#10b981';
@@ -142,17 +188,27 @@ export default function SupplierProfileScreen({ route, navigation }: any) {
         </View>
         <Text style={styles.refNo}>{bill.bill_no}</Text>
         
-        {/* Row 2: Details */}
+        {/* Row 2: Details & Actions (Preview + PDF) */}
         <View style={styles.detailsRow}>
           <Text style={styles.billSummary} numberOfLines={2}>{bill.summary}</Text>
-          <TouchableOpacity 
-            style={styles.pdfBtn} 
-            onPress={() => handleDownloadVoucherPdf(bill)}
-            disabled={pdfGenerating}
-          >
-            <Ionicons name="download-outline" size={14} color="#d4af37" />
-            <Text style={styles.pdfBtnText}>PDF</Text>
-          </TouchableOpacity>
+          <View style={styles.billActions}>
+            <TouchableOpacity 
+              style={styles.previewBtn} 
+              onPress={() => handlePreviewVoucher(bill)}
+              disabled={pdfGenerating}
+            >
+              <Ionicons name="eye-outline" size={13} color="#fff" />
+              <Text style={styles.previewBtnText}>Preview</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.pdfBtn} 
+              onPress={() => handleDownloadVoucherPdf(bill)}
+              disabled={pdfGenerating}
+            >
+              <Ionicons name="download-outline" size={13} color="#d4af37" />
+              <Text style={styles.pdfBtnText}>PDF</Text>
+            </TouchableOpacity>
+          </View>
         </View>
         
         {/* Row 3: Metals */}
@@ -249,26 +305,27 @@ export default function SupplierProfileScreen({ route, navigation }: any) {
         </View>
       </View>
 
-      {/* Ledger Header & Actions */}
+      {/* Ledger Header Bar - Fitted with no text cut off */}
       <View style={styles.ledgerHeader}>
         <View style={styles.ledgerTitleRow}>
-          <Ionicons name="document-text" size={20} color="#d4af37" />
-          <Text style={styles.sectionTitle}>SUPPLIER LEDGER</Text>
+          <Ionicons name="document-text" size={16} color="#d4af37" />
+          <Text style={styles.sectionTitle}>LEDGER</Text>
         </View>
         <View style={styles.actionBtns}>
           <TouchableOpacity 
             style={styles.statementBtn} 
-            onPress={handleDownloadStatementPdf}
+            onPress={handlePreviewStatement}
             disabled={pdfGenerating}
           >
-            <Ionicons name="document-attach-outline" size={14} color="#fff" />
-            <Text style={styles.statementBtnText}>Statement PDF</Text>
+            <Ionicons name="eye-outline" size={13} color="#d4af37" />
+            <Text style={styles.statementBtnText}>Statement</Text>
           </TouchableOpacity>
           <TouchableOpacity 
             style={styles.settleBtn} 
             onPress={() => navigation.navigate('CreateSettlement', { id: supplierId, type: 'Supplier' })}
           >
-            <Text style={styles.settleBtnText}>+ Settlement</Text>
+            <Ionicons name="add" size={14} color="#000" />
+            <Text style={styles.settleBtnText}>Settle</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -276,7 +333,7 @@ export default function SupplierProfileScreen({ route, navigation }: any) {
       {pdfGenerating && (
         <View style={styles.generatingBanner}>
           <ActivityIndicator size="small" color="#d4af37" />
-          <Text style={styles.generatingText}>Generating & opening PDF...</Text>
+          <Text style={styles.generatingText}>Preparing preview/PDF...</Text>
         </View>
       )}
 
@@ -304,7 +361,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#333',
     padding: 16,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   customerName: {
     color: '#fff',
@@ -315,7 +372,7 @@ const styles = StyleSheet.create({
   infoGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginBottom: 16,
+    marginBottom: 14,
     gap: 12,
   },
   infoItem: {
@@ -332,32 +389,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     borderTopWidth: 1,
     borderTopColor: '#333',
-    paddingTop: 16,
+    paddingTop: 14,
   },
   sumBox: {
     flex: 1,
     borderRightWidth: 1,
     borderRightColor: '#333',
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     alignItems: 'center',
   },
   sumLabel: {
     color: '#888',
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: 'bold',
     marginBottom: 4,
   },
   sumVal: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: 'bold',
     marginBottom: 2,
   },
   sumSub: {
     color: '#666',
-    fontSize: 9,
+    fontSize: 8.5,
   },
   sumValBig: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: 'bold',
   },
   ledgerHeader: {
@@ -365,47 +422,54 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: '#141414',
-    padding: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#333',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   ledgerTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexShrink: 1,
   },
   sectionTitle: {
     color: '#d4af37',
     fontSize: 13,
     fontWeight: 'bold',
-    marginLeft: 6,
+    marginLeft: 5,
   },
   actionBtns: {
     flexDirection: 'row',
-    gap: 8,
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 0,
   },
   statementBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#262626',
+    backgroundColor: 'rgba(212, 175, 55, 0.1)',
     borderWidth: 1,
-    borderColor: '#444',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 6,
+    borderColor: '#d4af37',
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+    borderRadius: 5,
     gap: 4,
   },
   statementBtnText: {
-    color: '#fff',
+    color: '#d4af37',
     fontWeight: 'bold',
     fontSize: 11,
   },
   settleBtn: {
-    backgroundColor: '#ffcc00',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#d4af37',
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+    borderRadius: 5,
+    gap: 2,
   },
   settleBtnText: {
     color: '#000',
@@ -416,7 +480,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#141414',
     padding: 8,
     borderRadius: 6,
     marginBottom: 10,
@@ -470,12 +534,34 @@ const styles = StyleSheet.create({
     padding: 8,
     borderRadius: 6,
     marginBottom: 12,
+    gap: 8,
   },
   billSummary: {
     color: '#ccc',
     fontSize: 12,
     flex: 1,
-    marginRight: 8,
+  },
+  billActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 0,
+  },
+  previewBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#444',
+    backgroundColor: '#262626',
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+    borderRadius: 4,
+    gap: 3,
+  },
+  previewBtnText: {
+    color: '#fff',
+    fontSize: 10.5,
+    fontWeight: 'bold',
   },
   pdfBtn: {
     flexDirection: 'row',
@@ -483,14 +569,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#d4af37',
     backgroundColor: 'rgba(212, 175, 55, 0.1)',
-    paddingHorizontal: 8,
+    paddingHorizontal: 7,
     paddingVertical: 4,
     borderRadius: 4,
+    gap: 3,
   },
   pdfBtnText: {
     color: '#d4af37',
-    fontSize: 11,
-    marginLeft: 4,
+    fontSize: 10.5,
     fontWeight: 'bold',
   },
   metalRow: {
