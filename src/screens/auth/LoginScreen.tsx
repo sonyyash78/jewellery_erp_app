@@ -9,9 +9,10 @@ import { useAuthStore } from '../../store/authStore';
 WebBrowser.maybeCompleteAuthSession();
 
 export default function LoginScreen({ navigation }: any) {
-  const [isRegister, setIsRegister] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'register' | 'forgot'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
@@ -85,6 +86,42 @@ export default function LoginScreen({ navigation }: any) {
       Alert.alert('Validation Error', 'Please enter your email address');
       return;
     }
+
+    if (authMode === 'forgot') {
+      if (!passVal) {
+        Alert.alert('Validation Error', 'Please enter your new password');
+        return;
+      }
+      if (passVal !== confirmPassword.trim()) {
+        Alert.alert('Validation Error', 'Passwords do not match');
+        return;
+      }
+      if (passVal.length < 4) {
+        Alert.alert('Validation Error', 'Password must be at least 4 characters long');
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const res = await axiosClient.post('/auth/reset-password', {
+          email: emailVal,
+          new_password: passVal
+        }, {
+          headers: { 'Bypass-Tunnel-Reminder': 'true' }
+        });
+        Alert.alert('Success', res.data?.message || 'Password reset successfully! You can now log in.');
+        setAuthMode('login');
+        setPassword('');
+        setConfirmPassword('');
+      } catch (error: any) {
+        const detail = error.response?.data?.detail || 'Password reset failed. Verify email address.';
+        Alert.alert('Reset Failed', detail);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     if (!passVal) {
       Alert.alert('Validation Error', 'Please enter your password');
       return;
@@ -92,7 +129,7 @@ export default function LoginScreen({ navigation }: any) {
 
     setLoading(true);
     try {
-      if (isRegister) {
+      if (authMode === 'register') {
         // 1. Register new user directly with Email
         await axiosClient.post('/auth/register', {
           username: emailVal,
@@ -128,9 +165,9 @@ export default function LoginScreen({ navigation }: any) {
     } catch (error: any) {
       const errorDetail = error.response?.data?.detail;
       if (errorDetail) {
-        Alert.alert(isRegister ? 'Registration Failed' : 'Login Failed', errorDetail);
+        Alert.alert(authMode === 'register' ? 'Registration Failed' : 'Login Failed', errorDetail);
       } else if (error.response?.status === 401 || error.response?.status === 400) {
-        Alert.alert('Login Failed', isRegister ? 'Could not create account.' : 'Incorrect email or password.');
+        Alert.alert('Login Failed', authMode === 'register' ? 'Could not create account.' : 'Incorrect email or password.');
       } else {
         Alert.alert('Connection Error', 'Could not connect to the backend server. Please verify connection.');
       }
@@ -149,7 +186,7 @@ export default function LoginScreen({ navigation }: any) {
           {/* Header */}
           <Text style={styles.title}>SAIDEEP JEWELLERS</Text>
           <Text style={styles.subtitle}>
-            {isRegister ? 'Create New Account' : 'Secure Portal Access'}
+            {authMode === 'register' ? 'Create New Account' : authMode === 'forgot' ? 'Reset Account Password' : 'Secure Portal Access'}
           </Text>
 
           {/* Email Address */}
@@ -170,10 +207,26 @@ export default function LoginScreen({ navigation }: any) {
 
           {/* Password */}
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Password</Text>
+            <View style={styles.labelRow}>
+              <Text style={styles.label}>
+                {authMode === 'forgot' ? 'New Password' : 'Password'}
+              </Text>
+              {authMode === 'login' && (
+                <TouchableOpacity 
+                  onPress={() => {
+                    setAuthMode('forgot');
+                    setPassword('');
+                    setConfirmPassword('');
+                  }}
+                  disabled={loading || googleLoading}
+                >
+                  <Text style={styles.forgotLink}>Forgot Password?</Text>
+                </TouchableOpacity>
+              )}
+            </View>
             <TextInput
               style={styles.input}
-              placeholder="••••••••"
+              placeholder={authMode === 'forgot' ? 'Enter new password' : '••••••••'}
               placeholderTextColor="#666"
               value={password}
               onChangeText={setPassword}
@@ -181,6 +234,22 @@ export default function LoginScreen({ navigation }: any) {
               editable={!loading && !googleLoading}
             />
           </View>
+
+          {/* Confirm Password (only in forgot password mode) */}
+          {authMode === 'forgot' && (
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Confirm New Password</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Re-enter new password"
+                placeholderTextColor="#666"
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                secureTextEntry
+                editable={!loading && !googleLoading}
+              />
+            </View>
+          )}
 
           {/* Primary Action Button */}
           <TouchableOpacity 
@@ -192,47 +261,59 @@ export default function LoginScreen({ navigation }: any) {
               <ActivityIndicator color="#000" />
             ) : (
               <Text style={styles.buttonText}>
-                {isRegister ? 'Sign Up' : 'Sign In'}
+                {authMode === 'register' ? 'Sign Up' : authMode === 'forgot' ? 'Reset & Save Password' : 'Sign In'}
               </Text>
             )}
           </TouchableOpacity>
 
-          {/* Toggle between Sign In and Sign Up */}
+          {/* Toggle between Modes */}
           <View style={styles.toggleRow}>
-            <TouchableOpacity 
-              onPress={() => setIsRegister(!isRegister)}
-              disabled={loading || googleLoading}
-            >
-              <Text style={styles.toggleLink}>
-                {isRegister ? 'Already have an account? Sign In' : 'Need an account? Sign Up'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Divider */}
-          <View style={styles.dividerRow}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>OR</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          {/* Google Sign-In */}
-          <TouchableOpacity 
-            style={[styles.googleButton, (loading || googleLoading) && styles.buttonDisabled]} 
-            onPress={handleGoogleSignInPress}
-            disabled={loading || googleLoading}
-          >
-            {googleLoading ? (
-              <ActivityIndicator color="#fff" />
+            {authMode === 'forgot' ? (
+              <TouchableOpacity 
+                onPress={() => setAuthMode('login')}
+                disabled={loading || googleLoading}
+              >
+                <Text style={styles.toggleLink}>← Back to Sign In</Text>
+              </TouchableOpacity>
             ) : (
-              <View style={styles.googleButtonContent}>
-                <Ionicons name="logo-google" size={20} color="#EA4335" style={{ marginRight: 10 }} />
-                <Text style={styles.googleButtonText}>
-                  {isRegister ? 'Sign up with Google' : 'Sign in with Google'}
+              <TouchableOpacity 
+                onPress={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}
+                disabled={loading || googleLoading}
+              >
+                <Text style={styles.toggleLink}>
+                  {authMode === 'register' ? 'Already have an account? Sign In' : 'Need an account? Sign Up'}
                 </Text>
-              </View>
+              </TouchableOpacity>
             )}
-          </TouchableOpacity>
+          </View>
+
+          {/* Divider and Google Sign-In (hidden in forgot mode) */}
+          {authMode !== 'forgot' && (
+            <>
+              <View style={styles.dividerRow}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>OR</Text>
+                <View style={styles.dividerLine} />
+              </View>
+
+              <TouchableOpacity 
+                style={[styles.googleButton, (loading || googleLoading) && styles.buttonDisabled]} 
+                onPress={handleGoogleSignInPress}
+                disabled={loading || googleLoading}
+              >
+                {googleLoading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <View style={styles.googleButtonContent}>
+                    <Ionicons name="logo-google" size={20} color="#EA4335" style={{ marginRight: 10 }} />
+                    <Text style={styles.googleButtonText}>
+                      {authMode === 'register' ? 'Sign up with Google' : 'Sign in with Google'}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </>
+          )}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -279,12 +360,23 @@ const styles = StyleSheet.create({
   inputContainer: {
     marginBottom: 16,
   },
+  labelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
   label: {
     fontSize: 12,
     fontWeight: 'bold',
     color: '#aaa',
     textTransform: 'uppercase',
     marginBottom: 6,
+  },
+  forgotLink: {
+    fontSize: 12,
+    color: '#d4af37',
+    fontWeight: '600',
   },
   input: {
     backgroundColor: '#0a0a0a',

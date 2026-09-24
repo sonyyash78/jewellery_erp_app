@@ -223,3 +223,49 @@ def register_user(
     db.commit()
     db.refresh(db_obj)
     return db_obj
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+class ResetPasswordRequest(BaseModel):
+    email: str
+    new_password: str
+
+
+@router.post("/forgot-password")
+def forgot_password(req: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    email_clean = req.email.strip()
+    user = user_repo.get_by_email(db, email=email_clean)
+    if not user:
+        user = user_repo.get_by_username(db, username=email_clean)
+    if not user:
+        raise HTTPException(status_code=404, detail="No registered account found with this email address.")
+    
+    return {
+        "success": True,
+        "message": f"Password reset verified for {email_clean}."
+    }
+
+
+@router.post("/reset-password")
+def reset_password(req: ResetPasswordRequest, db: Session = Depends(get_db)):
+    email_clean = req.email.strip()
+    if len(req.new_password.strip()) < 4:
+        raise HTTPException(status_code=400, detail="Password must be at least 4 characters long.")
+        
+    user = user_repo.get_by_email(db, email=email_clean)
+    if not user:
+        user = user_repo.get_by_username(db, username=email_clean)
+    if not user:
+        raise HTTPException(status_code=404, detail="No registered account found with this email address.")
+        
+    user.hashed_password = security.get_password_hash(req.new_password.strip())
+    db.commit()
+    db.refresh(user)
+    return {
+        "success": True,
+        "message": "Password updated successfully! You can now log in with your new password."
+    }
+
