@@ -264,10 +264,22 @@ export const renderCardsRow = (customer: any, qrDataUrl: string, settings?: any,
   const upiName = settings?.upi_name || settings?.business_name || 'SAIDEEP JEWELLERS';
   const isCustomAmount = settings?.qr_amount_type === 'custom';
 
-  // Exact payable amount: balance due or difference or grand total
-  const payableAmount = Number(
-    invoice?.balance_due ?? invoice?.balance_amount ?? invoice?.difference_amount ?? invoice?.grand_total ?? 0
-  );
+  // Calculate true payable / due amount (e.g. 4038.55 for EXC-16, not 138656.75)
+  let payableAmount = 0;
+  if (invoice?.balance_due != null && Number(invoice.balance_due) > 0) {
+    payableAmount = Number(invoice.balance_due);
+  } else if (invoice?.balance_amount != null && Number(invoice.balance_amount) > 0) {
+    payableAmount = Number(invoice.balance_amount);
+  } else if (invoice?.difference_amount != null && Number(invoice.difference_amount) > 0) {
+    payableAmount = Number(invoice.difference_amount);
+  } else {
+    const grand = Number(invoice?.grand_total || 0);
+    const settled = Number(invoice?.cash_received || invoice?.amount_paid || 0) + Number(invoice?.metal_received_value || invoice?.total_old_value || 0);
+    payableAmount = Math.max(0, grand - settled);
+    if (payableAmount === 0 && grand > 0 && settled === 0) {
+      payableAmount = grand;
+    }
+  }
 
   let upiDeepLink = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(upiName)}`;
   if (!isCustomAmount && payableAmount > 0) {
