@@ -1,5 +1,6 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, FlatList, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { axiosClient } from '../../api/axiosClient';
 import MobileMetalCalculator from '../../components/MobileMetalCalculator';
 
@@ -18,10 +19,6 @@ export default function CreatePurchaseScreen({ navigation }: any) {
   // Cart
   const [items, setItems] = useState<any[]>([]);
   
-  useEffect(() => {
-    fetchSellers();
-  }, []);
-
   const fetchSellers = async () => {
     try {
       const response = await axiosClient.get('/sellers/');
@@ -30,6 +27,12 @@ export default function CreatePurchaseScreen({ navigation }: any) {
       console.log('Failed to fetch sellers', error);
     }
   };
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchSellers();
+    }, [])
+  );
 
   const handleAddNewSeller = async () => {
     if (!newSellerName) {
