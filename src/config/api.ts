@@ -1,18 +1,15 @@
 export const ENV = {
-  // Centralized API configuration.
-  // DO NOT HARDCODE URLs ANYWHERE ELSE IN THE APP.
+  // Centralized Mobile App API configuration.
+  // Dedicated App Backend runs on Port 8001 connected to `jeweller_app_db`.
   
   // Local Emulator Testing:
-  // API_BASE_URL: 'http://10.0.2.2:8000/api/v1',
+  // API_BASE_URL: 'http://10.0.2.2:8001/api/v1',
   
-  // Local Physical Device Testing (Requires same WiFi and Firewall OFF):
-  // API_BASE_URL: 'http://192.168.1.36:8000/api/v1',
+  // Local Physical Device Testing (Same WiFi):
+  // API_BASE_URL: 'http://192.168.1.36:8001/api/v1',
   
-  // Internet Testing via Cloudflare Tunnel (RECOMMENDED):
-  // 1. Run `cloudflared tunnel --url http://localhost:8000` on your PC
-  // 2. Paste the generated HTTPS URL below and add `/api/v1`
+  // Internet Cloudflare Tunnel for Port 8001:
+  // 1. Double-click `start_app_tunnel.bat`
+  // 2. Paste generated HTTPS URL below and append `/api/v1`
   API_BASE_URL: 'https://karaoke-notes-queensland-lite.trycloudflare.com/api/v1',
-  
-  // Production
-  // API_BASE_URL: 'https://api.yourdomain.com/api/v1',
 };
