@@ -3,14 +3,14 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert,
 import { axiosClient } from '../../api/axiosClient';
 
 export default function CreateCRMScreen({ route, navigation }: any) {
-  const { type } = route.params; // 'Customer' or 'Supplier'
+  const { type, item } = route.params; // 'Customer' or 'Supplier'
   
   const [formData, setFormData] = useState({
-    name: '', // Will map to first_name for customer
-    mobile: '', // Will map to phone_number for customer, mobile for supplier
-    address: '',
-    aadhaar_pan: '',
-    gst_number: ''
+    name: item ? (item.first_name || item.name || '') : '',
+    mobile: item ? (item.phone_number || item.mobile || '') : '',
+    address: item?.address || '',
+    aadhaar_pan: item?.aadhaar_pan || '',
+    gst_number: item?.gst_number || ''
   });
   const [loading, setLoading] = useState(false);
 

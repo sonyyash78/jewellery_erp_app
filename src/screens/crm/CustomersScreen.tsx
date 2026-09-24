@@ -47,7 +47,7 @@ export default function CustomersScreen({ route, navigation }: any) {
 
   const formatAmount = (num: number) => {
     if (!num) return '0';
-    const absNum = Math.abs(num);
+    const absNum = Math.abs(parseFloat(num as any) || 0);
     let formatted = '';
     if (absNum >= 10000000) {
       formatted = (absNum / 10000000).toFixed(2) + 'Cr';
@@ -64,7 +64,7 @@ export default function CustomersScreen({ route, navigation }: any) {
 
   const totalCustomers = customers.length;
   const totalSuppliers = suppliers.length;
-  const netOutstanding = customers.reduce((acc, c) => acc + (c.outstanding_balance || 0), 0);
+  const netOutstanding = customers.reduce((acc, c) => acc + (parseFloat(c.outstanding_balance as any) || 0), 0);
 
   
   const handleDelete = (id: number, type: string) => {
@@ -110,11 +110,11 @@ export default function CustomersScreen({ route, navigation }: any) {
         <View style={styles.detailsGrid}>
           <View style={styles.detailCol}>
             <Text style={styles.detailLabel}>CONTACT</Text>
-            <Text style={styles.detailValue}>{item.phone_number || 'â€”'}</Text>
+            <Text style={styles.detailValue}>{item.phone_number || 'N/A'}</Text>
           </View>
           <View style={styles.detailCol}>
             <Text style={styles.detailLabel}>CITY</Text>
-            <Text style={styles.detailValue}>{item.city || 'â€”'}</Text>
+            <Text style={styles.detailValue}>{item.city || 'N/A'}</Text>
           </View>
           <View style={styles.detailCol}>
             <Text style={styles.detailLabel}>GST / ID</Text>
