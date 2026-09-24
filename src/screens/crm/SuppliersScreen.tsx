@@ -33,10 +33,10 @@ export default function SuppliersScreen({ navigation }: any) {
   const renderItem = ({ item }: { item: any }) => (
     <TouchableOpacity 
       style={styles.card} 
-      onPress={() => navigation.navigate('SupplierProfile', { SupplierId: item.id, SupplierName: `${item.first_name} ${item.last_name}` })}
+      onPress={() => navigation.navigate('SupplierProfile', { SupplierId: item.id, SupplierName: `${item.first_name} ${item.last_name || ""}`.trim() })}
     >
       <View style={styles.cardHeader}>
-        <Text style={styles.name}>{item.first_name} {item.last_name}</Text>
+        <Text style={styles.name}>{item.first_name} {item.last_name || ""}</Text>
         <Text style={styles.balance}>₹{item.outstanding_balance || 0}</Text>
       </View>
       <View style={styles.cardBody}>

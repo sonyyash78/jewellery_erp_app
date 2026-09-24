@@ -92,6 +92,10 @@ export default function CreatePurchaseScreen({ navigation }: any) {
       Alert.alert('Error', 'Please add at least one item');
       return;
     }
+    if (!selectedSeller) {
+      setShowSellerModal(true);
+      return;
+    }
     navigation.navigate('CheckoutPurchase', {
       items,
       subtotal,
@@ -163,9 +167,7 @@ export default function CreatePurchaseScreen({ navigation }: any) {
               <Text style={styles.addNewBtnText}>+ Add New Supplier</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.customerOption} onPress={() => { setSelectedSeller(null); setShowSellerModal(false); }}>
-              <Text style={styles.customerOptionText}>-- Walk-in Supplier --</Text>
-            </TouchableOpacity>
+            
             
             <FlatList
               data={sellers}
