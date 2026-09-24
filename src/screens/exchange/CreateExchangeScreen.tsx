@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Modal, FlatList } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, FlatList, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { axiosClient } from '../../api/axiosClient';
+import MobileMetalCalculator from '../../components/MobileMetalCalculator';
 
 export default function CreateExchangeScreen({ navigation }: any) {
   const [customers, setCustomers] = useState<any[]>([]);
@@ -11,23 +12,10 @@ export default function CreateExchangeScreen({ navigation }: any) {
   const [newCustomerFirstName, setNewCustomerFirstName] = useState('');
   const [newCustomerPhone, setNewCustomerPhone] = useState('');
   
-  const [items, setItems] = useState<any[]>([]);
-  const [editIndex, setEditIndex] = useState<number | null>(null);
-  const [itemDirection, setItemDirection] = useState<'Old' | 'New'>('New');
-  const [itemName, setItemName] = useState('');
-  const [itemType, setItemType] = useState<'Gold' | 'Silver' | 'Other'>('Gold');
-  
-  // Metal Calculation State
-  const [grossWeight, setGrossWeight] = useState('');
-  const [stoneWeight, setStoneWeight] = useState('');
-  const [purity, setPurity] = useState('100'); // Touch or Tanch
-  const [wastage, setWastage] = useState('0');
-  const [rate, setRate] = useState(''); // rate per 10g for gold, per kg for silver
-  const [makingCharge, setMakingCharge] = useState('0');
-  const [otherPrice, setOtherPrice] = useState(''); // for "Other" items
-
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
+  // Two separate carts: New items (selling) and Old items (buying back)
+  const [newItems, setNewItems] = useState<any[]>([]);
+  const [oldItems, setOldItems] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<'new' | 'old'>('new');
 
   useEffect(() => {
     fetchCustomers();
@@ -47,19 +35,13 @@ export default function CreateExchangeScreen({ navigation }: any) {
       Alert.alert('Error', 'Please enter a name');
       return;
     }
-    
-    // Clean and validate phone number (10 or 12 digits)
     const cleanedPhone = newCustomerPhone.replace(/\D/g, '');
     if (cleanedPhone.length !== 10 && cleanedPhone.length !== 12) {
-      Alert.alert('Error', 'Phone number must be exactly 10 digits, or 12 digits with country code');
+      Alert.alert('Error', 'Mobile number must be exactly 10 digits');
       return;
     }
-
     try {
-      const response = await axiosClient.post('/customers/', {
-        first_name: newCustomerFirstName,
-        phone_number: cleanedPhone,
-      });
+      const response = await axiosClient.post('/customers/', { first_name: newCustomerFirstName, phone_number: cleanedPhone });
       const newCust = response.data;
       setCustomers([newCust, ...customers]);
       setSelectedCustomer(newCust);
@@ -68,315 +50,227 @@ export default function CreateExchangeScreen({ navigation }: any) {
       setNewCustomerFirstName('');
       setNewCustomerPhone('');
     } catch (error) {
-      console.log('Failed to add customer', error);
       Alert.alert('Error', 'Failed to add customer');
     }
   };
 
-  const calculateMetal = () => {
-    const gw = parseFloat(grossWeight) || 0;
-    const sw = parseFloat(stoneWeight) || 0;
-    const nw = Math.max(0, gw - sw);
-    
-    const pur = parseFloat(purity) || 0;
-    const was = parseFloat(wastage) || 0;
-    const fw = nw * ((pur + was) / 100);
-    
-    const rt = parseFloat(rate) || 0;
-    const mc = parseFloat(makingCharge) || 0;
-    
-    let mv = 0;
-    if (itemType === 'Gold') {
-      mv = fw * (rt / 10);
-    } else if (itemType === 'Silver') {
-      mv = fw * (rt / 1000);
-    }
-    
-    const finalPrice = mv + mc;
-    
-    return {
-      netWeight: nw,
-      fineWeight: fw,
-      metalValue: mv,
-      finalPrice: finalPrice
+  const handleAddNewItem = (calcItem: any) => {
+    const isGold = calcItem.metalType === 'Gold';
+    const item: any = {
+      item_name: calcItem.itemName,
+      item_type: calcItem.metalType,
+      direction: 'New',
+      final_price: calcItem.taxableAmount,
     };
-  };
-
-  const addItem = () => {
-    let newItem: any = {};
-    if (!itemName) {
-      Alert.alert('Error', 'Please enter item description');
-      return;
-    }
-    
-    if (itemType === 'Other') {
-      const p = parseFloat(otherPrice) || 0;
-      if (p <= 0) {
-        Alert.alert('Error', 'Invalid price');
-        return;
-      }
-      setItems([...items, { item_name: itemName, item_type: 'Other', final_price: p }]);
-    } else {
-      const gw = parseFloat(grossWeight) || 0;
-      if (gw <= 0) {
-        Alert.alert('Error', 'Gross weight must be > 0');
-        return;
-      }
-      
-      const calc = calculateMetal();
-      
-      newItem = {
-        item_name: itemName,
-        item_type: itemType,
-        direction: itemDirection,
-        final_price: calc.finalPrice,
+    if (isGold) {
+      item.gold_calculation = {
+        applied_rate: calcItem.metalRate,
+        gross_weight: calcItem.grossWeight,
+        stone_weight: calcItem.stoneWeight,
+        net_weight: calcItem.netWeight,
+        touch_purity: calcItem.touchPurity,
+        wastage: calcItem.wastage,
+        fine_weight: calcItem.fineWeight,
+        making_charge_type: calcItem.makingChargeType,
+        making_charge_rate: calcItem.makingChargeValue,
+        making_charges_amount: calcItem.makingAmount,
+        hallmark_charges: calcItem.hallmarkCharge,
+        other_charges: calcItem.otherCharges,
+        discount: calcItem.discount,
+        total_gold_value: calcItem.metalValue,
       };
-      
-      if (itemType === 'Gold') {
-        newItem.gold_calculation = {
-          applied_rate: parseFloat(rate) || 0,
-          gross_weight: gw,
-          stone_weight: parseFloat(stoneWeight) || 0,
-          net_weight: calc.netWeight,
-          touch_purity: parseFloat(purity) || 0,
-          wastage: parseFloat(wastage) || 0,
-          fine_weight: calc.fineWeight,
-          making_charge_type: 'flat',
-          making_charge_rate: 0,
-          making_charges_amount: parseFloat(makingCharge) || 0,
-          hallmark_charges: 0,
-          other_charges: 0,
-          discount: 0,
-          total_gold_value: calc.metalValue
-        };
-      } else {
-        newItem.silver_calculation = {
-          applied_rate: parseFloat(rate) || 0,
-          gross_weight: gw,
-          stone_weight: parseFloat(stoneWeight) || 0,
-          tanch_percentage: parseFloat(purity) || 0,
-          wastage: parseFloat(wastage) || 0,
-          pure_weight: calc.fineWeight,
-          making_charge_type: 'flat',
-          making_charge_rate: 0,
-          making_charges_amount: parseFloat(makingCharge) || 0,
-          other_charges: 0,
-          discount: 0,
-          total_silver_value: calc.metalValue
-        };
-      }
-    }
-      
-    if (editIndex !== null) {
-      const updatedItems = [...items];
-      updatedItems[editIndex] = newItem;
-      setItems(updatedItems);
-      setEditIndex(null);
     } else {
-      setItems([...items, newItem]);
+      item.silver_calculation = {
+        applied_rate: calcItem.metalRate,
+        gross_weight: calcItem.grossWeight,
+        stone_weight: calcItem.stoneWeight,
+        tanch_percentage: calcItem.touchPurity,
+        wastage: calcItem.wastage,
+        pure_weight: calcItem.fineWeight,
+        making_charge_type: calcItem.makingChargeType,
+        making_charge_rate: calcItem.makingChargeValue,
+        making_charges_amount: calcItem.makingAmount,
+        other_charges: calcItem.otherCharges,
+        discount: calcItem.discount,
+        total_silver_value: calcItem.metalValue,
+      };
     }
-    
-    // Reset Form
-    setItemName('');
-    setGrossWeight('');
-    setStoneWeight('');
-    setOtherPrice('');
+    setNewItems([...newItems, item]);
   };
 
-  const handleEditItem = (index: number) => {
-    const item = items[index];
-    setItemType(item.item_type as 'Gold'|'Silver'|'Other');
-    setItemName(item.item_name);
-    
-    if (item.item_type === 'Other') {
-      setOtherPrice(item.final_price.toString());
-    } else if (item.item_type === 'Gold') {
-      const calc = item.gold_calculation;
-      setGrossWeight(calc.gross_weight.toString());
-      setStoneWeight(calc.stone_weight.toString());
-      setPurity(calc.purity.toString());
-      setWastage(calc.wastage.toString());
-      setRate(calc.rate.toString());
-      setMakingCharge(calc.making_charges_amount.toString());
-    } else if (item.item_type === 'Silver') {
-      const calc = item.silver_calculation;
-      setGrossWeight(calc.gross_weight.toString());
-      setStoneWeight(calc.stone_weight.toString());
-      setPurity(calc.purity.toString());
-      setWastage(calc.wastage.toString());
-      setRate(calc.rate.toString());
-      setMakingCharge(calc.making_charges_amount.toString());
+  const handleAddOldItem = (calcItem: any) => {
+    const isGold = calcItem.metalType === 'Gold';
+    const item: any = {
+      item_name: calcItem.itemName,
+      item_type: calcItem.metalType,
+      direction: 'Old',
+      final_price: calcItem.taxableAmount,
+    };
+    if (isGold) {
+      item.gold_calculation = {
+        applied_rate: calcItem.metalRate,
+        gross_weight: calcItem.grossWeight,
+        stone_weight: calcItem.stoneWeight,
+        net_weight: calcItem.netWeight,
+        touch_purity: calcItem.touchPurity,
+        wastage: calcItem.wastage,
+        fine_weight: calcItem.fineWeight,
+        making_charge_type: calcItem.makingChargeType,
+        making_charge_rate: calcItem.makingChargeValue,
+        making_charges_amount: calcItem.makingAmount,
+        hallmark_charges: calcItem.hallmarkCharge,
+        other_charges: calcItem.otherCharges,
+        discount: calcItem.discount,
+        total_gold_value: calcItem.metalValue,
+      };
+    } else {
+      item.silver_calculation = {
+        applied_rate: calcItem.metalRate,
+        gross_weight: calcItem.grossWeight,
+        stone_weight: calcItem.stoneWeight,
+        tanch_percentage: calcItem.touchPurity,
+        wastage: calcItem.wastage,
+        pure_weight: calcItem.fineWeight,
+        making_charge_type: calcItem.makingChargeType,
+        making_charge_rate: calcItem.makingChargeValue,
+        making_charges_amount: calcItem.makingAmount,
+        other_charges: calcItem.otherCharges,
+        discount: calcItem.discount,
+        total_silver_value: calcItem.metalValue,
+      };
     }
-    
-    setEditIndex(index);
+    setOldItems([...oldItems, item]);
   };
 
-  const removeItem = (index: number) => {
-    const newItems = [...items];
-    newItems.splice(index, 1);
-    setItems(newItems);
-  };
+  const removeNewItem = (idx: number) => { const u = [...newItems]; u.splice(idx, 1); setNewItems(u); };
+  const removeOldItem = (idx: number) => { const u = [...oldItems]; u.splice(idx, 1); setOldItems(u); };
 
-  const subtotal = items.reduce((sum, item) => sum + item.final_price, 0);
-  const tax = subtotal * 0.03; // 3% GST standard
-  const grandTotal = subtotal + tax;
+  const newTotal = newItems.reduce((acc, i) => acc + i.final_price, 0);
+  const oldTotal = oldItems.reduce((acc, i) => acc + i.final_price, 0);
+  const payable = newTotal - oldTotal;
 
   const handleSave = () => {
-    if (items.length === 0) {
+    if (newItems.length === 0 && oldItems.length === 0) {
       Alert.alert('Error', 'Please add at least one item');
       return;
     }
-    
-    // Navigate to checkout screen passing data
     navigation.navigate('CheckoutExchange', {
-      items,
-      subtotal,
-      tax,
-      grandTotal,
-      selectedCustomer
+      items: [...newItems, ...oldItems],
+      newTotal,
+      oldTotal,
+      payable,
+      selectedCustomer,
     });
   };
-  
-  const curCalc = calculateMetal();
 
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={{ padding: 16 }}>
-        
         {/* Customer Selection */}
         <Text style={styles.label}>Select Customer</Text>
         <TouchableOpacity style={styles.selector} onPress={() => setShowCustomerModal(true)}>
           <Text style={styles.selectorText}>
-            {selectedCustomer ? `${selectedCustomer.first_name} ${selectedCustomer.last_name || ''}` : 'Walk-in Customer (Tap to select)'}
+            {selectedCustomer ? `${selectedCustomer.first_name} (${selectedCustomer.phone_number})` : '-- Select Customer --'}
           </Text>
         </TouchableOpacity>
 
-        {/* Add Item Section */}
-        <View style={styles.addItemCard}>
-          <Text style={styles.cardTitle}>{editIndex !== null ? 'Edit Item' : 'Item Calculator'}</Text>
-          
-          <View style={[styles.typeSelector, { marginBottom: 16 }]}>
-            {(['Old', 'New'] as any[]).map(dir => (
-              <TouchableOpacity 
-                key={dir}
-                style={[styles.typeBtn, itemDirection === dir && (dir === 'New' ? styles.goldBtn : styles.silverBtn)]}
-                onPress={() => setItemDirection(dir)}
-              >
-                <Text style={[styles.typeBtnText, itemDirection === dir && styles.typeBtnTextActive]}>
-                  {dir === 'Old' ? 'Old Metal (From Customer)' : 'New Item (To Customer)'}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <TextInput
-            style={styles.input}
-            placeholder="Item Description (e.g. Gold Ring)"
-            placeholderTextColor="#888"
-            value={itemName}
-            onChangeText={setItemName}
-          />
-          
-          <View style={styles.typeSelector}>
-            {(['Gold', 'Silver', 'Other'] as any[]).map(type => (
-              <TouchableOpacity 
-                key={type}
-                style={[styles.typeBtn, itemType === type && (type === 'Gold' ? styles.goldBtn : type === 'Silver' ? styles.silverBtn : styles.activeBtn)]}
-                onPress={() => setItemType(type)}
-              >
-                <Text style={[styles.typeBtnText, itemType === type && styles.typeBtnTextActive]}>{type}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          
-          {itemType === 'Other' ? (
-            <TextInput
-              style={styles.input}
-              placeholder="Total Price (₹)"
-              placeholderTextColor="#888"
-              keyboardType="numeric"
-              value={otherPrice}
-              onChangeText={setOtherPrice}
-            />
-          ) : (
-            <View style={{ marginTop: 12 }}>
-              <View style={styles.row}>
-                <View style={styles.col}><Text style={styles.lbl}>Gross (g)</Text><TextInput style={styles.inputSmall} keyboardType="numeric" value={grossWeight} onChangeText={setGrossWeight}/></View>
-                <View style={styles.col}><Text style={styles.lbl}>Stone (g)</Text><TextInput style={styles.inputSmall} keyboardType="numeric" value={stoneWeight} onChangeText={setStoneWeight}/></View>
-                <View style={styles.col}><Text style={styles.lbl}>Net (g)</Text><View style={styles.readonly}><Text style={styles.readonlyText}>{curCalc.netWeight.toFixed(3)}</Text></View></View>
-              </View>
-              
-              <View style={styles.row}>
-                <View style={styles.col}><Text style={styles.lbl}>{itemType === 'Gold' ? 'Touch %' : 'Tanch %'}</Text><TextInput style={styles.inputSmall} keyboardType="numeric" value={purity} onChangeText={setPurity}/></View>
-                <View style={styles.col}><Text style={styles.lbl}>Wastage %</Text><TextInput style={styles.inputSmall} keyboardType="numeric" value={wastage} onChangeText={setWastage}/></View>
-                <View style={styles.col}><Text style={styles.lbl}>Fine (g)</Text><View style={styles.readonly}><Text style={styles.readonlyText}>{curCalc.fineWeight.toFixed(3)}</Text></View></View>
-              </View>
-              
-              <View style={styles.row}>
-                <View style={styles.col}><Text style={styles.lbl}>Rate (₹/{itemType === 'Gold' ? '10g' : 'kg'})</Text><TextInput style={styles.inputSmall} keyboardType="numeric" value={rate} onChangeText={setRate}/></View>
-                <View style={styles.col}><Text style={styles.lbl}>Making (Flat ₹)</Text><TextInput style={styles.inputSmall} keyboardType="numeric" value={makingCharge} onChangeText={setMakingCharge}/></View>
-              </View>
-              
-              <View style={styles.calcResult}>
-                <Text style={styles.calcResultLabel}>Calculated Item Price:</Text>
-                <Text style={styles.calcResultValue}>₹ {curCalc.finalPrice.toLocaleString('en-IN', {maximumFractionDigits: 2})}</Text>
-              </View>
-            </View>
-          )}
-          
-          <TouchableOpacity style={[styles.addButton, editIndex !== null && {backgroundColor: '#d4af37'}]} onPress={addItem}>
-            <Text style={[styles.addButtonText, editIndex !== null && {color: '#000'}]}>
-              {editIndex !== null ? 'Update Item' : '+ Add to Bill'}
+        {/* Direction Tabs */}
+        <View style={styles.directionTabs}>
+          <TouchableOpacity
+            style={[styles.dirTab, activeTab === 'new' && styles.dirTabActiveNew]}
+            onPress={() => setActiveTab('new')}
+          >
+            <Text style={[styles.dirTabText, activeTab === 'new' && { color: '#000' }]}>
+              🆕 New Items (To Customer)
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.dirTab, activeTab === 'old' && styles.dirTabActiveOld]}
+            onPress={() => setActiveTab('old')}
+          >
+            <Text style={[styles.dirTabText, activeTab === 'old' && { color: '#000' }]}>
+              ♻️ Old Items (From Customer)
             </Text>
           </TouchableOpacity>
         </View>
 
-        {/* Cart List */}
-        <Text style={styles.label}>Invoice Items ({items.length})</Text>
-        {items.map((item, index) => (
-          <TouchableOpacity key={index} style={styles.cartItem} onPress={() => handleEditItem(index)}>
-            <View>
-              <Text style={styles.cartItemName}>{item.item_name} <Text style={styles.editHint}>(Tap to edit)</Text></Text>
-              <Text style={styles.cartItemType}>
-                {item.item_type} 
-                {item.gold_calculation && ` | Net: ${item.gold_calculation.net_weight}g`}
-                {item.silver_calculation && ` | Net: ${item.silver_calculation.pure_weight}g`}
+        {/* Calculator based on active tab */}
+        {activeTab === 'new' ? (
+          <MobileMetalCalculator onAdd={handleAddNewItem} buttonLabel="ADD NEW ITEM" />
+        ) : (
+          <MobileMetalCalculator onAdd={handleAddOldItem} buttonLabel="ADD OLD ITEM" />
+        )}
+
+        {/* New Items Cart */}
+        {newItems.length > 0 && (
+          <View style={{ marginTop: 20 }}>
+            <Text style={[styles.label, { color: '#4ade80' }]}>New Items ({newItems.length})</Text>
+            {newItems.map((item, idx) => (
+              <View key={`new-${idx}`} style={[styles.cartItem, { borderLeftWidth: 3, borderLeftColor: '#4ade80' }]}>
+                <View>
+                  <Text style={styles.cartItemName}>{item.item_name}</Text>
+                  <Text style={styles.cartItemType}>{item.item_type}</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={styles.cartItemPrice}>₹{item.final_price.toFixed(2)}</Text>
+                  <TouchableOpacity onPress={() => removeNewItem(idx)}>
+                    <Text style={styles.removeText}>Remove</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Old Items Cart */}
+        {oldItems.length > 0 && (
+          <View style={{ marginTop: 16 }}>
+            <Text style={[styles.label, { color: '#f97316' }]}>Old Items ({oldItems.length})</Text>
+            {oldItems.map((item, idx) => (
+              <View key={`old-${idx}`} style={[styles.cartItem, { borderLeftWidth: 3, borderLeftColor: '#f97316' }]}>
+                <View>
+                  <Text style={styles.cartItemName}>{item.item_name}</Text>
+                  <Text style={styles.cartItemType}>{item.item_type}</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={[styles.cartItemPrice, { color: '#f97316' }]}>- ₹{item.final_price.toFixed(2)}</Text>
+                  <TouchableOpacity onPress={() => removeOldItem(idx)}>
+                    <Text style={styles.removeText}>Remove</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Settlement Summary */}
+        {(newItems.length > 0 || oldItems.length > 0) && (
+          <View style={styles.totalsCard}>
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>New Items Total</Text>
+              <Text style={[styles.totalValue, { color: '#4ade80' }]}>₹{newTotal.toFixed(2)}</Text>
+            </View>
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>Old Items Value</Text>
+              <Text style={[styles.totalValue, { color: '#f97316' }]}>- ₹{oldTotal.toFixed(2)}</Text>
+            </View>
+            <View style={[styles.totalRow, styles.grandTotalRow]}>
+              <Text style={styles.grandTotalLabel}>{payable >= 0 ? 'Customer Pays' : 'Shop Owes'}</Text>
+              <Text style={[styles.grandTotalValue, payable < 0 && { color: '#ef4444' }]}>
+                ₹{Math.abs(payable).toFixed(2)}
               </Text>
             </View>
-            <View style={{ alignItems: 'flex-end' }}>
-              <Text style={styles.cartItemPrice}>₹ {item.final_price.toLocaleString('en-IN', {maximumFractionDigits: 2})}</Text>
-              <TouchableOpacity onPress={() => removeItem(index)} style={{ padding: 4, marginTop: 4 }}>
-                <Text style={styles.removeText}>Remove</Text>
-              </TouchableOpacity>
-            </View>
-          </TouchableOpacity>
-        ))}
+          </View>
+        )}
 
-        {/* Totals */}
-        <View style={styles.totalsCard}>
-          <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>Subtotal</Text>
-            <Text style={styles.totalValue}>₹ {subtotal.toLocaleString('en-IN', {maximumFractionDigits: 2})}</Text>
-          </View>
-          <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>Tax (3% GST)</Text>
-            <Text style={styles.totalValue}>₹ {tax.toLocaleString('en-IN', {maximumFractionDigits: 2})}</Text>
-          </View>
-          <View style={[styles.totalRow, styles.grandTotalRow]}>
-            <Text style={styles.grandTotalLabel}>Grand Total</Text>
-            <Text style={styles.grandTotalValue}>₹ {grandTotal.toLocaleString('en-IN', {maximumFractionDigits: 2})}</Text>
-          </View>
-        </View>
-
-        {/* Save Button */}
-        <TouchableOpacity 
-          style={[styles.saveButton, (items.length === 0) && styles.saveButtonDisabled]} 
+        <TouchableOpacity
+          style={[styles.saveButton, (newItems.length === 0 && oldItems.length === 0) && styles.saveButtonDisabled]}
           onPress={handleSave}
-          disabled={items.length === 0}
+          disabled={newItems.length === 0 && oldItems.length === 0}
         >
-          <Text style={styles.saveButtonText}>Proceed to CheckoutExchange →</Text>
+          <Text style={styles.saveButtonText}>Proceed to Checkout →</Text>
         </TouchableOpacity>
-        
+
         <View style={{ height: 40 }} />
       </ScrollView>
 
@@ -385,11 +279,9 @@ export default function CreateExchangeScreen({ navigation }: any) {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Select Customer</Text>
-            
             <TouchableOpacity style={styles.addNewBtn} onPress={() => setShowAddCustomerModal(true)}>
               <Text style={styles.addNewBtnText}>+ Add New Customer</Text>
             </TouchableOpacity>
-
             <TouchableOpacity style={styles.customerOption} onPress={() => { setSelectedCustomer(null); setShowCustomerModal(false); }}>
               <Text style={styles.customerOptionText}>-- Walk-in Customer --</Text>
             </TouchableOpacity>
@@ -411,26 +303,11 @@ export default function CreateExchangeScreen({ navigation }: any) {
 
       {/* Add New Customer Modal */}
       <Modal visible={showAddCustomerModal} animationType="fade" transparent={true}>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Add New Customer</Text>
-            
-            <TextInput
-              style={styles.input}
-              placeholder="First Name"
-              placeholderTextColor="#888"
-              value={newCustomerFirstName}
-              onChangeText={setNewCustomerFirstName}
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Mobile Number"
-              placeholderTextColor="#888"
-              keyboardType="phone-pad"
-              value={newCustomerPhone}
-              onChangeText={setNewCustomerPhone}
-            />
-            
+            <TextInput style={styles.input} placeholder="First Name" placeholderTextColor="#888" value={newCustomerFirstName} onChangeText={setNewCustomerFirstName} />
+            <TextInput style={styles.input} placeholder="Mobile Number" placeholderTextColor="#888" keyboardType="phone-pad" value={newCustomerPhone} onChangeText={setNewCustomerPhone} />
             <View style={{ flexDirection: 'row', gap: 12, marginTop: 16 }}>
               <TouchableOpacity style={[styles.addButton, { flex: 1, backgroundColor: '#333' }]} onPress={() => setShowAddCustomerModal(false)}>
                 <Text style={styles.addButtonText}>Cancel</Text>
@@ -440,7 +317,7 @@ export default function CreateExchangeScreen({ navigation }: any) {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -451,32 +328,19 @@ const styles = StyleSheet.create({
   label: { color: '#888', fontSize: 12, textTransform: 'uppercase', marginBottom: 8, marginTop: 16, fontWeight: 'bold' },
   selector: { backgroundColor: '#141414', borderWidth: 1, borderColor: '#333', padding: 16, borderRadius: 8 },
   selectorText: { color: '#fff', fontSize: 16 },
-  addItemCard: { backgroundColor: '#141414', borderWidth: 1, borderColor: '#333', padding: 16, borderRadius: 8, marginTop: 16 },
-  cardTitle: { color: '#d4af37', fontSize: 16, fontWeight: 'bold', marginBottom: 12 },
-  input: { backgroundColor: '#0a0a0a', color: '#fff', borderWidth: 1, borderColor: '#333', padding: 12, borderRadius: 8, marginBottom: 12 },
-  row: { flexDirection: 'row', gap: 8, marginBottom: 8 },
-  col: { flex: 1 },
-  lbl: { color: '#888', fontSize: 10, textTransform: 'uppercase', marginBottom: 4 },
-  inputSmall: { backgroundColor: '#0a0a0a', color: '#fff', borderWidth: 1, borderColor: '#333', padding: 8, borderRadius: 6, fontVariant: ['tabular-nums'] },
-  readonly: { backgroundColor: '#1a1a1a', borderWidth: 1, borderColor: '#222', padding: 8, borderRadius: 6, alignItems: 'center' },
-  readonlyText: { color: '#888', fontVariant: ['tabular-nums'] },
-  typeSelector: { flexDirection: 'row', backgroundColor: '#0a0a0a', borderWidth: 1, borderColor: '#333', borderRadius: 8, overflow: 'hidden' },
-  typeBtn: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRightWidth: 1, borderRightColor: '#333' },
-  goldBtn: { backgroundColor: '#d4af37' },
-  silverBtn: { backgroundColor: '#9ca3af' },
-  activeBtn: { backgroundColor: '#333' },
-  typeBtnText: { color: '#888', fontSize: 12, fontWeight: 'bold' },
-  typeBtnTextActive: { color: '#000' },
-  calcResult: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1a1a1a', padding: 12, borderRadius: 8, marginTop: 8 },
-  calcResultLabel: { color: '#888', fontSize: 12 },
-  calcResultValue: { color: '#4ade80', fontSize: 16, fontWeight: 'bold' },
-  addButton: { backgroundColor: '#333', padding: 12, borderRadius: 8, alignItems: 'center', marginTop: 12 },
-  addButtonText: { color: '#fff', fontWeight: 'bold' },
+
+  directionTabs: { flexDirection: 'row', marginTop: 20, marginBottom: 16, borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#333' },
+  dirTab: { flex: 1, paddingVertical: 12, alignItems: 'center', backgroundColor: '#1a1a20' },
+  dirTabActiveNew: { backgroundColor: '#4ade80' },
+  dirTabActiveOld: { backgroundColor: '#f97316' },
+  dirTabText: { fontSize: 11, fontWeight: 'bold', color: '#888' },
+
   cartItem: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#1a1a1a', padding: 12, borderRadius: 8, marginBottom: 8 },
   cartItemName: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
   cartItemType: { color: '#888', fontSize: 12 },
   cartItemPrice: { color: '#d4af37', fontSize: 16, fontWeight: 'bold' },
   removeText: { color: '#ef4444', fontSize: 12, marginTop: 4 },
+
   totalsCard: { backgroundColor: '#141414', borderWidth: 1, borderColor: '#333', padding: 16, borderRadius: 8, marginTop: 16 },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   totalLabel: { color: '#888', fontSize: 14 },
@@ -484,9 +348,11 @@ const styles = StyleSheet.create({
   grandTotalRow: { borderTopWidth: 1, borderTopColor: '#333', paddingTop: 8, marginTop: 4, marginBottom: 0 },
   grandTotalLabel: { color: '#d4af37', fontSize: 18, fontWeight: 'bold' },
   grandTotalValue: { color: '#d4af37', fontSize: 18, fontWeight: 'bold', fontVariant: ['tabular-nums'] },
+
   saveButton: { backgroundColor: '#d4af37', padding: 16, borderRadius: 8, alignItems: 'center', marginTop: 24 },
   saveButtonDisabled: { opacity: 0.5 },
   saveButtonText: { color: '#000', fontSize: 18, fontWeight: 'bold' },
+
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', padding: 20 },
   modalContent: { backgroundColor: '#141414', borderRadius: 12, padding: 20, maxHeight: '80%', borderWidth: 1, borderColor: '#333' },
   modalTitle: { color: '#d4af37', fontSize: 20, fontWeight: 'bold', marginBottom: 16 },
@@ -496,5 +362,7 @@ const styles = StyleSheet.create({
   modalCloseText: { color: '#fff', fontWeight: 'bold' },
   addNewBtn: { backgroundColor: 'rgba(212, 175, 55, 0.1)', borderWidth: 1, borderColor: '#d4af37', padding: 12, borderRadius: 8, marginBottom: 12, alignItems: 'center' },
   addNewBtnText: { color: '#d4af37', fontWeight: 'bold' },
-  editHint: { color: '#d4af37', fontSize: 10, fontWeight: 'normal' }
+  input: { backgroundColor: '#0a0a0a', color: '#fff', borderWidth: 1, borderColor: '#333', padding: 12, borderRadius: 8, marginBottom: 12 },
+  addButton: { padding: 12, borderRadius: 8, alignItems: 'center' },
+  addButtonText: { color: '#fff', fontWeight: 'bold' },
 });
