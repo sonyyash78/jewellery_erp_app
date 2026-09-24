@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+﻿import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -44,7 +44,7 @@ export default function InventoryScreen({ navigation }: any) {
     const statusBadgeStyle = isAvailable ? styles.statusAvailable : (isLowStock ? styles.statusLowStock : styles.statusSold);
     const statusTextStyle = isAvailable ? styles.statusTextAvailable : (isLowStock ? styles.statusTextLowStock : styles.statusTextSold);
     const fineWt = (item.net_weight * (((item.tanch || 0) + (item.wastage || 0)) / 100)).toFixed(3);
-    const purityText = item.purity ? `${item.metal} • ${item.purity}` : item.metal;
+    const purityText = item.purity ? `${item.metal} â€¢ ${item.purity}` : item.metal;
 
     return (
       <View style={styles.rowCard}>
@@ -62,6 +62,12 @@ export default function InventoryScreen({ navigation }: any) {
                 {item.status || 'Not Available'}
               </Text>
             </View>
+            <View style={{ marginLeft: 12, justifyContent: 'center' }}>
+              <TouchableOpacity style={{ padding: 8 }} onPress={() => navigation.navigate('EditInventory', { item })}>
+                <Ionicons name="pencil" size={20} color="#d4af37" />
+              </TouchableOpacity>
+            </View>
+            
           </View>
           
           <View style={styles.detailsRow}>
@@ -78,6 +84,12 @@ export default function InventoryScreen({ navigation }: any) {
                 Fine: {fineWt}g ({item.tanch || 0}% + {item.wastage || 0}%)
               </Text>
             </View>
+            <View style={{ marginLeft: 12, justifyContent: 'center' }}>
+              <TouchableOpacity style={{ padding: 8 }} onPress={() => navigation.navigate('EditInventory', { item })}>
+                <Ionicons name="pencil" size={20} color="#d4af37" />
+              </TouchableOpacity>
+            </View>
+            
           </View>
         </View>
       </View>
@@ -373,3 +385,4 @@ const styles = StyleSheet.create({
     marginTop: 20,
   }
 });
+

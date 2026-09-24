@@ -14,6 +14,7 @@ import SupplierProfileScreen from '../screens/crm/SupplierProfileScreen';
 import CreateCRMScreen from '../screens/crm/CreateCRMScreen';
 import InventoryScreen from '../screens/inventory/InventoryScreen';
 import CreateInventoryScreen from '../screens/inventory/CreateInventoryScreen';
+import EditInventoryScreen from '../screens/inventory/EditInventoryScreen';
 import SettingsScreen from '../screens/settings/SettingsScreen';
 import ReportsScreen from '../screens/reports/ReportsScreen';
 import BillingScreen from '../screens/billing/BillingScreen';
@@ -92,6 +93,7 @@ export default function AppNavigator() {
             
             <Stack.Screen name="Inventory" component={InventoryScreen} options={{ title: 'Inventory Stock' }} />
             <Stack.Screen name="CreateInventory" component={CreateInventoryScreen} options={{ title: 'Add Item' }} />
+            <Stack.Screen name="EditInventory" component={EditInventoryScreen} options={{ title: 'Edit Item' }} />
             
             <Stack.Screen name="Billing" component={BillingScreen} options={{ title: 'Billing & Invoices' }} />
             <Stack.Screen name="CreateInvoice" component={CreateInvoiceScreen} options={{ title: 'Create Invoice' }} />
