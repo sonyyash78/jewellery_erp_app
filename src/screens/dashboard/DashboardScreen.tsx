@@ -76,7 +76,7 @@ export default function DashboardScreen({ navigation }: any) {
       {/* Upcoming features list */}
       <View style={styles.menuList}>
         <Text style={styles.menuTitle}>Menu</Text>
-        {['Customers', 'Suppliers', 'Inventory', 'Billing', 'Purchases', 'Exchange', 'Settings'].map((item) => (
+        {['Customers', 'Suppliers', 'Inventory', 'Billing', 'Purchases', 'Exchange', 'Reports', 'Settings'].map((item) => (
           <TouchableOpacity 
             key={item} 
             style={styles.menuItem}
@@ -93,6 +93,10 @@ export default function DashboardScreen({ navigation }: any) {
                 navigation.navigate('Purchases');
               } else if (item === 'Exchange') {
                 navigation.navigate('Exchange');
+              } else if (item === 'Reports') {
+                navigation.navigate('Reports');
+              } else if (item === 'Settings') {
+                navigation.navigate('Settings');
               }
             }}
           >

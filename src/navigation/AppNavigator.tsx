@@ -12,6 +12,8 @@ import CustomerProfileScreen from '../screens/crm/CustomerProfileScreen';
 import SuppliersScreen from '../screens/crm/SuppliersScreen';
 import SupplierProfileScreen from '../screens/crm/SupplierProfileScreen';
 import InventoryScreen from '../screens/inventory/InventoryScreen';
+import SettingsScreen from '../screens/settings/SettingsScreen';
+import ReportsScreen from '../screens/reports/ReportsScreen';
 import BillingScreen from '../screens/billing/BillingScreen';
 import CreateInvoiceScreen from '../screens/billing/CreateInvoiceScreen';
 import CheckoutScreen from '../screens/billing/CheckoutScreen';
@@ -98,6 +100,9 @@ export default function AppNavigator() {
             <Stack.Screen name="Exchange" component={ExchangeScreen} options={{ title: 'Exchange History' }} />
             <Stack.Screen name="CreateExchange" component={CreateExchangeScreen} options={{ title: 'New Exchange' }} />
             <Stack.Screen name="CheckoutExchange" component={CheckoutExchangeScreen} options={{ title: 'Checkout Exchange' }} />
+
+            <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
+            <Stack.Screen name="Reports" component={ReportsScreen} options={{ title: 'Reports' }} />
           </>
         )}
       </Stack.Navigator>
