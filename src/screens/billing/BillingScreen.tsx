@@ -1,5 +1,6 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TextInput, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { axiosClient } from '../../api/axiosClient';
 
 export default function BillingScreen({ navigation }: any) {
@@ -21,7 +22,6 @@ export default function BillingScreen({ navigation }: any) {
   };
 
   useEffect(() => {
-    // Refresh when screen comes into focus
     const unsubscribe = navigation.addListener('focus', () => {
       fetchInvoices(search);
     });
@@ -44,14 +44,14 @@ export default function BillingScreen({ navigation }: any) {
       </View>
       
       <View style={styles.cardBody}>
-        <View>
+        <View style={{ flex: 1 }}>
           <Text style={styles.customerName}>
             {item.customer ? `${item.customer.first_name} ${item.customer.last_name || ''}`.trim() : 'Walk-in'}
           </Text>
           <Text style={styles.phone}>{item.customer?.phone_number || '-'}</Text>
         </View>
         <View style={styles.amountContainer}>
-          <Text style={styles.amount}>₹{Number(item.grand_total).toLocaleString('en-IN')}</Text>
+          <Text style={styles.amount}>₹ {Number(item.grand_total).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
           <View style={[styles.statusBadge, item.status === 'Paid' ? styles.statusPaid : styles.statusDraft]}>
             <Text style={item.status === 'Paid' ? styles.statusTextPaid : styles.statusTextDraft}>{item.status}</Text>
           </View>
@@ -66,7 +66,8 @@ export default function BillingScreen({ navigation }: any) {
         style={styles.createButton}
         onPress={() => navigation.navigate('CreateInvoice')}
       >
-        <Text style={styles.createButtonText}>+ Create New Invoice</Text>
+        <Ionicons name="add-circle-outline" size={20} color="#000" />
+        <Text style={styles.createButtonText}>Create New Invoice</Text>
       </TouchableOpacity>
 
       <TextInput
@@ -93,112 +94,55 @@ export default function BillingScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0a0a0a',
-    padding: 16,
-  },
+  container: { flex: 1, backgroundColor: '#0a0a0a', padding: 16 },
   createButton: {
     backgroundColor: '#d4af37',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     padding: 14,
     borderRadius: 8,
-    alignItems: 'center',
     marginBottom: 16,
+    gap: 8,
   },
-  createButtonText: {
-    color: '#000',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
+  createButtonText: { color: '#000', fontSize: 16, fontWeight: 'bold' },
   searchInput: {
     backgroundColor: '#141414',
-    color: '#fff',
-    padding: 12,
-    borderRadius: 8,
     borderWidth: 1,
     borderColor: '#333',
+    borderRadius: 8,
+    color: '#fff',
+    padding: 12,
+    fontSize: 16,
     marginBottom: 16,
   },
   card: {
     backgroundColor: '#141414',
-    padding: 16,
-    borderRadius: 8,
     borderWidth: 1,
     borderColor: '#333',
+    borderRadius: 8,
+    padding: 16,
     marginBottom: 12,
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#333',
+    borderBottomColor: '#222',
     paddingBottom: 8,
+    marginBottom: 8,
   },
-  invoiceNumber: {
-    color: '#d4af37',
-    fontSize: 14,
-    fontWeight: 'bold',
-    fontFamily: 'monospace',
-  },
-  date: {
-    color: '#888',
-    fontSize: 12,
-  },
-  cardBody: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  customerName: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  phone: {
-    color: '#888',
-    fontSize: 12,
-    marginTop: 2,
-  },
-  amountContainer: {
-    alignItems: 'flex-end',
-  },
-  amount: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-    borderWidth: 1,
-  },
-  statusPaid: {
-    backgroundColor: 'rgba(34, 197, 94, 0.2)',
-    borderColor: 'rgba(34, 197, 94, 0.5)',
-  },
-  statusDraft: {
-    backgroundColor: 'rgba(234, 179, 8, 0.2)',
-    borderColor: 'rgba(234, 179, 8, 0.5)',
-  },
-  statusTextPaid: {
-    color: '#4ade80',
-    fontSize: 10,
-    fontWeight: 'bold',
-    textTransform: 'uppercase',
-  },
-  statusTextDraft: {
-    color: '#eab308',
-    fontSize: 10,
-    fontWeight: 'bold',
-    textTransform: 'uppercase',
-  },
-  emptyText: {
-    color: '#888',
-    textAlign: 'center',
-    marginTop: 20,
-  }
+  invoiceNumber: { color: '#d4af37', fontSize: 16, fontWeight: 'bold', fontFamily: 'monospace' },
+  date: { color: '#888', fontSize: 14 },
+  cardBody: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  customerName: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  phone: { color: '#888', fontSize: 14, marginTop: 2 },
+  amountContainer: { alignItems: 'flex-end' },
+  amount: { color: '#fff', fontSize: 16, fontWeight: 'bold', marginBottom: 4 },
+  statusBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 },
+  statusPaid: { backgroundColor: 'rgba(74, 222, 128, 0.1)', borderWidth: 1, borderColor: '#4ade80' },
+  statusDraft: { backgroundColor: 'rgba(250, 204, 21, 0.1)', borderWidth: 1, borderColor: '#facc15' },
+  statusTextPaid: { color: '#4ade80', fontSize: 12, fontWeight: 'bold' },
+  statusTextDraft: { color: '#facc15', fontSize: 12, fontWeight: 'bold' },
+  emptyText: { color: '#888', textAlign: 'center', marginTop: 40, fontSize: 16 },
 });

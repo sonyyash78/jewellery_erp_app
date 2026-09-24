@@ -1,5 +1,6 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, Alert } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { axiosClient } from '../../api/axiosClient';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
@@ -10,6 +11,7 @@ export default function InvoiceDetailScreen({ route, navigation }: any) {
   const { invoiceId } = route.params;
   const [pdfData, setPdfData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [processing, setProcessing] = useState(false);
 
   useEffect(() => {
     fetchInvoice();
@@ -17,7 +19,6 @@ export default function InvoiceDetailScreen({ route, navigation }: any) {
 
   const fetchInvoice = async () => {
     try {
-      // Fetch the full rich PDF JSON data structure from the backend
       const response = await axiosClient.get(`/invoices/${invoiceId}/pdf-data`);
       setPdfData(response.data);
     } catch (error) {
@@ -50,11 +51,23 @@ export default function InvoiceDetailScreen({ route, navigation }: any) {
     ]);
   };
 
-  const handlePrint = async () => {
+  const handlePreview = async () => {
     try {
-      // Generate the premium HTML exactly like the web app
+      setProcessing(true);
       const html = generateInvoiceHtml(pdfData);
+      await Print.printAsync({ html });
+    } catch (err) {
+      console.error(err);
+      Alert.alert('Error', 'Failed to open invoice preview');
+    } finally {
+      setProcessing(false);
+    }
+  };
 
+  const handleShare = async () => {
+    try {
+      setProcessing(true);
+      const html = generateInvoiceHtml(pdfData);
       const { base64 } = await Print.printToFileAsync({ html, base64: true });
       
       const pdfName = `Invoice_${pdfData.invoice.invoice_number.replace(/[^a-zA-Z0-9-]/g, '_')}.pdf`;
@@ -74,6 +87,8 @@ export default function InvoiceDetailScreen({ route, navigation }: any) {
     } catch (err) {
       console.error(err);
       Alert.alert('Error', 'Failed to share PDF');
+    } finally {
+      setProcessing(false);
     }
   };
 
@@ -101,47 +116,66 @@ export default function InvoiceDetailScreen({ route, navigation }: any) {
           </View>
         </View>
 
-        <View style={styles.customerCard}>
-          <Text style={styles.sectionTitle}>Customer Details</Text>
-          {pdfData.customer ? (
-            <>
-              <Text style={styles.textValue}>{pdfData.customer.name}</Text>
-              <Text style={styles.textLabel}>Phone: {pdfData.customer.phone}</Text>
-            </>
-          ) : (
-            <Text style={styles.textValue}>Walk-in Customer</Text>
-          )}
+        {/* Action Buttons Top Bar */}
+        <View style={styles.topActionsRow}>
+          <TouchableOpacity 
+            style={styles.previewButton} 
+            onPress={handlePreview}
+            disabled={processing}
+          >
+            <Ionicons name="eye-outline" size={18} color="#000" />
+            <Text style={styles.previewButtonText}>Preview Invoice</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.shareButton} 
+            onPress={handleShare}
+            disabled={processing}
+          >
+            <Ionicons name="share-social-outline" size={18} color="#fff" />
+            <Text style={styles.shareButtonText}>Share PDF</Text>
+          </TouchableOpacity>
         </View>
 
-        <View style={styles.itemsCard}>
+        {processing && (
+          <View style={styles.processingBanner}>
+            <ActivityIndicator size="small" color="#d4af37" />
+            <Text style={styles.processingText}>Preparing invoice preview/PDF...</Text>
+          </View>
+        )}
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Customer Details</Text>
+          <Text style={styles.customerName}>{pdfData.customer?.name || 'Walk-in Customer'}</Text>
+          <Text style={styles.detailText}>Phone: {pdfData.customer?.phone || '-'}</Text>
+          <Text style={styles.detailText}>Address: {pdfData.customer?.address || '-'}</Text>
+          {pdfData.customer?.gstin && <Text style={styles.detailText}>GSTIN: {pdfData.customer.gstin}</Text>}
+        </View>
+
+        <View style={styles.card}>
           <Text style={styles.sectionTitle}>Items ({items.length})</Text>
           {items.map((item: any, idx: number) => (
             <View key={idx} style={styles.itemRow}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.itemName}>{item.item_name}</Text>
-                <Text style={styles.itemMeta}>
-                  {item.item_type} 
-                  {item.gold_calculation && ` | Net: ${item.gold_calculation.net_weight}g`}
-                  {item.silver_calculation && ` | Net: ${item.silver_calculation.pure_weight}g`}
+                <Text style={styles.itemSub}>
+                  {item.metal_type} | Net: {(item.net_weight || 0).toFixed(3)}g | Tanch: {item.touch_purity || item.tanch_percentage || '-'}%
                 </Text>
               </View>
               <Text style={styles.itemPrice}>₹ {fmt(item.final_price)}</Text>
             </View>
           ))}
-          
-          <View style={styles.divider} />
-          
-          <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>Subtotal</Text>
-            <Text style={styles.totalValue}>₹ {fmt(invoice.subtotal)}</Text>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Payment Breakdown</Text>
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Taxable Amount</Text>
+            <Text style={styles.detailValue}>₹ {fmt(invoice.subtotal)}</Text>
           </View>
-          <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>Tax Amount</Text>
-            <Text style={styles.totalValue}>₹ {fmt(invoice.tax_amount)}</Text>
-          </View>
-          <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>Discount</Text>
-            <Text style={styles.totalValue}>-₹ {fmt(invoice.discount_amount)}</Text>
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>GST Amount</Text>
+            <Text style={styles.detailValue}>₹ {fmt(invoice.tax_amount)}</Text>
           </View>
           <View style={styles.grandTotalRow}>
             <Text style={styles.grandTotalLabel}>Grand Total</Text>
@@ -166,7 +200,7 @@ export default function InvoiceDetailScreen({ route, navigation }: any) {
           
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Cash Received</Text>
-            <Text style={[styles.detailValue, { color: '#4ade80' }]}>₹ {fmt(invoice.cash_received)}</Text>
+            <Text style={[styles.detailValue, { color: '#4ade80' }]}>₹ {fmt(invoice.cash_received || invoice.amount_paid)}</Text>
           </View>
           
           {invoice.balance_amount > 0 && (
@@ -176,12 +210,13 @@ export default function InvoiceDetailScreen({ route, navigation }: any) {
             </View>
           )}
         </View>
-        <View style={{ flexDirection: 'row', gap: 12 }}>
-          <TouchableOpacity style={[styles.printButton, { flex: 1 }]} onPress={handlePrint}>
-            <Text style={styles.printButtonText}>Print / Share</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.printButton, { flex: 1, backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: '#ef4444' }]} onPress={handleCancel}>
-            <Text style={[styles.printButtonText, { color: '#ef4444' }]}>Cancel Bill</Text>
+
+        <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
+          <TouchableOpacity 
+            style={[styles.cancelButton, { flex: 1 }]} 
+            onPress={handleCancel}
+          >
+            <Text style={styles.cancelButtonText}>Cancel Bill</Text>
           </TouchableOpacity>
         </View>
         
@@ -195,31 +230,37 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0a0a0a' },
   centerContainer: { flex: 1, backgroundColor: '#0a0a0a', justifyContent: 'center', alignItems: 'center' },
   scroll: { padding: 16 },
-  headerCard: { alignItems: 'center', marginBottom: 24 },
+  headerCard: { alignItems: 'center', marginBottom: 16 },
   title: { color: '#d4af37', fontSize: 24, fontWeight: 'bold', fontFamily: 'monospace' },
   date: { color: '#888', fontSize: 14, marginTop: 4 },
-  statusBadge: { backgroundColor: 'rgba(34, 197, 94, 0.2)', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 16, marginTop: 8, borderWidth: 1, borderColor: 'rgba(34, 197, 94, 0.5)' },
+  statusBadge: { backgroundColor: 'rgba(74, 222, 128, 0.1)', borderColor: '#4ade80', borderWidth: 1, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, marginTop: 8 },
   statusText: { color: '#4ade80', fontSize: 12, fontWeight: 'bold', textTransform: 'uppercase' },
-  customerCard: { backgroundColor: '#141414', padding: 16, borderRadius: 8, borderWidth: 1, borderColor: '#333', marginBottom: 16 },
-  sectionTitle: { color: '#d4af37', fontSize: 14, fontWeight: 'bold', textTransform: 'uppercase', marginBottom: 12, borderBottomWidth: 1, borderBottomColor: '#333', paddingBottom: 8 },
-  textValue: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  textLabel: { color: '#888', fontSize: 14, marginTop: 4 },
-  itemsCard: { backgroundColor: '#141414', padding: 16, borderRadius: 8, borderWidth: 1, borderColor: '#333', marginBottom: 16 },
-  itemRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  itemName: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  itemMeta: { color: '#888', fontSize: 12, marginTop: 2 },
-  itemPrice: { color: '#d4af37', fontSize: 16, fontWeight: 'bold' },
-  divider: { height: 1, backgroundColor: '#333', marginVertical: 12 },
-  totalRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
-  totalLabel: { color: '#888', fontSize: 14 },
-  totalValue: { color: '#fff', fontSize: 14, fontVariant: ['tabular-nums'] },
-  grandTotalRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#333' },
-  grandTotalLabel: { color: '#d4af37', fontSize: 18, fontWeight: 'bold' },
-  grandTotalValue: { color: '#d4af37', fontSize: 18, fontWeight: 'bold', fontVariant: ['tabular-nums'] },
-  settlementCard: { backgroundColor: '#141414', padding: 16, borderRadius: 8, borderWidth: 1, borderColor: '#333', marginBottom: 24 },
-  detailRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  
+  topActionsRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
+  previewButton: { flex: 1, backgroundColor: '#d4af37', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderRadius: 8, gap: 6 },
+  previewButtonText: { color: '#000', fontSize: 15, fontWeight: 'bold' },
+  shareButton: { flex: 1, backgroundColor: '#222', borderWidth: 1, borderColor: '#444', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderRadius: 8, gap: 6 },
+  shareButtonText: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
+
+  processingBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#141414', borderWidth: 1, borderColor: '#d4af37', padding: 8, borderRadius: 6, marginBottom: 12, gap: 8 },
+  processingText: { color: '#d4af37', fontSize: 12, fontWeight: '600' },
+
+  card: { backgroundColor: '#141414', borderWidth: 1, borderColor: '#333', borderRadius: 8, padding: 16, marginBottom: 16 },
+  settlementCard: { backgroundColor: '#141414', borderWidth: 1, borderColor: '#333', borderRadius: 8, padding: 16, marginBottom: 16 },
+  sectionTitle: { color: '#d4af37', fontSize: 14, fontWeight: 'bold', textTransform: 'uppercase', marginBottom: 12 },
+  customerName: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 4 },
+  detailText: { color: '#888', fontSize: 14, marginTop: 2 },
+  itemRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#222' },
+  itemName: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
+  itemSub: { color: '#888', fontSize: 12, marginTop: 2 },
+  itemPrice: { color: '#d4af37', fontSize: 15, fontWeight: 'bold' },
+  detailRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
   detailLabel: { color: '#888', fontSize: 14 },
   detailValue: { color: '#fff', fontSize: 14, fontWeight: 'bold' },
-  printButton: { backgroundColor: '#333', padding: 16, borderRadius: 8, alignItems: 'center', borderWidth: 1, borderColor: '#444' },
-  printButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  grandTotalRow: { flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: '#333', paddingTop: 8, marginTop: 8 },
+  grandTotalLabel: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  grandTotalValue: { color: '#d4af37', fontSize: 18, fontWeight: 'bold' },
+  
+  cancelButton: { backgroundColor: 'rgba(239, 68, 68, 0.1)', borderWidth: 1, borderColor: '#ef4444', padding: 14, borderRadius: 8, alignItems: 'center' },
+  cancelButtonText: { color: '#ef4444', fontSize: 14, fontWeight: 'bold' },
 });
