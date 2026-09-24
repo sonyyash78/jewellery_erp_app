@@ -11,5 +11,5 @@ export const ENV = {
   // Internet Cloudflare Tunnel for Port 8001:
   // 1. Double-click `start_app_tunnel.bat`
   // 2. Paste generated HTTPS URL below and append `/api/v1`
-  API_BASE_URL: 'https://bytes-consolidated-nails-considerations.trycloudflare.com/api/v1',
+  API_BASE_URL: 'https://diet-sudden-simplified-produced.trycloudflare.com/api/v1',
 };
