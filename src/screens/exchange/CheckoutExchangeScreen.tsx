@@ -250,16 +250,19 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
       const oldItemsPayload = oldItemsRaw.map((i: any) => {
         const isGold = i.item_type === 'Gold';
         const calc = isGold ? i.gold_calculation : i.silver_calculation;
+        const grossWt = Number(calc?.gross_weight || i.gross_weight || 0);
+        const stoneWt = Number(calc?.stone_weight || i.stone_weight || 0);
+        const netWt = Number(calc?.net_weight || i.net_weight || (grossWt - stoneWt) || 0);
         return {
           item_name: i.item_name,
           metal: i.item_type,
           purity: String(calc?.touch_purity || calc?.tanch_percentage || '100'),
           touch: Number(calc?.touch_purity || calc?.tanch_percentage || 100),
-          gross_weight: Number(calc?.gross_weight || i.gross_weight || 0),
-          stone_weight: Number(calc?.stone_weight || 0),
-          net_weight: Number(calc?.net_weight || 0),
+          gross_weight: grossWt,
+          stone_weight: stoneWt,
+          net_weight: netWt,
           wastage: Number(calc?.wastage || 0),
-          fine_weight: Number(calc?.fine_weight || calc?.pure_weight || 0),
+          fine_weight: Number(calc?.fine_weight || calc?.pure_weight || (netWt * (Number(calc?.touch_purity || calc?.tanch_percentage || 100) / 100)) || 0),
           labour_charge: Number(calc?.making_charges_amount || 0),
           testing_melting_charge: 0,
           hallmark_charge: Number(calc?.hallmark_charges || 0),
@@ -316,16 +319,19 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
       const newItemsPayload = newItemsRaw.map((i: any) => {
         const isGold = i.item_type === 'Gold';
         const calc = isGold ? i.gold_calculation : i.silver_calculation;
+        const grossWt = Number(calc?.gross_weight || i.gross_weight || 0);
+        const stoneWt = Number(calc?.stone_weight || i.stone_weight || 0);
+        const netWt = Number(calc?.net_weight || i.net_weight || (grossWt - stoneWt) || 0);
         return {
           item_name: i.item_name,
           metal: i.item_type,
           stock_item_id: i.stock_item_id || null,
-          gross_weight: Number(calc?.gross_weight || i.gross_weight || 0),
-          stone_weight: Number(calc?.stone_weight || 0),
-          net_weight: Number(calc?.net_weight || 0),
+          gross_weight: grossWt,
+          stone_weight: stoneWt,
+          net_weight: netWt,
           touch_purity: Number(calc?.touch_purity || calc?.tanch_percentage || 100),
           wastage: Number(calc?.wastage || 0),
-          fine_weight: Number(calc?.fine_weight || calc?.pure_weight || 0),
+          fine_weight: Number(calc?.fine_weight || calc?.pure_weight || (netWt * (Number(calc?.touch_purity || calc?.tanch_percentage || 100) / 100)) || 0),
           making_charge_type: calc?.making_charge_type || 'flat',
           making_charge_rate: Number(calc?.making_charge_rate || 0),
           making_charges_amount: Number(calc?.making_charges_amount || 0),

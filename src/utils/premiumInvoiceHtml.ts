@@ -314,17 +314,22 @@ export const formatCurrency = (amount?: number) => {
 
 export const renderTableRow = (item: any, index: number, isGold: boolean) => {
   const isZeroPrice = !item.final_price || item.final_price === 0;
+  const gross = Number(item.gross_weight || 0);
+  const stone = Number(item.stone_weight || 0);
+  const netWt = Number(item.net_weight) > 0
+    ? Number(item.net_weight)
+    : (gross - stone > 0 ? (gross - stone) : Number(item.pure_weight || item.fine_weight || gross || 0));
   
   return `
         <tr>
           <td>${index + 1}</td>
           <td style="text-align: left; font-weight: 600;">
             <div class="item-title-text">${item.item_name}</div>
-            <div class="item-sub-text">Gross: ${item.gross_weight || 0}g</div>
+            <div class="item-sub-text">Gross: ${gross}g</div>
           </td>
           <td>${item.metal_type || '-'}</td>
           <td>${(item.tanch_percentage || item.touch_purity) ? (item.tanch_percentage || item.touch_purity) + '%' : '-'}${item.wastage ? ` + ${item.wastage}%` : ''}</td>
-          <td>${(item.net_weight || item.pure_weight || 0).toFixed(3)}</td>
+          <td>${netWt.toFixed(3)}</td>
           <td>${formatCurrency(item.applied_rate || 0)}<div style="font-size: 8px; color: #7f8c8d;">${!isGold ? 'per kg' : 'per 10g'}</div></td>
           <td>${isZeroPrice ? '-' : formatCurrency(item.making_charges || 0)}</td>
           <td>${isZeroPrice ? '-' : formatCurrency((item.other_charges || 0) + (item.hallmark_charges || 0))}</td>

@@ -109,6 +109,7 @@ export default function CreateInvoiceScreen({ navigation }: any) {
         applied_rate: calcItem.metalRate,
         gross_weight: calcItem.grossWeight,
         stone_weight: calcItem.stoneWeight,
+        net_weight: calcItem.netWeight,
         tanch_percentage: calcItem.touchPurity,
         wastage: calcItem.wastage,
         pure_weight: calcItem.fineWeight,
