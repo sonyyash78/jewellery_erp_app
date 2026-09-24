@@ -41,9 +41,9 @@ class Invoice(Base):
     # New Fields for Hybrid Settlement
     bill_type: Mapped[BillType] = mapped_column(Enum(BillType, values_callable=lambda obj: [e.value for e in obj]), default=BillType.CASH)
     settlement_type: Mapped[SettlementType] = mapped_column(Enum(SettlementType, values_callable=lambda obj: [e.value for e in obj]), default=SettlementType.CASH)
-    settlement_metal_type: Mapped[str] = mapped_column(String, nullable=True) # Gold or Silver (for old metal balance logic)
+    settlement_metal_type: Mapped[str] = mapped_column(String(50), nullable=True) # Gold or Silver (for old metal balance logic)
     metal_received_value: Mapped[float] = mapped_column(DECIMAL(12, 2), default=0.0)
-    metal_received_str: Mapped[str] = mapped_column(String, nullable=True)
+    metal_received_str: Mapped[str] = mapped_column(String(255), nullable=True)
     cash_received: Mapped[float] = mapped_column(DECIMAL(12, 2), default=0.0)
     balance_amount: Mapped[float] = mapped_column(DECIMAL(12, 2), default=0.0)
     balance_metal_weight: Mapped[float] = mapped_column(DECIMAL(12, 3), default=0.0)

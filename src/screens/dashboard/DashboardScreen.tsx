@@ -76,13 +76,15 @@ export default function DashboardScreen({ navigation }: any) {
       {/* Upcoming features list */}
       <View style={styles.menuList}>
         <Text style={styles.menuTitle}>Menu</Text>
-        {['Customers', 'Inventory', 'Billing', 'Purchases', 'Exchange', 'Settings'].map((item) => (
+        {['Customers', 'Suppliers', 'Inventory', 'Billing', 'Purchases', 'Exchange', 'Settings'].map((item) => (
           <TouchableOpacity 
             key={item} 
             style={styles.menuItem}
             onPress={() => {
               if (item === 'Customers') {
                 navigation.navigate('Customers');
+              } else if (item === 'Suppliers') {
+                navigation.navigate('Suppliers');
               } else if (item === 'Inventory') {
                 navigation.navigate('Inventory');
               } else if (item === 'Billing') {

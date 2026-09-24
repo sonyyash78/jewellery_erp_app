@@ -9,6 +9,8 @@ import LoginScreen from '../screens/auth/LoginScreen';
 import DashboardScreen from '../screens/dashboard/DashboardScreen';
 import CustomersScreen from '../screens/crm/CustomersScreen';
 import CustomerProfileScreen from '../screens/crm/CustomerProfileScreen';
+import SuppliersScreen from '../screens/crm/SuppliersScreen';
+import SupplierProfileScreen from '../screens/crm/SupplierProfileScreen';
 import InventoryScreen from '../screens/inventory/InventoryScreen';
 import BillingScreen from '../screens/billing/BillingScreen';
 import CreateInvoiceScreen from '../screens/billing/CreateInvoiceScreen';
@@ -80,6 +82,8 @@ export default function AppNavigator() {
             />
             <Stack.Screen name="Customers" component={CustomersScreen} options={{ title: 'Customers' }} />
             <Stack.Screen name="CustomerProfile" component={CustomerProfileScreen} options={{ title: 'Customer Profile' }} />
+            <Stack.Screen name="Suppliers" component={SuppliersScreen} options={{ title: 'Suppliers' }} />
+            <Stack.Screen name="SupplierProfile" component={SupplierProfileScreen} options={{ title: 'Supplier Profile' }} />
             <Stack.Screen name="Inventory" component={InventoryScreen} options={{ title: 'Inventory Stock' }} />
             <Stack.Screen name="Billing" component={BillingScreen} options={{ title: 'Billing & Invoices' }} />
             <Stack.Screen name="CreateInvoice" component={CreateInvoiceScreen} options={{ title: 'Create Invoice' }} />
