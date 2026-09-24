@@ -39,17 +39,10 @@ export default function InventoryScreen({ navigation }: any) {
   const totalWeight = items.reduce((acc, item) => acc + (item.net_weight || 0), 0);
 
   const renderItem = ({ item }: { item: any }) => {
-    let statusStyle = styles.statusSold;
-    let statusTextStyle = styles.statusTextSold;
-    
-    if (item.status === 'Available') {
-      statusStyle = styles.statusAvailable;
-      statusTextStyle = styles.statusTextAvailable;
-    } else if (item.status === 'Stock Low') {
-      statusStyle = styles.statusLow;
-      statusTextStyle = styles.statusTextLow;
-    }
-
+    const isAvailable = item.status === 'Available';
+    const isLowStock = item.status === 'Low Stock';
+    const statusBadgeStyle = isAvailable ? styles.statusAvailable : (isLowStock ? styles.statusLowStock : styles.statusSold);
+    const statusTextStyle = isAvailable ? styles.statusTextAvailable : (isLowStock ? styles.statusTextLowStock : styles.statusTextSold);
     const fineWt = (item.net_weight * (((item.tanch || 0) + (item.wastage || 0)) / 100)).toFixed(3);
     const purityText = item.purity ? `${item.metal} • ${item.purity}` : item.metal;
 
@@ -64,9 +57,9 @@ export default function InventoryScreen({ navigation }: any) {
         <View style={styles.infoContainer}>
           <View style={styles.rowHeader}>
             <Text style={styles.itemCode}>{item.item_code}</Text>
-            <View style={[styles.statusBadge, statusStyle]}>
+            <View style={[styles.statusBadge, statusBadgeStyle]}>
               <Text style={statusTextStyle}>
-                {item.status}
+                {item.status || 'Not Available'}
               </Text>
             </View>
           </View>
@@ -99,18 +92,18 @@ export default function InventoryScreen({ navigation }: any) {
           <View style={styles.summaryIconBox}>
             <Ionicons name="cube" size={20} color="#d4af37" />
           </View>
-          <View>
-            <Text style={styles.summaryLabel}>TOTAL ITEMS</Text>
-            <Text style={styles.summaryValue}>{totalItems}</Text>
+          <View style={{ flex: 1, flexShrink: 1 }}>
+            <Text style={styles.summaryLabel} numberOfLines={2}>TOTAL ITEMS</Text>
+            <Text style={styles.summaryValue} adjustsFontSizeToFit numberOfLines={1}>{totalItems}</Text>
           </View>
         </View>
         <View style={styles.summaryCard}>
           <View style={styles.summaryIconBox}>
             <Ionicons name="cube" size={20} color="#d4af37" />
           </View>
-          <View>
-            <Text style={styles.summaryLabel}>TOTAL WEIGHT (NET)</Text>
-            <Text style={styles.summaryValue}>{totalWeight.toFixed(3)}g</Text>
+          <View style={{ flex: 1, flexShrink: 1 }}>
+            <Text style={styles.summaryLabel} numberOfLines={2}>TOTAL WEIGHT (NET)</Text>
+            <Text style={styles.summaryValue} adjustsFontSizeToFit numberOfLines={1}>{totalWeight.toFixed(3)}g</Text>
           </View>
         </View>
       </View>
@@ -196,13 +189,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   summaryIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: 'rgba(212, 175, 55, 0.1)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 8,
   },
   summaryLabel: {
     color: '#888',
@@ -296,7 +289,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 8,
   },
   infoContainer: {
     flex: 1,
@@ -323,7 +316,16 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(34, 197, 94, 0.1)',
     borderColor: 'rgba(34, 197, 94, 0.3)',
   },
-  statusLow: { backgroundColor: 'rgba(234, 179, 8, 0.1)', borderColor: 'rgba(234, 179, 8, 0.3)' },
+
+  statusLowStock: {
+    backgroundColor: 'rgba(234, 179, 8, 0.1)',
+    borderColor: 'rgba(234, 179, 8, 0.3)',
+  },
+  statusTextLowStock: {
+    color: '#eab308',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
   statusSold: {
     backgroundColor: 'rgba(239, 68, 68, 0.1)',
     borderColor: 'rgba(239, 68, 68, 0.3)',
@@ -333,7 +335,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: 'bold',
   },
-  statusTextLow: { color: '#eab308', fontSize: 10, fontWeight: 'bold' },
   statusTextSold: {
     color: '#f87171',
     fontSize: 10,

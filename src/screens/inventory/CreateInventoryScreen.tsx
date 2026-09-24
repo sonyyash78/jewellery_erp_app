@@ -201,20 +201,18 @@ export default function CreateInventoryScreen({ navigation }: any) {
               <TextInput style={styles.input} placeholder="e.g. Tray 5" placeholderTextColor="#555" value={formData.shelf} onChangeText={(t) => setFormData({ ...formData, shelf: t })} />
             </View>
           </View>
-
-          <View style={{ marginBottom: 16 }}>
-            <Text style={styles.label}>STATUS</Text>
-            <View style={styles.radioGroup}>
-              <TouchableOpacity style={[styles.radio, formData.status === 'Available' && styles.radioActive]} onPress={() => setFormData({ ...formData, status: 'Available' })}>
-                <Text style={[styles.radioText, {fontSize: 12}]}>Available</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.radio, formData.status === 'Stock Low' && styles.radioActive]} onPress={() => setFormData({ ...formData, status: 'Stock Low' })}>
-                <Text style={[styles.radioText, {fontSize: 12}]}>Stock Low</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.radio, formData.status === 'Not Available' && styles.radioActive]} onPress={() => setFormData({ ...formData, status: 'Not Available' })}>
-                <Text style={[styles.radioText, {fontSize: 12}]}>Not Available</Text>
-              </TouchableOpacity>
-            </View>
+          
+          <Text style={styles.label}>STATUS</Text>
+          <View style={[styles.radioGroup, { marginBottom: 16 }]}>
+            <TouchableOpacity style={[styles.radio, formData.status === 'Available' && styles.radioActive]} onPress={() => setFormData({ ...formData, status: 'Available' })}>
+              <Text style={[styles.radioText, {fontSize: 11}]} numberOfLines={1}>Available</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.radio, formData.status === 'Low Stock' && styles.radioActive]} onPress={() => setFormData({ ...formData, status: 'Low Stock' })}>
+              <Text style={[styles.radioText, {fontSize: 11}]} numberOfLines={1}>Low Stock</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.radio, formData.status === 'Not Available' && styles.radioActive]} onPress={() => setFormData({ ...formData, status: 'Not Available' })}>
+              <Text style={[styles.radioText, {fontSize: 11}]} numberOfLines={1}>Not Available</Text>
+            </TouchableOpacity>
           </View>
           
           <Text style={styles.label}>DESCRIPTION</Text>
