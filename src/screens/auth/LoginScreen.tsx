@@ -14,12 +14,16 @@ export default function LoginScreen({ navigation }: any) {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
+  // Genuine Google OAuth Client ID
+  const GOOGLE_CLIENT_ID = '600695546964-a2qcg0vtcn4o15e7pma3msimvol3n4fr.apps.googleusercontent.com';
+
   // Initialize Google Auth Request
   const [request, response, promptAsync] = Google.useAuthRequest({
-    clientId: 'your-google-client-id.apps.googleusercontent.com',
-    webClientId: 'your-google-client-id.apps.googleusercontent.com',
-    androidClientId: 'your-android-client-id.apps.googleusercontent.com',
-    iosClientId: 'your-ios-client-id.apps.googleusercontent.com',
+    clientId: GOOGLE_CLIENT_ID,
+    webClientId: GOOGLE_CLIENT_ID,
+    androidClientId: GOOGLE_CLIENT_ID,
+    iosClientId: GOOGLE_CLIENT_ID,
+    scopes: ['profile', 'email'],
   });
 
   useEffect(() => {
