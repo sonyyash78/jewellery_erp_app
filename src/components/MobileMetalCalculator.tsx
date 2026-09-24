@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity } from 'react-native';
 
 interface ItemPayload {
@@ -356,7 +356,7 @@ const styles = StyleSheet.create({
   },
   purityRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   purityBtn: { borderWidth: 1, borderColor: '#444', borderRadius: 4, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: '#1a1a20' },
-  purityBtnActive: { borderColor: '#d4af37', backgroundColor: 'rgba(212,175,55,0.1)' },
+  purityBtnActive: { borderColor: '#d4af37', backgroundColor: 'rgba(212₹75,55,0.1)' },
   purityText: { color: '#888', fontSize: 11, fontWeight: 'bold' },
   purityTextActive: { color: '#d4af37' },
 
