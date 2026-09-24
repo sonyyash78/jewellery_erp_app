@@ -44,6 +44,24 @@ export default function CustomersScreen({ route, navigation }: any) {
     fetchCRMData(text);
   };
 
+
+  const formatAmount = (num: number) => {
+    if (!num) return '0';
+    const absNum = Math.abs(num);
+    let formatted = '';
+    if (absNum >= 10000000) {
+      formatted = (absNum / 10000000).toFixed(2) + 'Cr';
+    } else if (absNum >= 100000) {
+      formatted = (absNum / 100000).toFixed(2) + 'L';
+    } else if (absNum >= 1000) {
+      formatted = (absNum / 1000).toFixed(2) + 'K';
+    } else {
+      formatted = absNum.toFixed(2);
+    }
+    formatted = formatted.replace(/\.00([a-zA-Z]*)$/, '$1'); // clean up trailing .00
+    return (num < 0 ? '-' : '') + formatted;
+  };
+
   const totalCustomers = customers.length;
   const totalSuppliers = suppliers.length;
   const netOutstanding = customers.reduce((acc, c) => acc + (c.outstanding_balance || 0), 0);
