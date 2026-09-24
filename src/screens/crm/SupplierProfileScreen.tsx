@@ -27,23 +27,31 @@ const formatAmount = (num: number) => {
 };
 
 export default function SupplierProfileScreen({ route, navigation }: any) {
-  const { supplierId, supplierName, item } = route.params || {};
+  const params = route.params || {};
+  const supplierId = params.supplierId || params.id || params.SupplierId || params.item?.id;
+  const supplierName = params.supplierName || params.SupplierName || params.item?.name || (params.item?.first_name ? `${params.item.first_name} ${params.item.last_name || ''}`.trim() : '') || 'Supplier';
+  const item = params.item;
+
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [pdfGenerating, setPdfGenerating] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
-      fetchProfile();
-    }, [])
+      if (supplierId) fetchProfile();
+    }, [supplierId])
   );
 
   useEffect(() => {
-    navigation.setOptions({ title: 'Supplier Profile' });
-    fetchProfile();
-  }, [supplierId]);
+    navigation.setOptions({ title: `${supplierName} - Ledger` });
+    if (supplierId) fetchProfile();
+  }, [supplierId, supplierName]);
 
   const fetchProfile = async () => {
+    if (!supplierId) {
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
       const response = await axiosClient.get(`/sellers/${supplierId}/bills`);

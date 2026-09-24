@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TextInput, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { axiosClient } from '../../api/axiosClient';
 
@@ -47,7 +47,7 @@ export default function PurchasesScreen({ navigation }: any) {
       <View style={styles.cardBody}>
         <View>
           <Text style={styles.supplierName}>
-            {item.customer ? `${item.customer.first_name} ${item.customer.last_name || ''}`.trim() : 'Unknown Supplier'}
+            {item.customer ? (item.customer.name || `${item.customer.first_name || ''} ${item.customer.last_name || ''}`.trim() || 'Unknown Supplier') : 'Unknown Supplier'}
           </Text>
           <Text style={styles.phone}>{item.customer?.phone_number || '-'}</Text>
         </View>

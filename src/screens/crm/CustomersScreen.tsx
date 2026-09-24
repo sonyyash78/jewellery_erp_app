@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Alert, View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -144,12 +144,18 @@ export default function CustomersScreen({ route, navigation }: any) {
           </TouchableOpacity>
           <TouchableOpacity 
             style={[styles.actionBtn, styles.ledgerBtn]}
-            onPress={() => navigation.navigate(isCustomer ? 'CustomerProfile' : 'SupplierProfile', { 
-              customerId: item.id, 
-              supplierId: item.id, 
-              customerName: isCustomer ? `${item.first_name} ${item.last_name || ""}`.trim() : item.name, item: item,
-              supplierName: isCustomer ? `${item.first_name} ${item.last_name || ""}`.trim() : item.name
-            })}
+            onPress={() => {
+              const partyName = isCustomer 
+                ? `${item.first_name || ''} ${item.last_name || ''}`.trim() 
+                : (item.name || `${item.first_name || ''} ${item.last_name || ''}`).trim() || 'Supplier';
+              navigation.navigate(isCustomer ? 'CustomerProfile' : 'SupplierProfile', { 
+                customerId: item.id, 
+                supplierId: item.id, 
+                customerName: partyName, 
+                supplierName: partyName,
+                item: item
+              });
+            }}
           >
             <Text style={[styles.actionBtnText, {color: "#d4af37"}]}>LEDGER</Text>
           </TouchableOpacity>
