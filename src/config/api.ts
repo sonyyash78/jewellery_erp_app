@@ -6,7 +6,7 @@ export const ENV = {
   // API_BASE_URL: 'http://10.0.2.2:8000/api/v1',
   
   // Local Physical Device Testing (Requires same WiFi and Firewall OFF):
-  API_BASE_URL: 'http://192.168.1.35:8000/api/v1',
+  API_BASE_URL: 'http://192.168.1.36:8000/api/v1',
   
   // Internet Testing via Cloudflare Tunnel (RECOMMENDED):
   // 1. Run `cloudflared tunnel --url http://localhost:8000` on your PC
