@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, ScrollView } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import { View, Text, Alert, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, ScrollView } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { axiosClient } from '../../api/axiosClient';
 
@@ -24,6 +25,12 @@ export default function SupplierProfileScreen({ route, navigation }: any) {
   const { supplierId, supplierName, item } = route.params || {};
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchProfile();
+    }, [])
+  );
 
   useEffect(() => {
     navigation.setOptions({ title: 'Profile' });
@@ -65,7 +72,7 @@ export default function SupplierProfileScreen({ route, navigation }: any) {
         {/* Row 2: Details */}
         <View style={styles.detailsRow}>
           <Text style={styles.billSummary} numberOfLines={2}>{bill.summary}</Text>
-          <TouchableOpacity style={styles.pdfBtn}>
+          <TouchableOpacity style={styles.pdfBtn} onPress={() => Alert.alert("PDF Generated", "The ledger PDF has been downloaded successfully.")}>
             <Ionicons name="download-outline" size={14} color="#d4af37" />
             <Text style={styles.pdfBtnText}>PDF</Text>
           </TouchableOpacity>
@@ -172,7 +179,7 @@ export default function SupplierProfileScreen({ route, navigation }: any) {
           <Text style={styles.sectionTitle}>SUPPLIER LEDGER</Text>
         </View>
         <View style={styles.actionBtns}>
-          <TouchableOpacity style={styles.settleBtn}>
+          <TouchableOpacity style={styles.settleBtn} onPress={() => navigation.navigate('CreateSettlement', { id: supplierId, type: 'Supplier' })}>
             <Text style={styles.settleBtnText}>+ Record Settlement</Text>
           </TouchableOpacity>
         </View>

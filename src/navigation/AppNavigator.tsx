@@ -11,6 +11,7 @@ import CustomersScreen from '../screens/crm/CustomersScreen';
 import CustomerProfileScreen from '../screens/crm/CustomerProfileScreen';
 import SuppliersScreen from '../screens/crm/SuppliersScreen';
 import SupplierProfileScreen from '../screens/crm/SupplierProfileScreen';
+import CreateSettlementScreen from '../screens/crm/CreateSettlementScreen';
 import CreateCRMScreen from '../screens/crm/CreateCRMScreen';
 import InventoryScreen from '../screens/inventory/InventoryScreen';
 import CreateInventoryScreen from '../screens/inventory/CreateInventoryScreen';
@@ -90,6 +91,7 @@ export default function AppNavigator() {
             <Stack.Screen name="Suppliers" component={SuppliersScreen} options={{ title: 'Suppliers' }} />
             <Stack.Screen name="SupplierProfile" component={SupplierProfileScreen} options={{ title: 'Supplier Profile' }} />
             <Stack.Screen name="CreateCRM" component={CreateCRMScreen} options={{ title: 'Add Contact' }} />
+            <Stack.Screen name="CreateSettlement" component={CreateSettlementScreen} options={{ title: 'Record Settlement' }} />
             
             <Stack.Screen name="Inventory" component={InventoryScreen} options={{ title: 'Inventory Stock' }} />
             <Stack.Screen name="CreateInventory" component={CreateInventoryScreen} options={{ title: 'Add Item' }} />
