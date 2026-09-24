@@ -35,7 +35,7 @@ export default function CreateSettlementScreen({ route, navigation }: any) {
         silver_credit: parseFloat(formData.silver_credit) || 0,
       };
 
-      const endpoint = type === 'Customer' ? `/customers/${id}/ledger` : `/suppliers/${id}/ledger`;
+      const endpoint = type === 'Customer' ? `/customers/${id}/ledger` : `/sellers/${id}/ledger`;
       await axiosClient.post(endpoint, payload);
       
       Alert.alert('Success', 'Settlement recorded successfully!');

@@ -40,7 +40,7 @@ export default function SupplierProfileScreen({ route, navigation }: any) {
   const fetchProfile = async () => {
     try {
       setLoading(true);
-      const response = await axiosClient.get(`/suppliers/${supplierId}/bills`);
+      const response = await axiosClient.get(`/sellers/${supplierId}/bills`);
       setData(response.data);
     } catch (error) {
       console.log('Failed to fetch profile', error);

@@ -36,9 +36,9 @@ export default function CreateCRMScreen({ route, navigation }: any) {
           gst_number: formData.gst_number || undefined,
         };
         if (item && item.id) {
-          await axiosClient.put(`/suppliers/${item.id}`, payload);
+          await axiosClient.put(`/sellers/${item.id}`, payload);
         } else {
-          await axiosClient.post('/suppliers/', payload);
+          await axiosClient.post('/sellers/', payload);
         }
       } else {
         const payload = {

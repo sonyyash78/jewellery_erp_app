@@ -10,7 +10,7 @@ export default function SuppliersScreen({ navigation }: any) {
   const fetchSuppliers = async (searchQuery = '') => {
     try {
       setLoading(true);
-      const url = searchQuery ? `/suppliers/?search=${searchQuery}` : '/suppliers/';
+      const url = searchQuery ? `/sellers/?search=${searchQuery}` : '/sellers/';
       const response = await axiosClient.get(url);
       setSuppliers(response.data.items || []);
     } catch (error) {

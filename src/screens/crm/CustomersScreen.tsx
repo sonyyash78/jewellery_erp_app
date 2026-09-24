@@ -17,7 +17,7 @@ export default function CustomersScreen({ route, navigation }: any) {
     try {
       setLoading(true);
       const custUrl = searchQuery ? `/customers/?search=${searchQuery}` : '/customers/';
-      const suppUrl = searchQuery ? `/suppliers/?search=${searchQuery}` : '/suppliers/';
+      const suppUrl = searchQuery ? `/sellers/?search=${searchQuery}` : '/sellers/';
       
       const [custRes, suppRes] = await Promise.all([
         axiosClient.get(custUrl),
@@ -25,7 +25,7 @@ export default function CustomersScreen({ route, navigation }: any) {
       ]);
       
       setCustomers(custRes.data.items || []);
-      setSuppliers(Array.isArray(suppRes.data) ? suppRes.data : suppRes.data.items || []);
+      setSuppliers(suppRes.data.items || suppRes.data || []);
     } catch (error) {
       console.log('Failed to fetch CRM data', error);
     } finally {
@@ -84,7 +84,7 @@ export default function CustomersScreen({ route, navigation }: any) {
           style: 'destructive',
           onPress: async () => {
             try {
-              const endpoint = type === 'Customer' ? `/customers/${id}` : `/suppliers/${id}`;
+              const endpoint = type === 'Customer' ? `/customers/${id}` : `/sellers/${id}`;
               await axiosClient.delete(endpoint);
               fetchCRMData(search); // refresh list
             } catch (error) {
