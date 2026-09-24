@@ -100,7 +100,7 @@ export default function CustomersScreen({ route, navigation }: any) {
         <View style={styles.cardHeader}>
           <View style={styles.nameRow}>
             <Ionicons name="person-circle" size={24} color="#888" style={{ marginRight: 8 }} />
-            <Text style={styles.itemName}>{item.first_name} {item.last_name || ''}</Text>
+            <Text style={styles.itemName}>{isCustomer ? `${item.first_name} ${item.last_name || ''}` : item.name}</Text>
           </View>
           <Text style={styles.outstandingValue}>
             ₹ {formatAmount(item.outstanding_balance || 0)}
@@ -110,7 +110,7 @@ export default function CustomersScreen({ route, navigation }: any) {
         <View style={styles.detailsGrid}>
           <View style={styles.detailCol}>
             <Text style={styles.detailLabel}>CONTACT</Text>
-            <Text style={styles.detailValue}>{item.phone_number || 'N/A'}</Text>
+            <Text style={styles.detailValue}>{item.phone_number || item.mobile || 'N/A'}</Text>
           </View>
           <View style={styles.detailCol}>
             <Text style={styles.detailLabel}>CITY</Text>
@@ -141,8 +141,8 @@ export default function CustomersScreen({ route, navigation }: any) {
             onPress={() => navigation.navigate(isCustomer ? 'CustomerProfile' : 'SupplierProfile', { 
               customerId: item.id, 
               supplierId: item.id, 
-              customerName: `${item.first_name} ${item.last_name || ""}`.trim(),
-              supplierName: `${item.first_name} ${item.last_name || ""}`.trim()
+              customerName: isCustomer ? `${item.first_name} ${item.last_name || ""}`.trim() : item.name, item: item,
+              supplierName: isCustomer ? `${item.first_name} ${item.last_name || ""}`.trim() : item.name
             })}
           >
             <Text style={[styles.actionBtnText, {color: "#d4af37"}]}>LEDGER</Text>
