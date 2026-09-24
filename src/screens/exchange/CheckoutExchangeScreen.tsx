@@ -451,7 +451,17 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
 
         {/* METAL RECEIVED FROM CUSTOMER */}
         <View style={styles.card}>
-          <Text style={styles.sectionHeaderTitle}>METAL RECEIVED FROM CUSTOMER</Text>
+          <Text style={styles.sectionHeaderTitle}>ADDITIONAL METAL RECEIVED AT COUNTER (OPTIONAL)</Text>
+          {oldItemsRaw.length > 0 && (
+            <View style={{ backgroundColor: '#1e1b13', borderColor: '#d4af37', borderWidth: 1, borderRadius: 6, padding: 8, marginBottom: 10 }}>
+              <Text style={{ color: '#d4af37', fontSize: 11, fontWeight: '700' }}>
+                ✓ {oldItemsRaw.length} Old Item(s) already deposited from Cart (Total: ₹ {fmt(total_old_value)}).
+              </Text>
+              <Text style={{ color: '#888', fontSize: 10, marginTop: 2 }}>
+                Enter below ONLY if the customer is handing over extra / additional metal at checkout.
+              </Text>
+            </View>
+          )}
 
           {/* Gold Row */}
           <View style={styles.metalItemBlock}>
