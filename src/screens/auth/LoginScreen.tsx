@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
+import * as AuthSession from 'expo-auth-session';
 import { axiosClient } from '../../api/axiosClient';
 import { useAuthStore } from '../../store/authStore';
 
@@ -16,7 +17,6 @@ export default function LoginScreen({ navigation }: any) {
   const [googleLoading, setGoogleLoading] = useState(false);
 
   const GOOGLE_CLIENT_ID = '600695546964-a2qcg0vtcn4o15e7pma3msimvol3n4fr.apps.googleusercontent.com';
-  const REDIRECT_URI = 'https://auth.expo.io/@sonyyash78/jeweller-app';
 
   const handleGoogleLoginWithToken = async (idToken: string) => {
     setGoogleLoading(true);
@@ -47,9 +47,12 @@ export default function LoginScreen({ navigation }: any) {
   const handleGoogleSignInPress = async () => {
     try {
       setGoogleLoading(true);
-      const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(GOOGLE_CLIENT_ID)}&response_type=token%20id_token&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${encodeURIComponent('openid profile email')}&nonce=${Date.now()}&prompt=select_account`;
+      const redirectUri = AuthSession.makeRedirectUri({
+        scheme: 'jewellerapp',
+      });
+      const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(GOOGLE_CLIENT_ID)}&response_type=token%20id_token&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent('openid profile email')}&nonce=${Date.now()}&prompt=select_account`;
 
-      const result = await WebBrowser.openAuthSessionAsync(authUrl, REDIRECT_URI);
+      const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
 
       if (result.type === 'success' && result.url) {
         const url = result.url;
