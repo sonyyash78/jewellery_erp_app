@@ -283,6 +283,39 @@ export default function ReportsScreen() {
     }
   };
 
+  const handleDownloadFullDatabaseExcel = async () => {
+    try {
+      setExporting(true);
+      const baseUrl = axiosClient.defaults.baseURL || '';
+      const backupUrl = `${baseUrl.replace(/\/api\/v1\/?$/, '')}/api/v1/backup/all-tables-excel`;
+      const timestamp = new Date().toISOString().slice(0, 10);
+      const localFileUri = `${FileSystem.documentDirectory}jewellery_erp_all_tables_${timestamp}.xlsx`;
+
+      const downloadRes = await FileSystem.downloadAsync(backupUrl, localFileUri, {
+        headers: axiosClient.defaults.headers.common as Record<string, string>
+      });
+
+      if (downloadRes.status === 200) {
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(localFileUri, {
+            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            dialogTitle: 'Share Complete Database (All Tables Excel .xlsx)',
+            UTI: 'com.microsoft.excel.xlsx'
+          });
+        } else {
+          Alert.alert('Backup Saved', `All tables Excel workbook saved to:\n${localFileUri}`);
+        }
+      } else {
+        Alert.alert('Error', `Download failed with status ${downloadRes.status}`);
+      }
+    } catch (error) {
+      console.log('Master Excel backup error', error);
+      Alert.alert('Error', 'Failed to download Master Excel workbook.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const renderKPIs = () => {
     if (!data) {
       return (
@@ -357,11 +390,20 @@ export default function ReportsScreen() {
 
         <View style={styles.actionButtons}>
           <TouchableOpacity 
+            style={[styles.actionBtn, { borderColor: 'rgba(16, 185, 129, 0.5)', backgroundColor: 'rgba(16, 185, 129, 0.15)' }]} 
+            onPress={handleDownloadFullDatabaseExcel}
+            disabled={exporting}
+          >
+            <Ionicons name="cloud-download-outline" size={13} color="#10b981" />
+            <Text style={[styles.actionBtnText, { color: '#10b981' }]}>All DB</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
             style={[styles.actionBtn, { borderColor: 'rgba(34, 197, 94, 0.4)', backgroundColor: 'rgba(34, 197, 94, 0.12)' }]} 
             onPress={handleExportExcel}
             disabled={exporting}
           >
-            <Ionicons name="grid-outline" size={14} color="#22c55e" />
+            <Ionicons name="grid-outline" size={13} color="#22c55e" />
             <Text style={[styles.actionBtnText, { color: '#22c55e' }]}>Excel</Text>
           </TouchableOpacity>
 
@@ -370,7 +412,7 @@ export default function ReportsScreen() {
             onPress={handleSharePDF}
             disabled={exporting}
           >
-            <Ionicons name="document-text-outline" size={15} color="#ef4444" />
+            <Ionicons name="document-text-outline" size={14} color="#ef4444" />
             <Text style={[styles.actionBtnText, { color: '#ef4444' }]}>PDF</Text>
           </TouchableOpacity>
 
@@ -379,7 +421,7 @@ export default function ReportsScreen() {
             onPress={handlePrint}
             disabled={exporting}
           >
-            <Ionicons name="print-outline" size={15} color="#38bdf8" />
+            <Ionicons name="print-outline" size={14} color="#38bdf8" />
             <Text style={[styles.actionBtnText, { color: '#38bdf8' }]}>Print</Text>
           </TouchableOpacity>
         </View>

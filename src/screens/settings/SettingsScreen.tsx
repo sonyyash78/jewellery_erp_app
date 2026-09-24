@@ -19,6 +19,7 @@ export default function SettingsScreen() {
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [downloadingSingleExcel, setDownloadingSingleExcel] = useState(false);
   const [downloadingExcel, setDownloadingExcel] = useState(false);
   const [downloadingSql, setDownloadingSql] = useState(false);
 
@@ -64,6 +65,39 @@ export default function SettingsScreen() {
 
   const handleChange = (key: string, value: string) => {
     setSettings(prev => ({ ...prev, [key]: value }));
+  };
+
+  const handleDownloadSingleMasterExcel = async () => {
+    try {
+      setDownloadingSingleExcel(true);
+      const baseUrl = axiosClient.defaults.baseURL || '';
+      const backupUrl = `${baseUrl.replace(/\/api\/v1\/?$/, '')}/api/v1/backup/all-tables-excel`;
+      const timestamp = new Date().toISOString().slice(0, 10);
+      const localFileUri = `${FileSystem.documentDirectory}jewellery_erp_all_tables_${timestamp}.xlsx`;
+
+      const downloadRes = await FileSystem.downloadAsync(backupUrl, localFileUri, {
+        headers: axiosClient.defaults.headers.common as Record<string, string>
+      });
+
+      if (downloadRes.status === 200) {
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(localFileUri, {
+            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            dialogTitle: 'Share Complete Database (Master Excel .xlsx)',
+            UTI: 'com.microsoft.excel.xlsx'
+          });
+        } else {
+          Alert.alert('Backup Saved', `Master Excel workbook saved to:\n${localFileUri}`);
+        }
+      } else {
+        Alert.alert('Error', `Download failed with status ${downloadRes.status}`);
+      }
+    } catch (error) {
+      console.log('Master Excel backup error', error);
+      Alert.alert('Error', 'Failed to download Master Excel workbook.');
+    } finally {
+      setDownloadingSingleExcel(false);
+    }
   };
 
   const handleDownloadExcelBackup = async () => {
@@ -416,6 +450,24 @@ export default function SettingsScreen() {
 
         <View style={{ gap: 12, marginTop: 6 }}>
           <TouchableOpacity 
+            style={[styles.backupBtn, { borderColor: 'rgba(16, 185, 129, 0.5)', backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}
+            onPress={handleDownloadSingleMasterExcel}
+            disabled={downloadingSingleExcel}
+          >
+            {downloadingSingleExcel ? (
+              <ActivityIndicator color="#10b981" />
+            ) : (
+              <View style={styles.backupBtnContent}>
+                <Ionicons name="document-text-outline" size={20} color="#10b981" />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.backupBtnTitle, { color: '#10b981' }]}>Download All Tables (Master Excel .xlsx)</Text>
+                  <Text style={styles.backupBtnSub}>Single Excel workbook with all tables as separate sheet tabs (Best for Mobile)</Text>
+                </View>
+              </View>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity 
             style={[styles.backupBtn, { borderColor: 'rgba(34, 197, 94, 0.4)', backgroundColor: 'rgba(34, 197, 94, 0.12)' }]}
             onPress={handleDownloadExcelBackup}
             disabled={downloadingExcel}
@@ -427,7 +479,7 @@ export default function SettingsScreen() {
                 <Ionicons name="grid-outline" size={18} color="#22c55e" />
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.backupBtnTitle, { color: '#22c55e' }]}>Download Database Data (Excel ZIP)</Text>
-                  <Text style={styles.backupBtnSub}>Export all sales, purchases, inventory & customer tables as Excel sheets</Text>
+                  <Text style={styles.backupBtnSub}>Export all sales, purchases, inventory & customer tables as individual Excel files</Text>
                 </View>
               </View>
             )}
