@@ -32,6 +32,9 @@ export default function LoginScreen({ navigation }: any) {
     iosClientId: GOOGLE_CLIENT_ID,
     redirectUri,
     scopes: ['profile', 'email'],
+    extraParams: {
+      prompt: 'select_account',
+    },
   });
 
   useEffect(() => {
