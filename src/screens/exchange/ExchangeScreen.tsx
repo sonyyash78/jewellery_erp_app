@@ -1,4 +1,4 @@
-﻿import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { axiosClient } from '../../api/axiosClient';
 import { useFocusEffect } from '@react-navigation/native';
@@ -25,39 +25,63 @@ export default function ExchangeScreen({ navigation }: any) {
     }, [])
   );
 
-  const renderItem = ({ item }: any) => (
-    <TouchableOpacity 
-      style={styles.card} 
-      onPress={() => Alert.alert('Notice', 'Exchange Details feature coming soon!')}
-    >
-      <View style={styles.cardHeader}>
-        <Text style={styles.invoiceNo}>{item.exchange_no}</Text>
-        <Text style={styles.date}>{new Date(item.created_at).toLocaleDateString()}</Text>
-      </View>
-      <View style={styles.customerRow}>
-        <Text>👤</Text>
-        <Text style={styles.customerName}>
-          {item.customer?.first_name} {item.customer?.last_name || ''}
-        </Text>
-      </View>
-      <View style={styles.amountsRow}>
-        <View>
-          <Text style={styles.amountLabel}>Old Metal Value</Text>
-          <Text style={styles.amountValue}>₹ {(item.total_old_value || 0).toFixed(2)}</Text>
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return '-';
+    try {
+      const d = new Date(dateString);
+      if (isNaN(d.getTime())) return String(dateString);
+      return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    } catch {
+      return String(dateString);
+    }
+  };
+
+  const fmt = (n?: any) => {
+    const num = Number(n);
+    if (isNaN(num)) return '0.00';
+    return num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const renderItem = ({ item }: any) => {
+    const oldVal = Number(item.total_old_value || 0);
+    const newVal = Number(item.total_new_value || item.grand_total || 0);
+    const diff = Number(item.difference_amount || 0);
+    const custName = item.customer 
+      ? `${item.customer.first_name || ''} ${item.customer.last_name || ''}`.trim() || 'Walk-in Customer'
+      : 'Walk-in Customer';
+
+    return (
+      <TouchableOpacity 
+        style={styles.card} 
+        onPress={() => navigation.navigate('InvoiceDetail', { invoiceId: item.id, isExchange: true })}
+      >
+        <View style={styles.cardHeader}>
+          <Text style={styles.invoiceNo}>{item.exchange_no || item.invoice_number || `EXC-${item.id}`}</Text>
+          <Text style={styles.date}>{formatDate(item.invoice_date || item.created_at)}</Text>
         </View>
-        <View style={{ alignItems: 'flex-end' }}>
-          <Text style={styles.amountLabel}>New Items Value</Text>
-          <Text style={styles.amountValue}>₹ {(item.grand_total || 0).toFixed(2)}</Text>
+        <View style={styles.customerRow}>
+          <Text>👤</Text>
+          <Text style={styles.customerName}>{custName}</Text>
         </View>
-      </View>
-      <View style={styles.statusRow}>
-        <Text style={styles.statusLabel}>Difference (Customer Pays):</Text>
-        <Text style={[styles.statusText, { color: item.difference_amount > 0 ? '#ef4444' : '#4ade80' }]}>
-          ₹ {Math.abs(item.difference_amount).toFixed(2)}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
+        <View style={styles.amountsRow}>
+          <View>
+            <Text style={styles.amountLabel}>Old Metal Value</Text>
+            <Text style={styles.amountValue}>₹ {fmt(oldVal)}</Text>
+          </View>
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text style={styles.amountLabel}>New Items Value</Text>
+            <Text style={styles.amountValue}>₹ {fmt(newVal)}</Text>
+          </View>
+        </View>
+        <View style={styles.statusRow}>
+          <Text style={styles.statusLabel}>Difference ({diff >= 0 ? 'Customer Pays' : 'Shop Owes'}):</Text>
+          <Text style={[styles.statusText, { color: diff >= 0 ? '#ef4444' : '#4ade80' }]}>
+            ₹ {fmt(Math.abs(diff))}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View style={styles.container}>

@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { axiosClient } from '../../api/axiosClient';
 
@@ -79,26 +79,26 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
         
         <View style={styles.row}>
           <Text style={styles.label}>Total Old Value (From Customer):</Text>
-          <Text style={styles.value}>₹ {total_old_value.toFixed(2)}</Text>
+          <Text style={styles.value}>₹ {Number(total_old_value || 0).toFixed(2)}</Text>
         </View>
         <View style={styles.row}>
           <Text style={styles.label}>Total New Value (To Customer):</Text>
-          <Text style={styles.value}>₹ {total_new_value.toFixed(2)}</Text>
+          <Text style={styles.value}>₹ {Number(total_new_value || 0).toFixed(2)}</Text>
         </View>
         <View style={styles.row}>
           <Text style={styles.label}>GST on New Items (3%):</Text>
-          <Text style={styles.value}>₹ {gstAmount.toFixed(2)}</Text>
+          <Text style={styles.value}>₹ {Number(gstAmount || 0).toFixed(2)}</Text>
         </View>
         <View style={[styles.row, styles.grandTotalRow]}>
           <Text style={styles.grandTotalLabel}>Grand Total (New):</Text>
-          <Text style={styles.grandTotalValue}>₹ {grand_total.toFixed(2)}</Text>
+          <Text style={styles.grandTotalValue}>₹ {Number(grand_total || 0).toFixed(2)}</Text>
         </View>
         
         <View style={[styles.row, {marginTop: 24}]}>
           <Text style={styles.diffLabel}>Difference Amount:</Text>
-          <Text style={[styles.diffValue, { color: difference_amount > 0 ? '#ef4444' : '#4ade80' }]}>
-            {difference_amount > 0 ? 'Customer Pays: ' : 'We Pay Customer: '}
-            ₹ {Math.abs(difference_amount).toFixed(2)}
+          <Text style={[styles.diffValue, { color: (difference_amount || 0) > 0 ? '#ef4444' : '#4ade80' }]}>
+            {(difference_amount || 0) > 0 ? 'Customer Pays: ' : 'We Pay Customer: '}
+            ₹ {Number(Math.abs(difference_amount || 0)).toFixed(2)}
           </Text>
         </View>
       </View>

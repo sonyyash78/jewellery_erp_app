@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, FlatList, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { axiosClient } from '../../api/axiosClient';
 import MobileMetalCalculator from '../../components/MobileMetalCalculator';
@@ -212,7 +212,7 @@ export default function CreateExchangeScreen({ navigation }: any) {
                   <Text style={styles.cartItemType}>{item.item_type}</Text>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={styles.cartItemPrice}>₹{item.final_price.toFixed(2)}</Text>
+                  <Text style={styles.cartItemPrice}>₹{Number(item.final_price || 0).toFixed(2)}</Text>
                   <TouchableOpacity onPress={() => removeNewItem(idx)}>
                     <Text style={styles.removeText}>Remove</Text>
                   </TouchableOpacity>
@@ -233,7 +233,7 @@ export default function CreateExchangeScreen({ navigation }: any) {
                   <Text style={styles.cartItemType}>{item.item_type}</Text>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={[styles.cartItemPrice, { color: '#f97316' }]}>- ₹{item.final_price.toFixed(2)}</Text>
+                  <Text style={[styles.cartItemPrice, { color: '#f97316' }]}>- ₹{Number(item.final_price || 0).toFixed(2)}</Text>
                   <TouchableOpacity onPress={() => removeOldItem(idx)}>
                     <Text style={styles.removeText}>Remove</Text>
                   </TouchableOpacity>
@@ -248,16 +248,16 @@ export default function CreateExchangeScreen({ navigation }: any) {
           <View style={styles.totalsCard}>
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>New Items Total</Text>
-              <Text style={[styles.totalValue, { color: '#4ade80' }]}>₹{newTotal.toFixed(2)}</Text>
+              <Text style={[styles.totalValue, { color: '#4ade80' }]}>₹{Number(newTotal || 0).toFixed(2)}</Text>
             </View>
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Old Items Value</Text>
-              <Text style={[styles.totalValue, { color: '#f97316' }]}>- ₹{oldTotal.toFixed(2)}</Text>
+              <Text style={[styles.totalValue, { color: '#f97316' }]}>- ₹{Number(oldTotal || 0).toFixed(2)}</Text>
             </View>
             <View style={[styles.totalRow, styles.grandTotalRow]}>
               <Text style={styles.grandTotalLabel}>{payable >= 0 ? 'Customer Pays' : 'Shop Owes'}</Text>
               <Text style={[styles.grandTotalValue, payable < 0 && { color: '#ef4444' }]}>
-                ₹{Math.abs(payable).toFixed(2)}
+                ₹{Number(Math.abs(payable) || 0).toFixed(2)}
               </Text>
             </View>
           </View>

@@ -8,7 +8,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { generateInvoiceHtml } from '../../utils/invoicePdfUtils';
 
 export default function InvoiceDetailScreen({ route, navigation }: any) {
-  const { invoiceId } = route.params;
+  const { invoiceId, isExchange, isPurchase } = route.params;
   const [pdfData, setPdfData] = useState<any>(null);
   const [settings, setSettings] = useState<any>({});
   const [loading, setLoading] = useState(true);
@@ -21,8 +21,13 @@ export default function InvoiceDetailScreen({ route, navigation }: any) {
   const fetchInvoice = async () => {
     try {
       setLoading(true);
+      const endpoint = isExchange 
+        ? `/exchanges/${invoiceId}/pdf-data` 
+        : isPurchase 
+          ? `/purchases/${invoiceId}/pdf-data` 
+          : `/invoices/${invoiceId}/pdf-data`;
       const [invoiceRes, settingsRes] = await Promise.all([
-        axiosClient.get(`/invoices/${invoiceId}/pdf-data`),
+        axiosClient.get(endpoint),
         axiosClient.get('/settings/').catch(() => ({ data: {} })),
       ]);
       const fullPdfData = {
@@ -46,11 +51,12 @@ export default function InvoiceDetailScreen({ route, navigation }: any) {
   };
 
   const handleCancel = () => {
-    Alert.alert('Cancel Bill', 'Are you sure you want to cancel this bill? This will mark it as Cancelled and reverse inventory.', [
+    Alert.alert('Cancel Bill', 'Are you sure you want to cancel this bill?', [
       { text: 'No', style: 'cancel' },
       { text: 'Yes, Cancel', style: 'destructive', onPress: async () => {
         try {
-          await axiosClient.delete(`/invoices/${invoiceId}`);
+          const deleteEndpoint = isExchange ? `/exchanges/${invoiceId}` : isPurchase ? `/purchases/${invoiceId}` : `/invoices/${invoiceId}`;
+          await axiosClient.delete(deleteEndpoint);
           Alert.alert('Success', 'Bill cancelled successfully');
           navigation.goBack();
         } catch (error) {
