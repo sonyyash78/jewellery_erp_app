@@ -89,21 +89,21 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
 
     newItemsRaw.forEach((item: any) => {
       if (item.item_type === 'Gold') {
-        tgNew += (item.gold_calculation?.fine_weight || item.net_weight || 0);
-        if (!gr) gr = item.gold_calculation?.applied_rate || 0;
+        tgNew += (item.gold_calculation?.fine_weight || item.fine_weight || item.net_weight || 0);
+        if (!gr) gr = item.gold_calculation?.applied_rate || item.applied_rate || 0;
       } else if (item.item_type === 'Silver') {
-        tsNew += (item.silver_calculation?.pure_weight || item.net_weight || 0);
-        if (!sr) sr = item.silver_calculation?.applied_rate || 0;
+        tsNew += (item.silver_calculation?.pure_weight || item.fine_weight || item.net_weight || 0);
+        if (!sr) sr = item.silver_calculation?.applied_rate || item.applied_rate || 0;
       }
     });
 
     oldItemsRaw.forEach((item: any) => {
       if (item.item_type === 'Gold') {
-        tgOld += (item.gold_calculation?.fine_weight || item.net_weight || 0);
-        if (!gr) gr = item.gold_calculation?.applied_rate || 0;
+        tgOld += (item.gold_calculation?.fine_weight || item.fine_weight || item.net_weight || 0);
+        if (!gr) gr = item.gold_calculation?.applied_rate || item.applied_rate || 0;
       } else if (item.item_type === 'Silver') {
-        tsOld += (item.silver_calculation?.pure_weight || item.net_weight || 0);
-        if (!sr) sr = item.silver_calculation?.applied_rate || 0;
+        tsOld += (item.silver_calculation?.pure_weight || item.fine_weight || item.net_weight || 0);
+        if (!sr) sr = item.silver_calculation?.applied_rate || item.applied_rate || 0;
       }
     });
 
@@ -117,15 +117,11 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
     };
   }, [newItemsRaw, oldItemsRaw]);
 
-  // Required metal from customer
+  // Required metal difference from customer
   const goldRequired = Math.max(0, totalNewGoldFine - totalOldGoldFine);
   const silverRequired = Math.max(0, totalNewSilverFine - totalOldSilverFine);
 
-  const hasGold = totalNewGoldFine > 0 || totalOldGoldFine > 0 || goldRequired > 0;
-  const hasSilver = totalNewSilverFine > 0 || totalOldSilverFine > 0 || silverRequired > 0;
-
-  // Additional Metal Given by customer in Checkout (optional)
-  const [showExtraMetal, setShowExtraMetal] = useState(false);
+  // Additional Metal Given by customer in Checkout
   const [goldGiven, setGoldGiven] = useState('');
   const [goldGivenTanch, setGoldGivenTanch] = useState('100');
   const [silverGiven, setSilverGiven] = useState('');
@@ -155,83 +151,62 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
   const netDifference = grand_total - total_old_value;
   const monetaryBeforeCash = netDifference - totalAdditionalMetalValue;
   const parsedCash = parseFloat(cashReceived) || 0;
-  const remainingDue = monetaryBeforeCash - parsedCash;
+  const cashBalanceDue = Math.max(0, monetaryBeforeCash - parsedCash);
 
-  // Settlement Calculations
-  const isPositiveDue = remainingDue > 0.01;
-  const isNegativeDue = remainingDue < -0.01;
-  const isFullySettled = Math.abs(remainingDue) <= 0.01;
+  // Settlement Options (How to settle cash due)
+  // Option 2: Convert entire remaining cash balance to Gold Ledger
+  const cashToGoldGrams = goldRate > 0 ? (cashBalanceDue / (goldRate / 10)) : 0;
+  const cashDueAfterGold = 0;
 
-  // Positive Due: Customer owes shop
-  const cashToGoldGrams = goldRate > 0 ? (Math.max(0, remainingDue) / (goldRate / 10)) : 0;
-  const cashToSilverGrams = silverRate > 0 ? (Math.max(0, remainingDue) / (silverRate / 1000)) : 0;
+  // Option 3: Convert entire remaining cash balance to Silver Ledger
+  const cashToSilverGrams = silverRate > 0 ? (cashBalanceDue / (silverRate / 1000)) : 0;
+  const cashDueAfterSilver = 0;
 
+  // Option 4: Convert both metals (satisfy gold required first if any, remainder to silver)
   let bothGoldGrams = 0;
   let bothSilverGrams = 0;
-  if (isPositiveDue) {
-    if (goldRequired > 0 && goldRate > 0) {
-      const goldReqVal = goldRequired * (goldRate / 10);
-      if (remainingDue <= goldReqVal) {
-        bothGoldGrams = remainingDue / (goldRate / 10);
-        bothSilverGrams = 0;
-      } else {
-        bothGoldGrams = goldRequired;
-        const remCash = remainingDue - goldReqVal;
-        bothSilverGrams = silverRate > 0 ? (remCash / (silverRate / 1000)) : 0;
-      }
+  const remGoldReq = Math.max(0, goldRequired - fineGoldGiven);
+  if (remGoldReq > 0 && goldRate > 0) {
+    const goldReqVal = remGoldReq * (goldRate / 10);
+    if (cashBalanceDue <= goldReqVal) {
+      bothGoldGrams = cashBalanceDue / (goldRate / 10);
+      bothSilverGrams = 0;
     } else {
-      const halfCash = remainingDue / 2;
-      bothGoldGrams = goldRate > 0 ? (halfCash / (goldRate / 10)) : 0;
-      bothSilverGrams = silverRate > 0 ? (halfCash / (silverRate / 1000)) : 0;
+      bothGoldGrams = remGoldReq;
+      const remCash = cashBalanceDue - goldReqVal;
+      bothSilverGrams = silverRate > 0 ? (remCash / (silverRate / 1000)) : 0;
     }
+  } else {
+    // 50/50 split if no specific gold requirement
+    const halfCash = cashBalanceDue / 2;
+    bothGoldGrams = goldRate > 0 ? (halfCash / (goldRate / 10)) : 0;
+    bothSilverGrams = silverRate > 0 ? (halfCash / (silverRate / 1000)) : 0;
   }
-
-  // Negative Due: Shop owes customer (Refund / Credit)
-  const absRemaining = Math.abs(remainingDue);
-  const refundToGoldGrams = goldRate > 0 ? (absRemaining / (goldRate / 10)) : 0;
-  const refundToSilverGrams = silverRate > 0 ? (absRemaining / (silverRate / 1000)) : 0;
+  const cashDueAfterBoth = 0;
 
   let finalGoldDebt = 0;
   let finalSilverDebt = 0;
-  let finalBalanceAmount = remainingDue;
+  let finalBalanceAmount = cashBalanceDue;
 
-  if (isPositiveDue) {
-    if (cashBalanceAction === 'metal_gold') {
-      finalGoldDebt = cashToGoldGrams;
-      finalSilverDebt = 0;
-      finalBalanceAmount = 0;
-    } else if (cashBalanceAction === 'metal_silver') {
-      finalGoldDebt = 0;
-      finalSilverDebt = cashToSilverGrams;
-      finalBalanceAmount = 0;
-    } else if (cashBalanceAction === 'metal_both') {
-      finalGoldDebt = bothGoldGrams;
-      finalSilverDebt = bothSilverGrams;
-      finalBalanceAmount = 0;
-    } else {
-      finalGoldDebt = 0;
-      finalSilverDebt = 0;
-      finalBalanceAmount = remainingDue;
-    }
-  } else if (isNegativeDue) {
-    if (cashBalanceAction === 'metal_gold') {
-      finalGoldDebt = -refundToGoldGrams;
-      finalSilverDebt = 0;
-      finalBalanceAmount = 0;
-    } else if (cashBalanceAction === 'metal_silver') {
-      finalGoldDebt = 0;
-      finalSilverDebt = -refundToSilverGrams;
-      finalBalanceAmount = 0;
-    } else {
-      finalGoldDebt = 0;
-      finalSilverDebt = 0;
-      finalBalanceAmount = remainingDue;
-    }
+  if (cashBalanceAction === 'metal_gold') {
+    finalGoldDebt = cashToGoldGrams;
+    finalSilverDebt = 0;
+    finalBalanceAmount = cashDueAfterGold;
+  } else if (cashBalanceAction === 'metal_silver') {
+    finalGoldDebt = 0;
+    finalSilverDebt = cashToSilverGrams;
+    finalBalanceAmount = cashDueAfterSilver;
+  } else if (cashBalanceAction === 'metal_both') {
+    finalGoldDebt = bothGoldGrams;
+    finalSilverDebt = bothSilverGrams;
+    finalBalanceAmount = cashDueAfterBoth;
   } else {
     finalGoldDebt = 0;
     finalSilverDebt = 0;
-    finalBalanceAmount = 0;
+    finalBalanceAmount = cashBalanceDue;
   }
+
+  const isFullySettled = finalBalanceAmount < 0.01 && finalGoldDebt === 0 && finalSilverDebt === 0;
 
   const fmt = (n?: any) => {
     const num = Number(n);
@@ -350,7 +325,7 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
         difference_amount: monetaryBeforeCash,
 
         settlement_type: backendSettlementType,
-        balance_amount: finalBalanceAmount,
+        balance_amount: Math.max(0, finalBalanceAmount),
         gold_balance_metal_weight: finalGoldDebt,
         silver_balance_metal_weight: finalSilverDebt,
 
@@ -393,25 +368,29 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
     <View style={styles.container}>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
         
-        {/* Top Summary Card */}
+        {/* Top Summary Accordion / Card */}
         <View style={styles.card}>
-          <Text style={styles.cardHeaderTitle}>EXCHANGE SUMMARY</Text>
+          <Text style={styles.cardHeaderTitle}>Exchange Summary</Text>
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>New Items (To Customer):</Text>
+            <Text style={styles.summaryLabel}>Total Old Value (From Customer):</Text>
+            <Text style={[styles.summaryValue, { color: '#f97316' }]}>- ₹ {fmt(total_old_value)}</Text>
+          </View>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Total New Value (To Customer):</Text>
             <Text style={styles.summaryValue}>₹ {fmt(total_new_value)}</Text>
           </View>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>GST on New Items ({gstType === 'none' ? '0%' : '3%'}):</Text>
             <Text style={styles.summaryValue}>₹ {fmt(gstAmount)}</Text>
           </View>
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Old Items Deposited (Trade-in):</Text>
-            <Text style={[styles.summaryValue, { color: '#f97316' }]}>- ₹ {fmt(total_old_value)}</Text>
+          <View style={[styles.summaryRow, { marginTop: 4 }]}>
+            <Text style={[styles.summaryLabel, { color: '#d4af37', fontWeight: '700' }]}>Grand Total (New):</Text>
+            <Text style={[styles.summaryValue, { color: '#d4af37', fontWeight: '700' }]}>₹ {fmt(grand_total)}</Text>
           </View>
           <View style={[styles.summaryRow, styles.dividerRow]}>
-            <Text style={styles.grandTotalLabel}>Net Difference:</Text>
-            <Text style={[styles.grandTotalValue, { color: netDifference >= 0 ? '#d4af37' : '#4ade80' }]}>
-              {netDifference < 0 ? `- ₹ ${fmt(Math.abs(netDifference))}` : `₹ ${fmt(netDifference)}`}
+            <Text style={styles.grandTotalLabel}>Difference Amount:</Text>
+            <Text style={[styles.grandTotalValue, { color: netDifference >= 0 ? '#ef4444' : '#4ade80' }]}>
+              {netDifference >= 0 ? `Customer Pays: ₹ ${fmt(netDifference)}` : `Shop Pays: ₹ ${fmt(Math.abs(netDifference))}`}
             </Text>
           </View>
         </View>
@@ -441,143 +420,108 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
           </View>
         </View>
 
-        {/* METAL COMPARISON & CART SUMMARY */}
+        {/* METAL RECEIVED FROM CUSTOMER */}
         <View style={styles.card}>
-          <Text style={styles.sectionHeaderTitle}>METAL & TRADE-IN STATUS</Text>
+          <Text style={styles.sectionHeaderTitle}>METAL RECEIVED FROM CUSTOMER</Text>
 
-          {oldItemsRaw.length > 0 ? (
-            <View style={{ backgroundColor: '#18181b', padding: 10, borderRadius: 6, marginBottom: 10, borderWidth: 1, borderColor: '#333' }}>
-              <Text style={{ color: '#d4af37', fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
-                ✓ OLD ITEMS IN CART ({oldItemsRaw.length} Items):
+          {/* Gold Row */}
+          <View style={styles.metalItemBlock}>
+            <View style={styles.metalHeaderLine}>
+              <Text style={styles.metalRequiredTitle}>
+                GOLD REQUIRED @ ₹{goldRate.toLocaleString('en-IN')}/10G
               </Text>
-              <Text style={{ color: '#ccc', fontSize: 10, lineHeight: 16 }}>
-                Gold Fine: <Text style={{ color: '#eab308', fontWeight: '700' }}>{totalOldGoldFine.toFixed(3)}g</Text> | Silver Fine: <Text style={{ color: '#e2e8f0', fontWeight: '700' }}>{totalOldSilverFine.toFixed(3)}g</Text>{'\n'}
-                Total Trade-in Value: <Text style={{ color: '#4ade80', fontWeight: '700' }}>₹ {fmt(total_old_value)}</Text>
-              </Text>
+              <Text style={styles.metalRequiredGrams}>{goldRequired.toFixed(3)} g</Text>
             </View>
-          ) : (
-            <Text style={{ color: '#888', fontSize: 10, marginBottom: 10, fontStyle: 'italic' }}>
-              No old items entered in cart.
-            </Text>
-          )}
 
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
-            <View style={{ flex: 1, backgroundColor: '#1f1a10', padding: 8, borderRadius: 6, borderWidth: 1, borderColor: '#ca8a04' }}>
-              <Text style={{ color: '#ca8a04', fontSize: 9, fontWeight: '700' }}>GOLD REQUIREMENT</Text>
-              <Text style={{ color: '#eab308', fontSize: 14, fontWeight: '800', marginTop: 2 }}>{goldRequired.toFixed(3)} g</Text>
-              <Text style={{ color: '#888', fontSize: 8 }}>@ ₹{goldRate.toLocaleString('en-IN')}/10g</Text>
-            </View>
-            <View style={{ flex: 1, backgroundColor: '#181e24', padding: 8, borderRadius: 6, borderWidth: 1, borderColor: '#475569' }}>
-              <Text style={{ color: '#94a3b8', fontSize: 9, fontWeight: '700' }}>SILVER REQUIREMENT</Text>
-              <Text style={{ color: '#cbd5e1', fontSize: 14, fontWeight: '800', marginTop: 2 }}>{silverRequired.toFixed(3)} g</Text>
-              <Text style={{ color: '#888', fontSize: 8 }}>@ ₹{silverRate.toLocaleString('en-IN')}/kg</Text>
+            <View style={styles.gridRow}>
+              <View style={styles.gridCol}>
+                <Text style={styles.gridLabel}>GROSS GIVEN</Text>
+                <TextInput
+                  style={styles.gridInput}
+                  keyboardType="numeric"
+                  value={goldGiven}
+                  onChangeText={setGoldGiven}
+                  placeholder="0.000"
+                  placeholderTextColor="#666"
+                />
+              </View>
+              <View style={styles.gridCol}>
+                <Text style={styles.gridLabel}>TANCH %</Text>
+                <TextInput
+                  style={styles.gridInput}
+                  keyboardType="numeric"
+                  value={goldGivenTanch}
+                  onChangeText={setGoldGivenTanch}
+                  placeholder="100"
+                  placeholderTextColor="#666"
+                />
+              </View>
+              <View style={styles.gridCol}>
+                <Text style={styles.gridLabel}>FINE METAL</Text>
+                <Text style={styles.gridValGold}>{fineGoldGiven.toFixed(3)} g</Text>
+              </View>
+              <View style={styles.gridCol}>
+                <Text style={styles.gridLabel}>VALUE</Text>
+                <Text style={styles.gridValGreen}>₹ {fmt(goldValueGiven)}</Text>
+              </View>
             </View>
           </View>
 
-          {/* Toggle for Additional Metal given at checkout */}
-          <TouchableOpacity
-            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, paddingVertical: 6 }}
-            onPress={() => setShowExtraMetal(!showExtraMetal)}
-          >
-            <Text style={{ color: '#d4af37', fontSize: 11, fontWeight: '700' }}>
-              {showExtraMetal ? '▼ Hide Extra Metal Handed Over' : '+ Add Extra Metal Handed Over Right Now (Optional)'}
-            </Text>
-          </TouchableOpacity>
-
-          {showExtraMetal && (
-            <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#222' }}>
-              {/* Gold Extra */}
-              <View style={styles.metalItemBlock}>
-                <Text style={{ color: '#ca8a04', fontSize: 10, fontWeight: '700', marginBottom: 4 }}>EXTRA GOLD HANDED OVER</Text>
-                <View style={styles.gridRow}>
-                  <View style={styles.gridCol}>
-                    <Text style={styles.gridLabel}>GROSS GIVEN</Text>
-                    <TextInput
-                      style={styles.gridInput}
-                      keyboardType="numeric"
-                      value={goldGiven}
-                      onChangeText={setGoldGiven}
-                      placeholder="0.000"
-                      placeholderTextColor="#666"
-                    />
-                  </View>
-                  <View style={styles.gridCol}>
-                    <Text style={styles.gridLabel}>TANCH %</Text>
-                    <TextInput
-                      style={styles.gridInput}
-                      keyboardType="numeric"
-                      value={goldGivenTanch}
-                      onChangeText={setGoldGivenTanch}
-                      placeholder="100"
-                      placeholderTextColor="#666"
-                    />
-                  </View>
-                  <View style={styles.gridCol}>
-                    <Text style={styles.gridLabel}>FINE METAL</Text>
-                    <Text style={styles.gridValGold}>{fineGoldGiven.toFixed(3)} g</Text>
-                  </View>
-                  <View style={styles.gridCol}>
-                    <Text style={styles.gridLabel}>VALUE</Text>
-                    <Text style={styles.gridValGreen}>₹ {fmt(goldValueGiven)}</Text>
-                  </View>
-                </View>
-              </View>
-
-              {/* Silver Extra */}
-              <View style={[styles.metalItemBlock, { marginTop: 8 }]}>
-                <Text style={{ color: '#94a3b8', fontSize: 10, fontWeight: '700', marginBottom: 4 }}>EXTRA SILVER HANDED OVER</Text>
-                <View style={styles.gridRow}>
-                  <View style={styles.gridCol}>
-                    <Text style={styles.gridLabel}>GROSS GIVEN</Text>
-                    <TextInput
-                      style={styles.gridInput}
-                      keyboardType="numeric"
-                      value={silverGiven}
-                      onChangeText={setSilverGiven}
-                      placeholder="0.000"
-                      placeholderTextColor="#666"
-                    />
-                  </View>
-                  <View style={styles.gridCol}>
-                    <Text style={styles.gridLabel}>TANCH %</Text>
-                    <TextInput
-                      style={styles.gridInput}
-                      keyboardType="numeric"
-                      value={silverGivenTanch}
-                      onChangeText={setSilverGivenTanch}
-                      placeholder="100"
-                      placeholderTextColor="#666"
-                    />
-                  </View>
-                  <View style={styles.gridCol}>
-                    <Text style={styles.gridLabel}>FINE METAL</Text>
-                    <Text style={styles.gridValSilver}>{fineSilverGiven.toFixed(3)} g</Text>
-                  </View>
-                  <View style={styles.gridCol}>
-                    <Text style={styles.gridLabel}>VALUE</Text>
-                    <Text style={styles.gridValGreen}>₹ {fmt(silverValueGiven)}</Text>
-                  </View>
-                </View>
-              </View>
-            </View>
-          )}
-
-          {/* Cash Received Input */}
-          <View style={[styles.cashSectionRow, { marginTop: 12, borderTopWidth: 1, borderTopColor: '#222', paddingTop: 10 }]}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.gridLabel}>NET DIFFERENCE (AFTER METAL)</Text>
-              <Text style={[styles.monetaryAmountText, { color: monetaryBeforeCash >= 0 ? '#d4af37' : '#4ade80' }]}>
-                {monetaryBeforeCash < 0 ? `- ₹ ${fmt(Math.abs(monetaryBeforeCash))}` : `₹ ${fmt(monetaryBeforeCash)}`}
+          {/* Silver Row */}
+          <View style={[styles.metalItemBlock, { borderTopWidth: 1, borderTopColor: '#222', paddingTop: 12, marginTop: 12 }]}>
+            <View style={styles.metalHeaderLine}>
+              <Text style={styles.metalRequiredTitle}>
+                SILVER REQUIRED @ ₹{silverRate.toLocaleString('en-IN')}/KG
               </Text>
-              {totalAdditionalMetalValue > 0 && (
-                <Text style={styles.monetarySubText}>
-                  ₹{fmt(netDifference)} − ₹{fmt(totalAdditionalMetalValue)} extra metal
-                </Text>
-              )}
+              <Text style={styles.metalRequiredGrams}>{silverRequired.toFixed(3)} g</Text>
+            </View>
+
+            <View style={styles.gridRow}>
+              <View style={styles.gridCol}>
+                <Text style={styles.gridLabel}>GROSS GIVEN</Text>
+                <TextInput
+                  style={styles.gridInput}
+                  keyboardType="numeric"
+                  value={silverGiven}
+                  onChangeText={setSilverGiven}
+                  placeholder="0.000"
+                  placeholderTextColor="#666"
+                />
+              </View>
+              <View style={styles.gridCol}>
+                <Text style={styles.gridLabel}>TANCH %</Text>
+                <TextInput
+                  style={styles.gridInput}
+                  keyboardType="numeric"
+                  value={silverGivenTanch}
+                  onChangeText={setSilverGivenTanch}
+                  placeholder="100"
+                  placeholderTextColor="#666"
+                />
+              </View>
+              <View style={styles.gridCol}>
+                <Text style={styles.gridLabel}>FINE METAL</Text>
+                <Text style={styles.gridValSilver}>{fineSilverGiven.toFixed(3)} g</Text>
+              </View>
+              <View style={styles.gridCol}>
+                <Text style={styles.gridLabel}>VALUE</Text>
+                <Text style={styles.gridValGreen}>₹ {fmt(silverValueGiven)}</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Monetary Balance & Cash Received */}
+          <View style={styles.cashSectionRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.gridLabel}>MONETARY BALANCE (AFTER METAL)</Text>
+              <Text style={styles.monetaryAmountText}>₹ {fmt(monetaryBeforeCash)}</Text>
+              <Text style={styles.monetarySubText}>
+                ₹{fmt(netDifference)} − ₹{fmt(totalAdditionalMetalValue)} metal
+              </Text>
             </View>
 
             <View style={{ flex: 1 }}>
-              <Text style={[styles.gridLabel, { color: '#4ade80' }]}>CASH / ONLINE PAID</Text>
+              <Text style={[styles.gridLabel, { color: '#4ade80' }]}>CASH RECEIVED</Text>
               <TextInput
                 style={styles.cashInput}
                 keyboardType="numeric"
@@ -604,27 +548,24 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
           </View>
         </View>
 
-        {/* FINAL SETTLEMENT SUMMARY & 4 OPTIONS */}
+        {/* FINAL SETTLEMENT SUMMARY */}
         <View style={styles.settlementSummaryCard}>
           <Text style={styles.settlementSummaryTitle}>FINAL SETTLEMENT SUMMARY</Text>
 
           <View style={styles.finalCashDueBox}>
-            <Text style={styles.finalCashDueLabel}>
-              {isNegativeDue ? 'Shop Refund Due to Customer:' : 'Remaining Cash Due:'}
-            </Text>
-            <Text style={[styles.finalCashDueValue, { color: isNegativeDue ? '#4ade80' : (finalBalanceAmount > 0 ? '#ef4444' : '#4ade80') }]}>
-              {isNegativeDue ? `₹ ${fmt(Math.abs(finalBalanceAmount))}` : `₹ ${fmt(Math.max(0, finalBalanceAmount))}`}
+            <Text style={styles.finalCashDueLabel}>Final Cash Due:</Text>
+            <Text style={[styles.finalCashDueValue, { color: finalBalanceAmount > 0 ? '#ef4444' : '#4ade80' }]}>
+              ₹ {fmt(Math.abs(finalBalanceAmount))}
             </Text>
           </View>
 
-          {/* If Customer owes Shop money (Positive Due) */}
-          {isPositiveDue && (
+          {cashBalanceDue > 0 && (
             <View style={{ marginTop: 12 }}>
               <Text style={styles.settleChoicePrompt}>
-                HOW TO SETTLE THE ₹ {fmt(remainingDue)} REMAINING DUE?
+                HOW TO SETTLE THE ₹ {fmt(cashBalanceDue)} CASH DUE?
               </Text>
 
-              {/* Option 1: Cash Due */}
+              {/* Option 1 */}
               <TouchableOpacity
                 style={[styles.settleOptionBox, cashBalanceAction === 'cash' && styles.settleOptionBoxActive]}
                 onPress={() => setCashBalanceAction('cash')}
@@ -632,13 +573,12 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
                 <View style={[styles.radioCircle, cashBalanceAction === 'cash' && styles.radioCircleActive]}>
                   {cashBalanceAction === 'cash' && <View style={styles.radioInner} />}
                 </View>
-                <View>
-                  <Text style={styles.settleOptionText}>Keep as Cash Due</Text>
-                  <Text style={{ color: '#aaa', fontSize: 9 }}>Customer owes ₹ {fmt(remainingDue)} in cash</Text>
-                </View>
+                <Text style={styles.settleOptionText}>
+                  Keep as Cash Due — pay ₹ {fmt(cashBalanceDue)} later
+                </Text>
               </TouchableOpacity>
 
-              {/* Option 2: Gold Ledger */}
+              {/* Option 2 (Gold) */}
               <TouchableOpacity
                 style={[styles.settleOptionBox, cashBalanceAction === 'metal_gold' && styles.settleOptionBoxActive]}
                 onPress={() => setCashBalanceAction('metal_gold')}
@@ -647,14 +587,14 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
                   {cashBalanceAction === 'metal_gold' && <View style={styles.radioInner} />}
                 </View>
                 <View>
-                  <Text style={styles.settleOptionText}>Convert to Gold Ledger</Text>
+                  <Text style={styles.settleOptionText}>Convert Metal to Gold Ledger</Text>
                   <Text style={styles.settleOptionSubGold}>
-                    +{cashToGoldGrams.toFixed(3)} g Fine Gold | ₹ 0.00 Cash Due
+                    +{cashToGoldGrams.toFixed(3)} g Gold | ₹ {fmt(cashDueAfterGold)} Cash Due
                   </Text>
                 </View>
               </TouchableOpacity>
 
-              {/* Option 3: Silver Ledger */}
+              {/* Option 3 (Silver) */}
               <TouchableOpacity
                 style={[styles.settleOptionBox, cashBalanceAction === 'metal_silver' && styles.settleOptionBoxActive]}
                 onPress={() => setCashBalanceAction('metal_silver')}
@@ -663,14 +603,14 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
                   {cashBalanceAction === 'metal_silver' && <View style={styles.radioInner} />}
                 </View>
                 <View>
-                  <Text style={styles.settleOptionText}>Convert to Silver Ledger</Text>
+                  <Text style={styles.settleOptionText}>Convert Metal to Silver Ledger</Text>
                   <Text style={styles.settleOptionSubSilver}>
-                    +{cashToSilverGrams.toFixed(3)} g Silver | ₹ 0.00 Cash Due
+                    +{cashToSilverGrams.toFixed(3)} g Silver | ₹ {fmt(cashDueAfterSilver)} Cash Due
                   </Text>
                 </View>
               </TouchableOpacity>
 
-              {/* Option 4: Both Ledgers */}
+              {/* Option 4 (Both) */}
               <TouchableOpacity
                 style={[styles.settleOptionBox, cashBalanceAction === 'metal_both' && styles.settleOptionBoxActive]}
                 onPress={() => setCashBalanceAction('metal_both')}
@@ -681,71 +621,10 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
                 <View>
                   <Text style={styles.settleOptionText}>Convert Both Metals to Ledgers</Text>
                   <Text style={styles.settleOptionSubGold}>
-                    Gold: +{bothGoldGrams.toFixed(3)} g | Silver: +{bothSilverGrams.toFixed(3)} g | ₹ 0.00 Cash Due
+                    Gold: +{bothGoldGrams.toFixed(3)} g | Silver: +{bothSilverGrams.toFixed(3)} g | ₹ {fmt(cashDueAfterBoth)} Cash Due
                   </Text>
                 </View>
               </TouchableOpacity>
-            </View>
-          )}
-
-          {/* If Shop owes Customer (Negative Due) */}
-          {isNegativeDue && (
-            <View style={{ marginTop: 12 }}>
-              <Text style={[styles.settleChoicePrompt, { color: '#4ade80' }]}>
-                EXCESS METAL DEPOSITED: REFUND OR CREDIT TO CUSTOMER (₹ {fmt(absRemaining)})
-              </Text>
-
-              {/* Refund Option 1: Cash Refund */}
-              <TouchableOpacity
-                style={[styles.settleOptionBox, cashBalanceAction === 'cash' && styles.settleOptionBoxActive]}
-                onPress={() => setCashBalanceAction('cash')}
-              >
-                <View style={[styles.radioCircle, cashBalanceAction === 'cash' && styles.radioCircleActive]}>
-                  {cashBalanceAction === 'cash' && <View style={styles.radioInner} />}
-                </View>
-                <View>
-                  <Text style={styles.settleOptionText}>Refund in Cash</Text>
-                  <Text style={{ color: '#4ade80', fontSize: 9 }}>Shop pays ₹ {fmt(absRemaining)} cash refund</Text>
-                </View>
-              </TouchableOpacity>
-
-              {/* Refund Option 2: Gold Credit */}
-              <TouchableOpacity
-                style={[styles.settleOptionBox, cashBalanceAction === 'metal_gold' && styles.settleOptionBoxActive]}
-                onPress={() => setCashBalanceAction('metal_gold')}
-              >
-                <View style={[styles.radioCircle, cashBalanceAction === 'metal_gold' && styles.radioCircleActive]}>
-                  {cashBalanceAction === 'metal_gold' && <View style={styles.radioInner} />}
-                </View>
-                <View>
-                  <Text style={styles.settleOptionText}>Credit to Gold Ledger</Text>
-                  <Text style={styles.settleOptionSubGold}>
-                    +{refundToGoldGrams.toFixed(3)} g Fine Gold credit to customer
-                  </Text>
-                </View>
-              </TouchableOpacity>
-
-              {/* Refund Option 3: Silver Credit */}
-              <TouchableOpacity
-                style={[styles.settleOptionBox, cashBalanceAction === 'metal_silver' && styles.settleOptionBoxActive]}
-                onPress={() => setCashBalanceAction('metal_silver')}
-              >
-                <View style={[styles.radioCircle, cashBalanceAction === 'metal_silver' && styles.radioCircleActive]}>
-                  {cashBalanceAction === 'metal_silver' && <View style={styles.radioInner} />}
-                </View>
-                <View>
-                  <Text style={styles.settleOptionText}>Credit to Silver Ledger</Text>
-                  <Text style={styles.settleOptionSubSilver}>
-                    +{refundToSilverGrams.toFixed(3)} g Silver credit to customer
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {isFullySettled && (
-            <View style={{ backgroundColor: '#052e16', padding: 10, borderRadius: 6, marginTop: 10, alignItems: 'center' }}>
-              <Text style={{ color: '#4ade80', fontWeight: '800', fontSize: 12 }}>✔ ALL DUES FULLY SETTLED</Text>
             </View>
           )}
         </View>
@@ -800,7 +679,7 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
             {submitting ? (
               <ActivityIndicator color="#000" size="small" />
             ) : (
-              <Text style={styles.savePrintBtnText}>✓ SAVE & PRINT</Text>
+              <Text style={styles.savePrintBtnText}>SAVE & PRINT</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -808,66 +687,81 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
       </ScrollView>
 
       {/* Customer Picker Modal */}
-      <Modal visible={showCustomerModal} animationType="slide" transparent={true}>
+      <Modal visible={showCustomerModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Select Customer</Text>
-            <TouchableOpacity style={styles.addNewCustModalBtn} onPress={() => { setShowCustomerModal(false); setShowAddCustomerModal(true); }}>
-              <Text style={styles.addNewCustModalBtnText}>+ Add New Customer</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.customerOptionItem} onPress={() => { setSelectedCustomer(null); setShowCustomerModal(false); }}>
-              <Text style={styles.customerOptionText}>-- Walk-in Customer --</Text>
-            </TouchableOpacity>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Customer</Text>
+              <TouchableOpacity onPress={() => setShowCustomerModal(false)}>
+                <Text style={styles.modalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
             <FlatList
               data={customers}
-              keyExtractor={(item) => item.id.toString()}
+              keyExtractor={(item) => String(item.id)}
               renderItem={({ item }) => (
                 <TouchableOpacity
-                  style={styles.customerOptionItem}
+                  style={[
+                    styles.customerItem,
+                    selectedCustomer?.id === item.id && styles.customerItemActive
+                  ]}
                   onPress={() => {
                     setSelectedCustomer(item);
                     setShowCustomerModal(false);
                   }}
                 >
-                  <Text style={styles.customerOptionText}>
-                    {item.first_name} {item.last_name || ''} ({item.phone_number})
+                  <Text style={styles.customerName}>
+                    {item.first_name} {item.last_name || ''}
                   </Text>
+                  <Text style={styles.customerPhone}>{item.phone_number}</Text>
                 </TouchableOpacity>
               )}
             />
-            <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setShowCustomerModal(false)}>
-              <Text style={styles.modalCloseText}>Cancel</Text>
-            </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
       {/* Add New Customer Modal */}
-      <Modal visible={showAddCustomerModal} animationType="fade" transparent={true}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+      <Modal visible={showAddCustomerModal} transparent animationType="slide">
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Add New Customer</Text>
-            <TextInput
-              style={styles.inputModal}
-              placeholder="First Name"
-              placeholderTextColor="#888"
-              value={newCustomerFirstName}
-              onChangeText={setNewCustomerFirstName}
-            />
-            <TextInput
-              style={styles.inputModal}
-              placeholder="Mobile Number (10 digits)"
-              placeholderTextColor="#888"
-              keyboardType="phone-pad"
-              value={newCustomerPhone}
-              onChangeText={setNewCustomerPhone}
-            />
-            <View style={{ flexDirection: 'row', gap: 12, marginTop: 16 }}>
-              <TouchableOpacity style={[styles.modalActionBtn, { backgroundColor: '#333' }]} onPress={() => setShowAddCustomerModal(false)}>
-                <Text style={styles.modalActionBtnText}>Cancel</Text>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Add New Customer</Text>
+              <TouchableOpacity onPress={() => setShowAddCustomerModal(false)}>
+                <Text style={styles.modalCloseText}>✕</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalActionBtn, { backgroundColor: '#d4af37' }]} onPress={handleAddNewCustomer}>
-                <Text style={[styles.modalActionBtnText, { color: '#000' }]}>Save</Text>
+            </View>
+
+            <View style={{ padding: 16 }}>
+              <Text style={styles.inputLabel}>Name *</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={newCustomerFirstName}
+                onChangeText={setNewCustomerFirstName}
+                placeholder="Enter customer name"
+                placeholderTextColor="#666"
+              />
+
+              <Text style={[styles.inputLabel, { marginTop: 12 }]}>Mobile Number *</Text>
+              <TextInput
+                style={styles.modalInput}
+                keyboardType="phone-pad"
+                value={newCustomerPhone}
+                onChangeText={setNewCustomerPhone}
+                placeholder="10-digit mobile number"
+                placeholderTextColor="#666"
+                maxLength={10}
+              />
+
+              <TouchableOpacity
+                style={styles.addCustomerSubmitBtn}
+                onPress={handleAddNewCustomer}
+              >
+                <Text style={styles.addCustomerSubmitBtnText}>Add & Select Customer</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -879,225 +773,464 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0e1017' },
+  container: {
+    flex: 1,
+    backgroundColor: '#0a0a0c',
+  },
   card: {
-    backgroundColor: '#151922',
-    borderRadius: 8,
+    backgroundColor: '#121216',
+    borderRadius: 10,
     padding: 14,
     marginBottom: 14,
     borderWidth: 1,
-    borderColor: '#222a38'
+    borderColor: '#222',
   },
-  cardHeaderTitle: { color: '#d4af37', fontSize: 13, fontWeight: '800', letterSpacing: 0.5, marginBottom: 10 },
-  sectionHeaderTitle: { color: '#cbd5e1', fontSize: 11.5, fontWeight: '800', letterSpacing: 0.5, marginBottom: 10 },
-  
-  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
-  summaryLabel: { color: '#94a3b8', fontSize: 13 },
-  summaryValue: { color: '#f8fafc', fontSize: 13, fontWeight: '700' },
-  dividerRow: { borderTopWidth: 1, borderTopColor: '#222a38', paddingTop: 8, marginTop: 4 },
-  grandTotalLabel: { color: '#d4af37', fontSize: 15, fontWeight: '800' },
-  grandTotalValue: { fontSize: 16, fontWeight: '900' },
-
-  gstOptionsRow: { flexDirection: 'row', gap: 8 },
+  cardHeaderTitle: {
+    color: '#d4af37',
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    marginBottom: 10,
+  },
+  sectionHeaderTitle: {
+    color: '#d4af37',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    marginBottom: 10,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  summaryLabel: {
+    color: '#aaa',
+    fontSize: 12,
+  },
+  summaryValue: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  dividerRow: {
+    borderTopWidth: 1,
+    borderTopColor: '#26262e',
+    paddingTop: 8,
+    marginTop: 4,
+  },
+  grandTotalLabel: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  grandTotalValue: {
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  gstOptionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
   gstOptionBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#10141d',
-    paddingVertical: 10,
-    paddingHorizontal: 8,
+    padding: 8,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: '#222a38'
+    borderColor: '#333',
+    backgroundColor: '#18181f',
   },
-  gstOptionBtnActive: { borderColor: '#d4af37', backgroundColor: '#1c2331' },
-  gstOptionText: { color: '#94a3b8', fontSize: 10.5, fontWeight: '600' },
-  gstOptionTextActive: { color: '#f8fafc', fontWeight: '700' },
-
+  gstOptionBtnActive: {
+    borderColor: '#d4af37',
+    backgroundColor: 'rgba(212, 175, 55, 0.1)',
+  },
   radioCircle: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
     borderWidth: 1.5,
-    borderColor: '#64748b',
+    borderColor: '#666',
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
+    marginRight: 6,
   },
-  radioCircleActive: { borderColor: '#d4af37' },
-  radioInner: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#d4af37' },
-
-  metalItemBlock: { marginBottom: 6 },
-  metalHeaderLine: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  metalRequiredTitle: { color: '#fbbf24', fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
-  metalRequiredGrams: { color: '#f8fafc', fontSize: 13, fontWeight: '900' },
-
-  gridRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
-  gridCol: { flex: 1 },
-  gridLabel: { color: '#64748b', fontSize: 9.5, fontWeight: '700', letterSpacing: 0.5, marginBottom: 4 },
-  gridInput: {
-    backgroundColor: '#0a0d14',
-    color: '#f8fafc',
-    borderWidth: 1,
-    borderColor: '#2b3548',
-    borderRadius: 5,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
+  radioCircleActive: {
+    borderColor: '#d4af37',
+  },
+  radioInner: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#d4af37',
+  },
+  gstOptionText: {
+    color: '#aaa',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  gstOptionTextActive: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+  metalItemBlock: {
+    marginBottom: 4,
+  },
+  metalHeaderLine: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  metalRequiredTitle: {
+    color: '#d4af37',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  metalRequiredGrams: {
+    color: '#fff',
     fontSize: 13,
-    fontWeight: '700'
+    fontWeight: '800',
   },
-  gridValGold: { color: '#fbbf24', fontSize: 13, fontWeight: '800', paddingTop: 6 },
-  gridValSilver: { color: '#e2e8f0', fontSize: 13, fontWeight: '800', paddingTop: 6 },
-  gridValGreen: { color: '#4ade80', fontSize: 13, fontWeight: '800', paddingTop: 6 },
-
+  gridRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  gridCol: {
+    flex: 1,
+  },
+  gridLabel: {
+    color: '#777',
+    fontSize: 9,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  gridInput: {
+    backgroundColor: '#1c1c24',
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 6,
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    textAlign: 'center',
+  },
+  gridValGold: {
+    color: '#f59e0b',
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 6,
+    textAlign: 'center',
+  },
+  gridValSilver: {
+    color: '#cbd5e1',
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 6,
+    textAlign: 'center',
+  },
+  gridValGreen: {
+    color: '#4ade80',
+    fontSize: 11,
+    fontWeight: '800',
+    marginTop: 6,
+    textAlign: 'center',
+  },
   cashSectionRow: {
     flexDirection: 'row',
     gap: 12,
     marginTop: 14,
     borderTopWidth: 1,
-    borderTopColor: '#222a38',
-    paddingTop: 12
+    borderTopColor: '#222',
+    paddingTop: 12,
   },
-  monetaryAmountText: { color: '#f8fafc', fontSize: 19, fontWeight: '900', marginTop: 2 },
-  monetarySubText: { color: '#64748b', fontSize: 10, marginTop: 2 },
+  monetaryAmountText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '900',
+    marginTop: 4,
+  },
+  monetarySubText: {
+    color: '#666',
+    fontSize: 9,
+    marginTop: 2,
+  },
   cashInput: {
-    backgroundColor: '#0a0d14',
-    color: '#4ade80',
+    backgroundColor: '#1c1c24',
     borderWidth: 1,
-    borderColor: '#22c55e',
+    borderColor: '#4ade80',
     borderRadius: 6,
-    paddingVertical: 8,
+    color: '#4ade80',
+    fontSize: 15,
+    fontWeight: '900',
     paddingHorizontal: 10,
-    fontSize: 16,
-    fontWeight: '800'
+    paddingVertical: 6,
   },
-  paymentMethodPills: { flexDirection: 'row', gap: 6, marginTop: 6 },
+  paymentMethodPills: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 6,
+  },
   pillBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#10141d',
-    paddingVertical: 4,
-    paddingHorizontal: 6,
-    borderRadius: 4,
+    justifyContent: 'center',
+    backgroundColor: '#18181f',
     borderWidth: 1,
-    borderColor: '#222a38'
+    borderColor: '#333',
+    borderRadius: 4,
+    paddingVertical: 4,
   },
-  pillBtnActive: { borderColor: '#4ade80', backgroundColor: '#13281c' },
-  pillRadio: { width: 8, height: 8, borderRadius: 4, borderWidth: 1, borderColor: '#64748b' },
-  pillRadioActive: { borderColor: '#4ade80', backgroundColor: '#4ade80' },
-  pillText: { color: '#94a3b8', fontSize: 9.5, fontWeight: '700' },
-  pillTextActive: { color: '#4ade80' },
-
+  pillBtnActive: {
+    borderColor: '#4ade80',
+    backgroundColor: 'rgba(74, 222, 128, 0.1)',
+  },
+  pillRadio: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#555',
+    marginRight: 4,
+  },
+  pillRadioActive: {
+    backgroundColor: '#4ade80',
+  },
+  pillText: {
+    color: '#888',
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  pillTextActive: {
+    color: '#4ade80',
+  },
   settlementSummaryCard: {
-    backgroundColor: '#161922',
-    borderRadius: 8,
+    backgroundColor: '#121216',
+    borderRadius: 10,
     padding: 14,
     marginBottom: 14,
     borderWidth: 1,
-    borderColor: '#4d3d18'
+    borderColor: '#333',
   },
-  settlementSummaryTitle: { color: '#fbbf24', fontSize: 12, fontWeight: '800', letterSpacing: 0.5, marginBottom: 8 },
+  settlementSummaryTitle: {
+    color: '#d4af37',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    marginBottom: 10,
+  },
   finalCashDueBox: {
-    backgroundColor: '#1c1c1a',
-    borderWidth: 1,
-    borderColor: '#38321e',
-    borderRadius: 6,
-    padding: 10,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center'
+    alignItems: 'center',
+    backgroundColor: '#18181f',
+    padding: 10,
+    borderRadius: 6,
   },
-  finalCashDueLabel: { color: '#94a3b8', fontSize: 13, fontWeight: '600' },
-  finalCashDueValue: { fontSize: 17, fontWeight: '900' },
-
-  settleChoicePrompt: { color: '#64748b', fontSize: 10.5, fontWeight: '700', letterSpacing: 0.5, marginBottom: 8 },
+  finalCashDueLabel: {
+    color: '#aaa',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  finalCashDueValue: {
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  settleChoicePrompt: {
+    color: '#d4af37',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
   settleOptionBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    backgroundColor: '#10141d',
+    backgroundColor: '#18181f',
     borderWidth: 1,
-    borderColor: '#222a38',
-    borderRadius: 6,
+    borderColor: '#2a2a34',
+    borderRadius: 8,
     padding: 10,
-    marginBottom: 6
+    marginBottom: 8,
   },
-  settleOptionBoxActive: { borderColor: '#d4af37', backgroundColor: '#1e2417' },
-  settleOptionText: { color: '#f8fafc', fontSize: 12, fontWeight: '700' },
-  settleOptionSubGold: { color: '#fbbf24', fontSize: 10.5, fontWeight: '700', marginTop: 2 },
-  settleOptionSubSilver: { color: '#cbd5e1', fontSize: 10.5, fontWeight: '700', marginTop: 2 },
-
+  settleOptionBoxActive: {
+    borderColor: '#d4af37',
+    backgroundColor: 'rgba(212, 175, 55, 0.08)',
+  },
+  settleOptionText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  settleOptionSubGold: {
+    color: '#f59e0b',
+    fontSize: 10,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  settleOptionSubSilver: {
+    color: '#cbd5e1',
+    fontSize: 10,
+    fontWeight: '700',
+    marginTop: 2,
+  },
   newCustBtn: {
     backgroundColor: 'rgba(212, 175, 55, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
     borderWidth: 1,
     borderColor: '#d4af37',
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-    borderRadius: 4
   },
-  newCustBtnText: { color: '#d4af37', fontSize: 11, fontWeight: '800' },
+  newCustBtnText: {
+    color: '#d4af37',
+    fontSize: 10,
+    fontWeight: '700',
+  },
   customerSelector: {
-    backgroundColor: '#0a0d14',
-    borderWidth: 1,
-    borderColor: '#2b3548',
-    borderRadius: 6,
-    padding: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center'
+    alignItems: 'center',
+    backgroundColor: '#18181f',
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 6,
+    padding: 10,
   },
-  customerSelectorText: { color: '#f8fafc', fontSize: 13, fontWeight: '600' },
-  custWarningText: { color: '#ef4444', fontSize: 10, marginTop: 4, fontStyle: 'italic' },
-
+  customerSelectorText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  custWarningText: {
+    color: '#777',
+    fontSize: 9,
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
   actionButtonsRow: {
     flexDirection: 'row',
     gap: 8,
-    marginTop: 8,
-    marginBottom: 20
+    marginTop: 6,
   },
   cancelBtn: {
     flex: 1,
-    backgroundColor: '#1e2533',
+    backgroundColor: '#1e1e24',
     paddingVertical: 14,
-    borderRadius: 6,
+    borderRadius: 8,
     alignItems: 'center',
-    justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#334155'
+    borderColor: '#333',
   },
-  cancelBtnText: { color: '#cbd5e1', fontSize: 13, fontWeight: '700' },
+  cancelBtnText: {
+    color: '#bbb',
+    fontWeight: '700',
+    fontSize: 12,
+  },
   saveOnlyBtn: {
     flex: 1.2,
-    backgroundColor: '#2b2a1a',
+    backgroundColor: '#1e1e24',
     paddingVertical: 14,
-    borderRadius: 6,
+    borderRadius: 8,
     alignItems: 'center',
-    justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#785b1a'
+    borderColor: '#d4af37',
   },
-  saveOnlyBtnText: { color: '#fbbf24', fontSize: 13, fontWeight: '800' },
+  saveOnlyBtnText: {
+    color: '#d4af37',
+    fontWeight: '800',
+    fontSize: 12,
+  },
   savePrintBtn: {
-    flex: 1.5,
+    flex: 1.4,
     backgroundColor: '#d4af37',
     paddingVertical: 14,
-    borderRadius: 6,
+    borderRadius: 8,
     alignItems: 'center',
-    justifyContent: 'center'
   },
-  savePrintBtnText: { color: '#000', fontSize: 13, fontWeight: '900' },
-
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', padding: 20 },
-  modalContent: { backgroundColor: '#141822', borderRadius: 10, padding: 18, maxHeight: '80%', borderWidth: 1, borderColor: '#2b3548' },
-  modalTitle: { color: '#d4af37', fontSize: 18, fontWeight: '800', marginBottom: 12 },
-  addNewCustModalBtn: { backgroundColor: 'rgba(212, 175, 55, 0.15)', borderWidth: 1, borderColor: '#d4af37', padding: 10, borderRadius: 6, marginBottom: 10, alignItems: 'center' },
-  addNewCustModalBtnText: { color: '#d4af37', fontWeight: '800', fontSize: 13 },
-  customerOptionItem: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#222a38' },
-  customerOptionText: { color: '#f8fafc', fontSize: 14 },
-  modalCloseBtn: { marginTop: 14, padding: 14, alignItems: 'center', backgroundColor: '#222a38', borderRadius: 6 },
-  modalCloseText: { color: '#fff', fontWeight: '700' },
-  inputModal: { backgroundColor: '#0a0d14', color: '#fff', borderWidth: 1, borderColor: '#2b3548', padding: 12, borderRadius: 6, marginBottom: 12 },
-  modalActionBtn: { flex: 1, padding: 12, borderRadius: 6, alignItems: 'center' },
-  modalActionBtnText: { color: '#fff', fontWeight: '800' }
+  savePrintBtnText: {
+    color: '#000',
+    fontWeight: '900',
+    fontSize: 12,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#121216',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#222',
+  },
+  modalTitle: {
+    color: '#d4af37',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  modalCloseText: {
+    color: '#aaa',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  customerItem: {
+    padding: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1a1a22',
+  },
+  customerItemActive: {
+    backgroundColor: 'rgba(212, 175, 55, 0.1)',
+  },
+  customerName: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  customerPhone: {
+    color: '#777',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  inputLabel: {
+    color: '#aaa',
+    fontSize: 11,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  modalInput: {
+    backgroundColor: '#1c1c24',
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 6,
+    color: '#fff',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 13,
+  },
+  addCustomerSubmitBtn: {
+    backgroundColor: '#d4af37',
+    borderRadius: 6,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 18,
+  },
+  addCustomerSubmitBtnText: {
+    color: '#000',
+    fontWeight: '800',
+    fontSize: 13,
+  },
 });
