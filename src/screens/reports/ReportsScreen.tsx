@@ -44,22 +44,22 @@ export default function ReportsScreen() {
         
         <View style={styles.row}>
           <Text style={styles.label}>Total Sales Amount (Invoices)</Text>
-          <Text style={styles.valueGreen}>?{profitData?.sales?.total_sales_amount?.toLocaleString('en-IN')}</Text>
+          <Text style={styles.valueGreen}>?{(profitData?.sales?.total_sales_amount || 0).toLocaleString('en-IN')}</Text>
         </View>
         <View style={styles.row}>
           <Text style={styles.label}>Exchange Sales Amount</Text>
-          <Text style={styles.valueGreen}>?{profitData?.sales?.total_exchange_sales_amount?.toLocaleString('en-IN')}</Text>
+          <Text style={styles.valueGreen}>?{(profitData?.sales?.total_exchange_sales_amount || 0).toLocaleString('en-IN')}</Text>
         </View>
         
         <View style={styles.divider} />
         
         <View style={styles.row}>
           <Text style={styles.label}>Total Purchase Amount</Text>
-          <Text style={styles.valueRed}>?{profitData?.purchases?.total_purchases_amount?.toLocaleString('en-IN')}</Text>
+          <Text style={styles.valueRed}>?{(profitData?.purchases?.total_purchases_amount || 0).toLocaleString('en-IN')}</Text>
         </View>
         <View style={styles.row}>
           <Text style={styles.label}>Exchange Purchase Amount</Text>
-          <Text style={styles.valueRed}>?{profitData?.purchases?.total_exchange_purchases_amount?.toLocaleString('en-IN')}</Text>
+          <Text style={styles.valueRed}>?{(profitData?.purchases?.total_exchange_purchases_amount || 0).toLocaleString('en-IN')}</Text>
         </View>
 
         <View style={styles.divider} />
@@ -67,7 +67,7 @@ export default function ReportsScreen() {
         <View style={styles.row}>
           <Text style={styles.labelBold}>Net Cash Profit</Text>
           <Text style={[styles.valueBold, (profitData?.net_cash_profit || 0) >= 0 ? {color: '#4ade80'} : {color: '#f87171'}]}>
-            ?{profitData?.net_cash_profit?.toLocaleString('en-IN')}
+            ?{(profitData?.net_cash_profit || 0).toLocaleString('en-IN')}
           </Text>
         </View>
       </View>

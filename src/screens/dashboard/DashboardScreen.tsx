@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { axiosClient } from '../../api/axiosClient';
@@ -64,11 +64,11 @@ export default function DashboardScreen({ navigation }: any) {
           <Text style={styles.gridLabel}>Today's Bills</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.gridItem} onPress={() => {}}>
-          <Text style={styles.gridValue}>₹{data?.today_sales?.toLocaleString('en-IN') || 0}</Text>
+          <Text style={styles.gridValue}>₹{(data?.today_sales || 0).toLocaleString('en-IN')}</Text>
           <Text style={styles.gridLabel}>Today's Sales</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.gridItem} onPress={() => {}}>
-          <Text style={styles.gridValue}>₹{data?.today_purchases?.toLocaleString('en-IN') || 0}</Text>
+          <Text style={styles.gridValue}>₹{(data?.today_purchases || 0).toLocaleString('en-IN')}</Text>
           <Text style={styles.gridLabel}>Today's Purchases</Text>
         </TouchableOpacity>
       </View>
@@ -226,3 +226,4 @@ const styles = StyleSheet.create({
     fontSize: 16,
   }
 });
+
