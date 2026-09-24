@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, ActivityIn
 import { axiosClient } from '../../api/axiosClient';
 
 export default function CheckoutExchangeScreen({ route, navigation }: any) {
-  const { customer, items } = route.params;
+  const { selectedCustomer: customer, items } = route.params;
 
   // Split items
   const oldItemsRaw = items.filter((i: any) => i.direction === 'Old');

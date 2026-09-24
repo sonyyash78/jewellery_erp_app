@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert,
 import { axiosClient } from '../../api/axiosClient';
 
 export default function CheckoutPurchaseScreen({ route, navigation }: any) {
-  const { seller, items } = route.params;
+  const { selectedSeller: seller, items } = route.params;
 
   const total_taxable = items.reduce((sum: number, item: any) => sum + item.taxable_amount, 0);
   
