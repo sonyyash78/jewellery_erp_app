@@ -6,29 +6,52 @@ export default function CreateCRMScreen({ route, navigation }: any) {
   const { type } = route.params; // 'Customer' or 'Supplier'
   
   const [formData, setFormData] = useState({
-    name: '',
-    phone_number: '',
+    name: '', // Will map to first_name for customer
+    mobile: '', // Will map to phone_number for customer, mobile for supplier
     address: '',
-    pan_card: '',
-    aadhar_card: ''
+    aadhaar_pan: '',
+    gst_number: ''
   });
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
-    if (!formData.name || !formData.phone_number) {
-      Alert.alert('Validation Error', 'Name and Phone Number are required.');
+    if (!formData.name || !formData.mobile) {
+      Alert.alert('Validation Error', 'Name and Mobile Number are required.');
+      return;
+    }
+
+    // Must be exactly 10 digits
+    if (formData.mobile.length !== 10) {
+      Alert.alert('Validation Error', 'Mobile Number must be exactly 10 digits.');
       return;
     }
 
     try {
       setLoading(true);
-      const endpoint = type === 'Supplier' ? '/suppliers/' : '/customers/';
-      await axiosClient.post(endpoint, formData);
+      if (type === 'Supplier') {
+        // Supplier schema matches mobile exactly
+        await axiosClient.post('/suppliers/', {
+          name: formData.name,
+          mobile: formData.mobile,
+          address: formData.address || undefined,
+          gst_number: formData.gst_number || undefined
+        });
+      } else {
+        // Customer schema maps
+        await axiosClient.post('/customers/', {
+          first_name: formData.name,
+          phone_number: formData.mobile,
+          address: formData.address || undefined,
+          aadhaar_pan: formData.aadhaar_pan || undefined,
+          gst_number: formData.gst_number || undefined
+        });
+      }
+      
       Alert.alert('Success', `${type} created successfully!`);
       navigation.goBack();
-    } catch (error) {
-      console.log(`Failed to create ${type}`, error);
-      Alert.alert('Error', `Failed to create ${type}`);
+    } catch (error: any) {
+      console.log(`Failed to create ${type}`, error.response?.data || error.message);
+      Alert.alert('Error', `Failed to create ${type}. Please check your inputs.`);
     } finally {
       setLoading(false);
     }
@@ -46,14 +69,15 @@ export default function CreateCRMScreen({ route, navigation }: any) {
           onChangeText={(text) => setFormData({ ...formData, name: text })}
         />
 
-        <Text style={styles.label}>Phone Number *</Text>
+        <Text style={styles.label}>Mobile Number *</Text>
         <TextInput
           style={styles.input}
-          placeholder="Enter Phone Number"
+          placeholder="10 digit mobile number"
           placeholderTextColor="#555"
           keyboardType="phone-pad"
-          value={formData.phone_number}
-          onChangeText={(text) => setFormData({ ...formData, phone_number: text })}
+          maxLength={10}
+          value={formData.mobile}
+          onChangeText={(text) => setFormData({ ...formData, mobile: text.replace(/[^0-9]/g, '') })}
         />
 
         <Text style={styles.label}>Address</Text>
@@ -66,24 +90,28 @@ export default function CreateCRMScreen({ route, navigation }: any) {
           onChangeText={(text) => setFormData({ ...formData, address: text })}
         />
 
-        <Text style={styles.label}>PAN Card</Text>
+        {type === 'Customer' && (
+          <>
+            <Text style={styles.label}>Aadhaar / PAN Card</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Enter Aadhaar or PAN"
+              placeholderTextColor="#555"
+              autoCapitalize="characters"
+              value={formData.aadhaar_pan}
+              onChangeText={(text) => setFormData({ ...formData, aadhaar_pan: text })}
+            />
+          </>
+        )}
+
+        <Text style={styles.label}>GST Number</Text>
         <TextInput
           style={styles.input}
-          placeholder="Enter PAN Number"
+          placeholder="Enter GST Number"
           placeholderTextColor="#555"
           autoCapitalize="characters"
-          value={formData.pan_card}
-          onChangeText={(text) => setFormData({ ...formData, pan_card: text })}
-        />
-
-        <Text style={styles.label}>Aadhar Card</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Enter Aadhar Number"
-          placeholderTextColor="#555"
-          keyboardType="number-pad"
-          value={formData.aadhar_card}
-          onChangeText={(text) => setFormData({ ...formData, aadhar_card: text })}
+          value={formData.gst_number}
+          onChangeText={(text) => setFormData({ ...formData, gst_number: text })}
         />
 
         <TouchableOpacity style={styles.submitButton} onPress={handleSubmit} disabled={loading}>

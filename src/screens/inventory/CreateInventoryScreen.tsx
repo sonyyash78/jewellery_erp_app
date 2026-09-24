@@ -5,29 +5,38 @@ import { axiosClient } from '../../api/axiosClient';
 export default function CreateInventoryScreen({ navigation }: any) {
   const [formData, setFormData] = useState({
     item_name: '',
-    metal_type: 'Gold',
+    metal: 'Gold', // Matches schema
+    category: 'Rings',
     purity: '22K',
-    weight: '',
-    hsn_code: ''
+    gross_weight: '',
+    net_weight: '',
+    hsn: ''
   });
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
-    if (!formData.item_name || !formData.weight) {
-      Alert.alert('Validation Error', 'Item Name and Weight are required.');
+    if (!formData.item_name || !formData.gross_weight || !formData.net_weight || !formData.category) {
+      Alert.alert('Validation Error', 'Item Name, Category, Gross Weight and Net Weight are required.');
       return;
     }
 
     try {
       setLoading(true);
       await axiosClient.post('/stock/', {
-        ...formData,
-        weight: parseFloat(formData.weight)
+        item_name: formData.item_name,
+        metal: formData.metal,
+        category: formData.category,
+        purity: formData.purity || undefined,
+        gross_weight: parseFloat(formData.gross_weight),
+        net_weight: parseFloat(formData.net_weight),
+        stone_weight: parseFloat(formData.gross_weight) - parseFloat(formData.net_weight),
+        hsn: formData.hsn || undefined,
+        status: 'Available'
       });
       Alert.alert('Success', 'Inventory item added successfully!');
       navigation.goBack();
-    } catch (error) {
-      console.log('Failed to create item', error);
+    } catch (error: any) {
+      console.log('Failed to create item', error.response?.data || error.message);
       Alert.alert('Error', 'Failed to add item to inventory.');
     } finally {
       setLoading(false);
@@ -49,20 +58,29 @@ export default function CreateInventoryScreen({ navigation }: any) {
         <Text style={styles.label}>Metal Type *</Text>
         <View style={styles.row}>
           <TouchableOpacity 
-            style={[styles.radio, formData.metal_type === 'Gold' && styles.radioActive]}
-            onPress={() => setFormData({ ...formData, metal_type: 'Gold' })}
+            style={[styles.radio, formData.metal === 'Gold' && styles.radioActive]}
+            onPress={() => setFormData({ ...formData, metal: 'Gold' })}
           >
             <Text style={styles.radioText}>Gold</Text>
           </TouchableOpacity>
           <TouchableOpacity 
-            style={[styles.radio, formData.metal_type === 'Silver' && styles.radioActive]}
-            onPress={() => setFormData({ ...formData, metal_type: 'Silver' })}
+            style={[styles.radio, formData.metal === 'Silver' && styles.radioActive]}
+            onPress={() => setFormData({ ...formData, metal: 'Silver' })}
           >
             <Text style={styles.radioText}>Silver</Text>
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.label}>Purity *</Text>
+        <Text style={styles.label}>Category *</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="e.g. Rings, Chains, Coins"
+          placeholderTextColor="#555"
+          value={formData.category}
+          onChangeText={(text) => setFormData({ ...formData, category: text })}
+        />
+
+        <Text style={styles.label}>Purity</Text>
         <TextInput
           style={styles.input}
           placeholder="e.g. 22K, 18K, 999"
@@ -71,15 +89,30 @@ export default function CreateInventoryScreen({ navigation }: any) {
           onChangeText={(text) => setFormData({ ...formData, purity: text })}
         />
 
-        <Text style={styles.label}>Weight (g) *</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="0.000"
-          placeholderTextColor="#555"
-          keyboardType="numeric"
-          value={formData.weight}
-          onChangeText={(text) => setFormData({ ...formData, weight: text })}
-        />
+        <View style={styles.row}>
+          <View style={{ flex: 1, marginRight: 8 }}>
+            <Text style={styles.label}>Gross Weight (g) *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="0.000"
+              placeholderTextColor="#555"
+              keyboardType="numeric"
+              value={formData.gross_weight}
+              onChangeText={(text) => setFormData({ ...formData, gross_weight: text })}
+            />
+          </View>
+          <View style={{ flex: 1, marginLeft: 8 }}>
+            <Text style={styles.label}>Net Weight (g) *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="0.000"
+              placeholderTextColor="#555"
+              keyboardType="numeric"
+              value={formData.net_weight}
+              onChangeText={(text) => setFormData({ ...formData, net_weight: text })}
+            />
+          </View>
+        </View>
 
         <Text style={styles.label}>HSN Code</Text>
         <TextInput
@@ -87,8 +120,8 @@ export default function CreateInventoryScreen({ navigation }: any) {
           placeholder="e.g. 7113"
           placeholderTextColor="#555"
           keyboardType="numeric"
-          value={formData.hsn_code}
-          onChangeText={(text) => setFormData({ ...formData, hsn_code: text })}
+          value={formData.hsn}
+          onChangeText={(text) => setFormData({ ...formData, hsn: text })}
         />
 
         <TouchableOpacity style={styles.submitButton} onPress={handleSubmit} disabled={loading}>
