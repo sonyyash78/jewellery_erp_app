@@ -20,14 +20,15 @@ def create_exchange(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    store_id = current_user.tenant_id or 1
     # Verify customer
-    customer = db.query(Customer).filter(Customer.id == exchange_in.customer_id).first()
+    customer = db.query(Customer).filter(Customer.id == exchange_in.customer_id, Customer.store_id == store_id).first()
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
 
     # Verify stock items (only for items that came from inventory, not manual entries)
     stock_ids = [item.stock_item_id for item in exchange_in.new_items if item.stock_item_id is not None]
-    stock_items = db.query(StockItem).filter(StockItem.id.in_(stock_ids)).all() if stock_ids else []
+    stock_items = db.query(StockItem).filter(StockItem.id.in_(stock_ids), StockItem.store_id == store_id).all() if stock_ids else []
     if len(stock_items) != len(stock_ids):
         raise HTTPException(status_code=400, detail="One or more stock items not found")
         
@@ -37,6 +38,7 @@ def create_exchange(
 
     # Create Exchange
     exchange = Exchange(
+        store_id=store_id,
         customer_id=exchange_in.customer_id,
         total_old_value=exchange_in.total_old_value,
         total_new_value=exchange_in.total_new_value,
@@ -194,7 +196,8 @@ def list_exchanges(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    query = db.query(Exchange)
+    store_id = current_user.tenant_id or 1
+    query = db.query(Exchange).filter(Exchange.store_id == store_id)
     total = query.count()
     items = query.order_by(Exchange.id.desc()).offset(skip).limit(limit).all()
     
@@ -224,6 +227,10 @@ def get_exchange_pdf_data(
     current_user: User = Depends(get_current_user)
 ):
     """Get exchange data formatted for PDF generation."""
+    store_id = current_user.tenant_id or 1
+    exchange = db.query(Exchange).filter(Exchange.id == id, Exchange.store_id == store_id).first()
+    if not exchange:
+        raise HTTPException(status_code=404, detail="Exchange not found")
     try:
         from app.services.invoice_pdf_service import InvoicePDFService
         return InvoicePDFService.get_exchange_pdf_data(id, db)
@@ -237,7 +244,8 @@ def get_exchange(
     current_user: User = Depends(get_current_user)
 ):
     """Get a single exchange formatted for the Invoice View Modal."""
-    exchange = db.query(Exchange).filter(Exchange.id == id).first()
+    store_id = current_user.tenant_id or 1
+    exchange = db.query(Exchange).filter(Exchange.id == id, Exchange.store_id == store_id).first()
     if not exchange:
         raise HTTPException(status_code=404, detail="Exchange not found")
         
@@ -278,16 +286,12 @@ def delete_exchange(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Delete an exchange (currently we just return success to satisfy UI since we don't have a status field yet)."""
-    exchange = db.query(Exchange).filter(Exchange.id == id).first()
+    """Delete an exchange."""
+    store_id = current_user.tenant_id or 1
+    exchange = db.query(Exchange).filter(Exchange.id == id, Exchange.store_id == store_id).first()
     if not exchange:
         raise HTTPException(status_code=404, detail="Exchange not found")
         
-    # We could delete it, or if there's a status field, update it. For now, since UI just wants it cancelled,
-    # let's actually just delete it or ignore it to prevent DB corruption of ledgers.
-    # To be safe, we will just delete the exchange. (Assuming cascade deletes are set up).
-    # Since ledger is tied to it, it's safer to just let the user know they can't delete exchanges yet if we don't handle ledger reversal.
-    # Actually, we will just delete it.
     db.delete(exchange)
     db.commit()
     return {"message": "Exchange cancelled successfully"}
