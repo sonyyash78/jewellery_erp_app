@@ -203,35 +203,39 @@ def get_customer_bills(
     
     formatted_bills = []
     for entry in ledger_entries:
+        gold_d = float(entry.gold_debit or 0.0)
+        gold_c = float(entry.gold_credit or 0.0)
+        silver_d = float(entry.silver_debit or 0.0)
+        silver_c = float(entry.silver_credit or 0.0)
+        deb = float(entry.debit or 0.0)
+        cred = float(entry.credit or 0.0)
+        bal = float(entry.balance or 0.0)
         formatted_bills.append({
             "id": entry.id,
             "date": entry.date,
             "type": entry.voucher_type,
             "bill_no": entry.voucher_number or '-',
             "summary": entry.description or '-',
-            "gold_change": float(entry.gold_debit - entry.gold_credit),
-            "silver_change": float(entry.silver_debit - entry.silver_credit),
-            "debit": float(entry.debit),
-            "credit": float(entry.credit),
-            "balance": float(entry.balance)
+            "gold_change": float(gold_d - gold_c),
+            "silver_change": float(silver_d - silver_c),
+            "debit": deb,
+            "credit": cred,
+            "balance": bal,
+            "gold_balance": float(getattr(entry, 'gold_balance', None) if getattr(entry, 'gold_balance', None) is not None else (customer.fine_gold_balance or 0.0)),
+            "silver_balance": float(getattr(entry, 'silver_balance', None) if getattr(entry, 'silver_balance', None) is not None else (customer.fine_silver_balance or 0.0)),
         })
     
-    latest_gold_rate = db.query(MetalRate).filter(
-        MetalRate.store_id == store_id, 
-        MetalRate.metal_type == 'Gold'
-    ).order_by(MetalRate.date.desc()).first()
-    if not latest_gold_rate:
+    current_gold_rate = 7250.0
+    current_silver_rate = 90.0
+    try:
         latest_gold_rate = db.query(MetalRate).filter(MetalRate.metal_type == 'Gold').order_by(MetalRate.date.desc()).first()
-        
-    latest_silver_rate = db.query(MetalRate).filter(
-        MetalRate.store_id == store_id, 
-        MetalRate.metal_type == 'Silver'
-    ).order_by(MetalRate.date.desc()).first()
-    if not latest_silver_rate:
         latest_silver_rate = db.query(MetalRate).filter(MetalRate.metal_type == 'Silver').order_by(MetalRate.date.desc()).first()
-    
-    current_gold_rate = latest_gold_rate.rate if latest_gold_rate else 7000
-    current_silver_rate = latest_silver_rate.rate if latest_silver_rate else 85
+        if latest_gold_rate:
+            current_gold_rate = float(getattr(latest_gold_rate, 'rate_per_gram', None) or getattr(latest_gold_rate, 'rate', None) or 7250.0)
+        if latest_silver_rate:
+            current_silver_rate = float(getattr(latest_silver_rate, 'rate_per_gram', None) or getattr(latest_silver_rate, 'rate', None) or 90.0)
+    except Exception:
+        pass
     
     return {
         "bills": formatted_bills,

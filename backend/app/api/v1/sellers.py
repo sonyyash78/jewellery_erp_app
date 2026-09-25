@@ -151,11 +151,17 @@ def get_supplier_bills(seller_id: int, db: Session = Depends(get_db), current_us
         })
     
     # Get current metal rates
-    latest_gold_rate = db.query(MetalRate).filter(MetalRate.metal_type == 'Gold').order_by(MetalRate.date.desc()).first()
-    latest_silver_rate = db.query(MetalRate).filter(MetalRate.metal_type == 'Silver').order_by(MetalRate.date.desc()).first()
-    
-    current_gold_rate = latest_gold_rate.rate if latest_gold_rate else 7000
-    current_silver_rate = latest_silver_rate.rate if latest_silver_rate else 85
+    current_gold_rate = 7250.0
+    current_silver_rate = 90.0
+    try:
+        latest_gold_rate = db.query(MetalRate).filter(MetalRate.metal_type == 'Gold').order_by(MetalRate.date.desc()).first()
+        latest_silver_rate = db.query(MetalRate).filter(MetalRate.metal_type == 'Silver').order_by(MetalRate.date.desc()).first()
+        if latest_gold_rate:
+            current_gold_rate = float(getattr(latest_gold_rate, 'rate_per_gram', None) or getattr(latest_gold_rate, 'rate', None) or 7250.0)
+        if latest_silver_rate:
+            current_silver_rate = float(getattr(latest_silver_rate, 'rate_per_gram', None) or getattr(latest_silver_rate, 'rate', None) or 90.0)
+    except Exception:
+        pass
     
     return {
         "bills": formatted_bills,
