@@ -236,7 +236,7 @@ export const renderHeader = (company: any, invoice: any, logoDataUrl?: string) =
   return `
     <div class="header">
       <div class="logo-section">
-        ${logoDataUrl ? `<img src="${logoDataUrl}" class="logo-img" />` : `<div class="logo-circle">SJ</div>`}
+        ${logoDataUrl ? `<img src="${logoDataUrl}" class="logo-img" />` : `<div class="logo-circle">${(company?.name || 'SJ').split(' ').map((w: string) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || 'SJ'}</div>`}
         <div class="company-info">
           <h1>${(company.name || 'SAIDEEP JEWELLERS').replace(' ', '<br>')}</h1>
           <div class="tagline">TIMELESS BEAUTY. TRUSTED FOREVER.</div>

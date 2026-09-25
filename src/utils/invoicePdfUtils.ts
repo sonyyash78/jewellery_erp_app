@@ -99,7 +99,7 @@ export const generateInvoiceHtml = (data: any): string => {
   finalHtml += `</head><body><div class="pdf-container">`;
   finalHtml += premiumComponents.getPageWrapperStart();
 
-  finalHtml += premiumComponents.renderHeader(company, invoice, '');
+  finalHtml += premiumComponents.renderHeader(company, invoice, company.logo_data_url || company.logo_url || '');
   finalHtml += premiumComponents.renderCardsRow(customer, '', settings, invoice);
 
   finalHtml += premiumComponents.renderTableHeader();

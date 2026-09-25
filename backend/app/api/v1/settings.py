@@ -149,50 +149,86 @@ async def upload_logo(
     current_user: User = Depends(get_current_user)
 ):
     store_id = current_user.tenant_id or 1
-    static_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "static")
-    os.makedirs(static_dir, exist_ok=True)
     
-    filename = f"logo_store_{store_id}.png"
-    file_location = os.path.join(static_dir, filename)
-    
+    # Locate all static directories
+    target_static_dirs = [
+        os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "static")),
+        os.path.abspath(r"C:\Users\YASH SONI\Desktop\Saideep\jewellery-erp\backend\static"),
+        os.path.abspath(r"C:\Users\YASH SONI\Desktop\jeweller-app\backend\static")
+    ]
+    # Deduplicate while preserving order
+    seen = set()
+    valid_dirs = []
+    for d in target_static_dirs:
+        if d not in seen:
+            seen.add(d)
+            try:
+                os.makedirs(d, exist_ok=True)
+                valid_dirs.append(d)
+            except Exception:
+                pass
+                
     file_bytes = await file.read()
-    with open(file_location, "wb") as buffer:
-        buffer.write(file_bytes)
-        
-    # Also sync to sibling backend if it exists
-    try:
-        sibling_static = os.path.abspath(os.path.join(static_dir, "..", "..", "..", "jeweller-app", "backend", "static"))
-        if not os.path.exists(sibling_static):
-            sibling_static = os.path.abspath(os.path.join(static_dir, "..", "..", "..", "Saideep", "jewellery-erp", "backend", "static"))
-        if os.path.exists(sibling_static) and os.path.abspath(sibling_static) != os.path.abspath(static_dir):
-            with open(os.path.join(sibling_static, filename), "wb") as buffer:
-                buffer.write(file_bytes)
-    except Exception:
-        pass
-        
-    logo_url = f"/static/{filename}"
+    
+    # Determine extension
+    ext = ".png"
+    if file.filename:
+        _, file_ext = os.path.splitext(file.filename.lower())
+        if file_ext in ('.png', '.jpg', '.jpeg', '.webp'):
+            ext = file_ext
+            
+    primary_filename = f"logo_store_{store_id}{ext}"
+    
+    # Write to target files across all static directories
+    filenames_to_write = {
+        primary_filename,
+        f"logo_store_{store_id}.png",
+        "logo.png"  # Always update global fallback so any unassigned or default views get latest logo
+    }
+    if store_id in (3, 5):
+        filenames_to_write.add("logo_store_5.png")
+        filenames_to_write.add("logo_store_3.png")
+    filenames_to_write.add("logo_store_1.png")
+    
+    for s_dir in valid_dirs:
+        for fname in filenames_to_write:
+            try:
+                dest = os.path.join(s_dir, fname)
+                with open(dest, "wb") as buf:
+                    buf.write(file_bytes)
+            except Exception:
+                pass
+                
+    logo_url = f"/static/{primary_filename}"
+    
+    # Update Store models
     store = db.query(Store).filter(Store.id == store_id).first()
     if store:
         store.logo_url = logo_url
+        
+    store1 = db.query(Store).filter(Store.id == 1).first()
+    if store1 and not store1.logo_url:
+        store1.logo_url = logo_url
 
-    # Also persist to Setting table
-    st_key = f"store_{store_id}_logo_url" if store_id != 1 else "logo_url"
+    # Persist setting keys
+    st_key = f"store_{store_id}_logo_url"
     s_obj = db.query(Setting).filter(Setting.key == st_key).first()
     if s_obj:
         s_obj.value = logo_url
     else:
         db.add(Setting(key=st_key, value=logo_url))
 
-    if store_id == 1:
-        s_gen = db.query(Setting).filter(Setting.key == "logo_url").first()
-        if s_gen:
-            s_gen.value = logo_url
+    s_gen = db.query(Setting).filter(Setting.key == "logo_url").first()
+    if s_gen:
+        s_gen.value = logo_url
+    else:
+        db.add(Setting(key="logo_url", value=logo_url))
             
     db.commit()
     if store:
         db.refresh(store)
 
-    return {"message": "Logo updated", "url": logo_url}
+    return {"message": "Logo updated", "url": logo_url, "store_id": store_id}
 
 @router.get("/metal-rates", response_model=List[MetalRateResponse])
 def get_metal_rates(

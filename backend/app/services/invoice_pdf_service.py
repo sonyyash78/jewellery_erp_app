@@ -54,17 +54,47 @@ class InvoicePDFService:
         logo_data_url = ""
         try:
             import os, base64
-            clean_path = (logo_url or '').lstrip('/').replace('static/', '')
-            static_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "static")
-            local_file = os.path.join(static_dir, clean_path)
-            if not os.path.exists(local_file):
-                local_file = os.path.join(static_dir, "logo.png")
-            if os.path.exists(local_file):
-                with open(local_file, "rb") as f:
-                    encoded = base64.b64encode(f.read()).decode("utf-8")
-                    mime = "image/png" if local_file.endswith(".png") else "image/jpeg"
+            search_dirs = [
+                os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "static"),
+                r"C:\Users\YASH SONI\Desktop\Saideep\jewellery-erp\backend\static",
+                r"C:\Users\YASH SONI\Desktop\jeweller-app\backend\static"
+            ]
+            
+            candidate_files = []
+            if logo_url:
+                clean_name = logo_url.split('/static/')[-1].split('?')[0].lstrip('/')
+                if clean_name:
+                    candidate_files.append(clean_name)
+            if store_id:
+                candidate_files.append(f"logo_store_{store_id}.png")
+                candidate_files.append(f"logo_store_{store_id}.jpg")
+                candidate_files.append(f"logo_store_{store_id}.jpeg")
+                candidate_files.append(f"logo_store_{store_id}.webp")
+            candidate_files.extend(["logo_store_5.png", "logo_store_3.png", "logo_store_1.png", "logo.png"])
+            
+            chosen_path = None
+            for s_dir in search_dirs:
+                if not os.path.exists(s_dir):
+                    continue
+                for c_name in candidate_files:
+                    full_p = os.path.join(s_dir, c_name)
+                    if os.path.exists(full_p) and os.path.getsize(full_p) > 0:
+                        chosen_path = full_p
+                        break
+                if chosen_path:
+                    break
+
+            if chosen_path:
+                with open(chosen_path, "rb") as f:
+                    file_bytes = f.read()
+                    encoded = base64.b64encode(file_bytes).decode("utf-8")
+                    mime = "image/png"
+                    if chosen_path.lower().endswith(('.jpg', '.jpeg')) or file_bytes.startswith(b'\xff\xd8'):
+                        mime = "image/jpeg"
+                    elif chosen_path.lower().endswith('.webp'):
+                        mime = "image/webp"
                     logo_data_url = f"data:{mime};base64,{encoded}"
-        except Exception as e:
+        except Exception:
             pass
 
         upi_name = settings_dict.get('upi_name') or name
