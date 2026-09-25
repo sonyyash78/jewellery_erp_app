@@ -84,28 +84,41 @@ def update_settings(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    import re
     store_id = current_user.tenant_id or 1
     store = db.query(Store).filter(Store.id == store_id).first()
 
     for item in settings_in:
+        clean_key = item.key
+        while clean_key.startswith("store_"):
+            m = re.match(r"^store_\d+_(.*)$", clean_key)
+            if m:
+                clean_key = m.group(1)
+            else:
+                break
+
+        # Don't overwrite an existing custom logo with default /static/logo.png
+        if clean_key == "logo_url" and item.value == "/static/logo.png" and store and store.logo_url and store.logo_url != "/static/logo.png":
+            continue
+
         # Update Store model directly
         if store:
-            if item.key in ("business_name", "store_name"):
+            if clean_key in ("business_name", "store_name"):
                 store.name = item.value
-            elif item.key in ("phone", "store_phone"):
+            elif clean_key in ("phone", "store_phone"):
                 store.phone = item.value
-            elif item.key in ("email", "store_email"):
+            elif clean_key in ("email", "store_email"):
                 store.email = item.value
-            elif item.key in ("address", "store_address"):
+            elif clean_key in ("address", "store_address"):
                 store.address = item.value
-            elif item.key in ("gstin", "store_gstin"):
+            elif clean_key in ("gstin", "store_gstin"):
                 store.gstin = item.value
-            elif item.key == "logo_url":
+            elif clean_key == "logo_url":
                 store.logo_url = item.value
 
         # For store-specific settings when store_id != 1
         if store_id != 1:
-            st_key = f"store_{store_id}_{item.key}"
+            st_key = f"store_{store_id}_{clean_key}"
             s_obj = db.query(Setting).filter(Setting.key == st_key).first()
             if s_obj:
                 s_obj.value = item.value
@@ -113,11 +126,11 @@ def update_settings(
                 db.add(Setting(key=st_key, value=item.value))
         else:
             # Update generic setting
-            setting = db.query(Setting).filter(Setting.key == item.key).first()
+            setting = db.query(Setting).filter(Setting.key == clean_key).first()
             if setting:
                 setting.value = item.value
             else:
-                db.add(Setting(key=item.key, value=item.value))
+                db.add(Setting(key=clean_key, value=item.value))
 
     db.commit()
     if store:
@@ -141,14 +154,43 @@ async def upload_logo(
     
     filename = f"logo_store_{store_id}.png"
     file_location = os.path.join(static_dir, filename)
+    
+    file_bytes = await file.read()
     with open(file_location, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+        buffer.write(file_bytes)
+        
+    # Also sync to sibling backend if it exists
+    try:
+        sibling_static = os.path.abspath(os.path.join(static_dir, "..", "..", "..", "jeweller-app", "backend", "static"))
+        if not os.path.exists(sibling_static):
+            sibling_static = os.path.abspath(os.path.join(static_dir, "..", "..", "..", "Saideep", "jewellery-erp", "backend", "static"))
+        if os.path.exists(sibling_static) and os.path.abspath(sibling_static) != os.path.abspath(static_dir):
+            with open(os.path.join(sibling_static, filename), "wb") as buffer:
+                buffer.write(file_bytes)
+    except Exception:
+        pass
         
     logo_url = f"/static/{filename}"
     store = db.query(Store).filter(Store.id == store_id).first()
     if store:
         store.logo_url = logo_url
-        db.commit()
+
+    # Also persist to Setting table
+    st_key = f"store_{store_id}_logo_url" if store_id != 1 else "logo_url"
+    s_obj = db.query(Setting).filter(Setting.key == st_key).first()
+    if s_obj:
+        s_obj.value = logo_url
+    else:
+        db.add(Setting(key=st_key, value=logo_url))
+
+    if store_id == 1:
+        s_gen = db.query(Setting).filter(Setting.key == "logo_url").first()
+        if s_gen:
+            s_gen.value = logo_url
+            
+    db.commit()
+    if store:
+        db.refresh(store)
 
     return {"message": "Logo updated", "url": logo_url}
 

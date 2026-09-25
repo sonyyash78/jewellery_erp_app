@@ -49,6 +49,24 @@ class InvoicePDFService:
         pan = store.pan if (store and store.pan) else (settings_dict.get('pan') or "")
         tagline = store.tagline if (store and store.tagline) else (settings_dict.get('tagline') or "Trust. Purity. Elegance.")
         logo_url = store.logo_url if (store and store.logo_url) else settings_dict.get('logo_url', '/static/logo.png')
+        
+        # Read logo directly from disk and encode to base64 Data URL for instant, reliable rendering in PDFs
+        logo_data_url = ""
+        try:
+            import os, base64
+            clean_path = (logo_url or '').lstrip('/').replace('static/', '')
+            static_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "static")
+            local_file = os.path.join(static_dir, clean_path)
+            if not os.path.exists(local_file):
+                local_file = os.path.join(static_dir, "logo.png")
+            if os.path.exists(local_file):
+                with open(local_file, "rb") as f:
+                    encoded = base64.b64encode(f.read()).decode("utf-8")
+                    mime = "image/png" if local_file.endswith(".png") else "image/jpeg"
+                    logo_data_url = f"data:{mime};base64,{encoded}"
+        except Exception as e:
+            pass
+
         upi_name = settings_dict.get('upi_name') or name
         upi_id = settings_dict.get('upi_id') or ""
 
@@ -61,6 +79,7 @@ class InvoicePDFService:
             'pan': pan,
             'tagline': tagline,
             'logo_url': logo_url,
+            'logo_data_url': logo_data_url,
             'upi_id': upi_id,
             'upi_name': upi_name,
             'bank_name': settings_dict.get('bank_name') or "",
