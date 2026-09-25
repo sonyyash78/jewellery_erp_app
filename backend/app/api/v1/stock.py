@@ -16,19 +16,24 @@ os.makedirs(QR_DIR, exist_ok=True)
 
 @router.post("/", response_model=StockItemResponse)
 def create_stock_item(item_in: StockItemCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    # Generate Item Code
+    store_id = current_user.tenant_id or 1
     prefix = "GLD" if item_in.metal.lower() == 'gold' else "SLV" if item_in.metal.lower() == 'silver' else "ITM"
     
-    # Get last item to increment sequence
-    last_item = db.query(StockItem).filter(StockItem.item_code.startswith(prefix)).order_by(StockItem.id.desc()).first()
+    last_item = db.query(StockItem).filter(
+        StockItem.store_id == store_id,
+        StockItem.item_code.startswith(prefix)
+    ).order_by(StockItem.id.desc()).first()
+    
     if last_item:
-        last_num = int(last_item.item_code.split('-')[1])
-        new_num = last_num + 1
+        try:
+            last_num = int(last_item.item_code.split('-')[1])
+            new_num = last_num + 1
+        except Exception:
+            new_num = 1
     else:
         new_num = 1
     item_code = f"{prefix}-{str(new_num).zfill(6)}"
     
-    # Generate QR Code
     qr = qrcode.QRCode(
         version=1,
         error_correction=qrcode.constants.ERROR_CORRECT_L,
@@ -39,12 +44,13 @@ def create_stock_item(item_in: StockItemCreate, db: Session = Depends(get_db), c
     qr.make(fit=True)
     img = qr.make_image(fill_color="black", back_color="white")
     
-    qr_filename = f"{item_code}.png"
+    qr_filename = f"{item_code}_{store_id}.png"
     qr_path = os.path.join(QR_DIR, qr_filename)
     img.save(qr_path)
     
     db_item = StockItem(
         **item_in.model_dump(),
+        store_id=store_id,
         item_code=item_code,
         qr_code_path=f"/static/qrcodes/{qr_filename}"
     )
@@ -65,7 +71,9 @@ def list_stock_items(
     db: Session = Depends(get_db), 
     current_user: User = Depends(get_current_user)
 ):
-    query = db.query(StockItem)
+    store_id = current_user.tenant_id or 1
+    query = db.query(StockItem).filter(StockItem.store_id == store_id)
+    
     if search:
         query = query.filter(StockItem.item_name.ilike(f"%{search}%") | StockItem.item_code.ilike(f"%{search}%"))
     if category:
@@ -78,16 +86,15 @@ def list_stock_items(
     total = query.count()
     items = query.order_by(StockItem.id.desc()).offset(skip).limit(limit).all()
     
-    # Calculate stats
-    total_weight = sum([item.net_weight for item in db.query(StockItem).all()])
+    total_weight = sum([item.net_weight for item in db.query(StockItem).filter(StockItem.store_id == store_id).all()])
     
-    # Convert items to dict for serialization
     items_data = [StockItemResponse.model_validate(item) for item in items]
     return {"total": total, "items": items_data, "total_weight": float(total_weight)}
 
 @router.get("/scan/{item_code}", response_model=StockItemResponse)
 def scan_stock_item(item_code: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    item = db.query(StockItem).filter(StockItem.item_code == item_code).first()
+    store_id = current_user.tenant_id or 1
+    item = db.query(StockItem).filter(StockItem.store_id == store_id, StockItem.item_code == item_code).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     if item.status.lower() == "sold":
@@ -96,7 +103,8 @@ def scan_stock_item(item_code: str, db: Session = Depends(get_db), current_user:
 
 @router.delete("/{item_id}")
 def delete_stock_item(item_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    item = db.query(StockItem).filter(StockItem.id == item_id).first()
+    store_id = current_user.tenant_id or 1
+    item = db.query(StockItem).filter(StockItem.store_id == store_id, StockItem.id == item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     db.delete(item)
@@ -105,7 +113,8 @@ def delete_stock_item(item_id: int, db: Session = Depends(get_db), current_user:
 
 @router.put("/{item_id}", response_model=StockItemResponse)
 def update_stock_item(item_id: int, item_in: StockItemUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    item = db.query(StockItem).filter(StockItem.id == item_id).first()
+    store_id = current_user.tenant_id or 1
+    item = db.query(StockItem).filter(StockItem.store_id == store_id, StockItem.id == item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     

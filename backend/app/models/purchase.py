@@ -1,6 +1,6 @@
 from sqlalchemy import Integer, String, DECIMAL, ForeignKey, DateTime, Enum, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from typing import List
+from typing import List, Optional
 from app.db.base_class import Base
 from datetime import datetime
 import enum
@@ -13,6 +13,7 @@ class PurchaseStatus(str, enum.Enum):
 class Purchase(Base):
     __tablename__ = 'purchases'
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    store_id: Mapped[Optional[int]] = mapped_column(Integer, default=1, index=True)
     purchase_number: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     seller_id: Mapped[int] = mapped_column(Integer, ForeignKey('sellers.id'))
     created_by_id: Mapped[int] = mapped_column(Integer, ForeignKey('users.id'))

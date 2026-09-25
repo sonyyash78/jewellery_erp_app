@@ -20,16 +20,16 @@ from app.services.invoice_pdf_service import InvoicePDFService
 
 router = APIRouter()
 
-def generate_invoice_number(db: Session) -> str:
+def generate_invoice_number(db: Session, store_id: int = 1) -> str:
     """
     Generate unique invoice number.
     Format: INV-YYYYMMDD-XXXX
     """
     today = datetime.now().strftime('%Y%m%d')
     
-    # Count invoices created today
+    # Count invoices created today for this store
     today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    count = db.query(Invoice).filter(Invoice.invoice_date >= today_start).count()
+    count = db.query(Invoice).filter(Invoice.store_id == store_id, Invoice.invoice_date >= today_start).count()
     
     return f"INV-{today}-{str(count + 1).zfill(4)}"
 
@@ -39,9 +39,10 @@ def create_invoice(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    store_id = current_user.tenant_id or 1
     # 1. Validate customer exists if provided
     if invoice_in.customer_id is not None:
-        customer = db.query(Customer).filter(Customer.id == invoice_in.customer_id).first()
+        customer = db.query(Customer).filter(Customer.id == invoice_in.customer_id, Customer.store_id == store_id).first()
         if not customer:
             raise HTTPException(
                 status_code=404,
@@ -69,8 +70,9 @@ def create_invoice(
     try:
         # 3. Create Invoice
         db_invoice = Invoice(
+            store_id=store_id,
             customer_id=invoice_in.customer_id,
-            invoice_number=generate_invoice_number(db),
+            invoice_number=generate_invoice_number(db, store_id),
             subtotal=invoice_in.subtotal,
             tax_amount=invoice_in.tax_amount,
             discount_amount=invoice_in.discount_amount,
@@ -327,13 +329,15 @@ def list_invoices(
     - end_date: Filter to date
     - customer_id: Filter by customer
     """
-    query = db.query(Invoice)
+    store_id = current_user.tenant_id or 1
+    query = db.query(Invoice).filter(Invoice.store_id == store_id)
     
     # Search filter
     if search:
         query = query.join(Customer).filter(
             (Invoice.invoice_number.ilike(f"%{search}%")) |
-            (Customer.name.ilike(f"%{search}%"))
+            (Customer.first_name.ilike(f"%{search}%")) |
+            (Customer.last_name.ilike(f"%{search}%"))
         )
     
     # Status filter
@@ -365,7 +369,8 @@ def get_invoice(
     current_user: User = Depends(get_current_user)
 ):
     """Get single invoice by ID with all details."""
-    invoice = db.query(Invoice).filter(Invoice.id == id).first()
+    store_id = current_user.tenant_id or 1
+    invoice = db.query(Invoice).filter(Invoice.id == id, Invoice.store_id == store_id).first()
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
     return invoice
@@ -377,7 +382,8 @@ def delete_invoice(
     current_user: User = Depends(get_current_user)
 ):
     """Delete invoice (soft delete - mark as cancelled)."""
-    invoice = db.query(Invoice).filter(Invoice.id == id).first()
+    store_id = current_user.tenant_id or 1
+    invoice = db.query(Invoice).filter(Invoice.id == id, Invoice.store_id == store_id).first()
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
     

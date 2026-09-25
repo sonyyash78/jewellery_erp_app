@@ -82,6 +82,32 @@ from fastapi.responses import HTMLResponse
 import urllib.request
 import json
 
+from app.models.store import Store
+
+def _ensure_user_store(db: Session, user: User) -> User:
+    if not user.tenant_id:
+        existing_store = db.query(Store).filter(Store.owner_id == user.id).first()
+        if existing_store:
+            user.tenant_id = existing_store.id
+            db.commit()
+            db.refresh(user)
+        else:
+            name_seed = user.full_name or (user.email.split('@')[0] if user.email else user.username)
+            store_name = f"{name_seed.title()} Jewellers"
+            store = Store(
+                name=store_name,
+                owner_id=user.id,
+                email=user.email,
+                is_active=True
+            )
+            db.add(store)
+            db.commit()
+            db.refresh(store)
+            user.tenant_id = store.id
+            db.commit()
+            db.refresh(user)
+    return user
+
 @router.get("/google-callback", response_class=HTMLResponse)
 def google_callback() -> str:
     """OAuth callback bridge page for Mobile App Google Sign-In."""
@@ -172,10 +198,12 @@ def google_login(
         db.commit()
         db.refresh(user)
         
+    _ensure_user_store(db, user)
     return _issue_token(user)
 
 @router.get("/me", response_model=UserResponse)
-def read_current_user(current_user: User = Depends(get_current_user)) -> Any:
+def read_current_user(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Any:
+    _ensure_user_store(db, current_user)
     return current_user
 
 
@@ -222,6 +250,8 @@ def register_user(
     db.add(db_obj)
     db.commit()
     db.refresh(db_obj)
+    
+    _ensure_user_store(db, db_obj)
     return db_obj
 
 

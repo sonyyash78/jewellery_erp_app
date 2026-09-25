@@ -19,6 +19,7 @@ class UserBase(BaseModel):
     full_name: Optional[str] = None
     is_active: bool = True
     role_id: Optional[int] = None
+    tenant_id: Optional[int] = None
 
 class UserCreate(UserBase):
     password: str

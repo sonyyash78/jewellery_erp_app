@@ -3,51 +3,63 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.api.dependencies import get_current_user
-from app.repositories.transaction_repo import bill_repo
+from app.models.user import User
+from app.models.billing import Bill, BillItem
 from app.schemas.billing import BillCreate, BillResponse
 from app.services.billing_service import BillingService
 
-router = APIRouter(dependencies=[Depends(get_current_user)])
+router = APIRouter()
 
 @router.get("/", response_model=List[BillResponse])
 def get_bills(
     db: Session = Depends(get_db),
     skip: int = 0,
     limit: int = 100,
+    current_user: User = Depends(get_current_user)
 ) -> Any:
-    return bill_repo.get_multi(db, skip=skip, limit=limit)
+    store_id = current_user.tenant_id or 1
+    return db.query(Bill).filter(Bill.store_id == store_id).offset(skip).limit(limit).all()
 
 @router.post("/", response_model=BillResponse)
 def create_bill(
     *,
     db: Session = Depends(get_db),
-    bill_in: BillCreate
+    bill_in: BillCreate,
+    current_user: User = Depends(get_current_user)
 ) -> Any:
-    # Ensure invoice number is unique
-    existing = bill_repo.get_by_invoice(db, invoice_number=bill_in.invoice_number)
+    store_id = current_user.tenant_id or 1
+    existing = db.query(Bill).filter(
+        Bill.store_id == store_id,
+        Bill.invoice_number == bill_in.invoice_number
+    ).first()
     if existing:
         raise HTTPException(
             status_code=400,
             detail="A bill with this invoice number already exists.",
         )
     
-    # Optional: We could validate the totals here using BillingService
-    item_totals = [item.total for item in bill_in.items]
-    calc = BillingService.calculate_bill_totals(
-        item_totals=item_totals,
-        discount=bill_in.discount,
-        cgst_rate=bill_in.cgst, # Warning: front-end is passing the calculated AMOUNT, or RATE? The schema has them as amounts.
-        # Assuming the front end calculated the amounts correctly.
-    )
+    obj_in_data = bill_in.model_dump(exclude={"items"})
+    db_obj = Bill(**obj_in_data, store_id=store_id)
+    db.add(db_obj)
+    db.flush()
     
-    return bill_repo.create_with_items(db=db, obj_in=bill_in)
+    for item in bill_in.items:
+        item_data = item.model_dump()
+        db_item = BillItem(**item_data, bill_id=db_obj.id)
+        db.add(db_item)
+        
+    db.commit()
+    db.refresh(db_obj)
+    return db_obj
 
 @router.get("/{id}", response_model=BillResponse)
 def get_bill(
     id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ) -> Any:
-    bill = bill_repo.get(db=db, id=id)
+    store_id = current_user.tenant_id or 1
+    bill = db.query(Bill).filter(Bill.id == id, Bill.store_id == store_id).first()
     if not bill:
         raise HTTPException(status_code=404, detail="Bill not found")
     return bill

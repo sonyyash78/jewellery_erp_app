@@ -13,6 +13,7 @@ class PaymentMode(str, enum.Enum):
 class Payment(Base):
     __tablename__ = "payments"
     id = Column(Integer, primary_key=True, index=True)
+    store_id = Column(Integer, default=1, index=True)
     bill_id = Column(Integer, ForeignKey("bills.id"), nullable=True) # Can be related to a bill
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=True) # Or just a general customer payment
     supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True) # Or supplier payment
@@ -34,6 +35,7 @@ class ExpenseCategory(str, enum.Enum):
 class Expense(Base):
     __tablename__ = "expenses"
     id = Column(Integer, primary_key=True, index=True)
+    store_id = Column(Integer, default=1, index=True)
     category = Column(Enum(ExpenseCategory), nullable=False)
     amount = Column(Numeric(12, 2), nullable=False)
     description = Column(String(255))

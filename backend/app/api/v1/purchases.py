@@ -53,8 +53,10 @@ def create_unified_purchase(
     else:
         raise HTTPException(status_code=400, detail="Seller information is required")
     
+    store_id = current_user.tenant_id or 1
     # Create purchase record first
     db_purchase = Purchase(
+        store_id=store_id,
         purchase_number=f"PUR-{int(datetime.now().timestamp() * 1000) % 1000000}",
         seller_id=seller.id,
         created_by_id=current_user.id,
@@ -195,7 +197,8 @@ def get_unified_purchases_history(
     current_user: User = Depends(get_current_user)
 ) -> Any:
     """Get all unified purchases."""
-    query = db.query(Purchase)
+    store_id = current_user.tenant_id or 1
+    query = db.query(Purchase).filter(Purchase.store_id == store_id)
     total = query.count()
     items = query.order_by(Purchase.id.desc()).offset(skip).limit(limit).all()
     
@@ -311,7 +314,8 @@ def get_purchase_pdf_data_by_voucher(
     current_user: User = Depends(get_current_user)
 ):
     """Get purchase data formatted for PDF generation using voucher number."""
-    purchase = db.query(Purchase).filter(Purchase.purchase_number == voucher_number).first()
+    store_id = current_user.tenant_id or 1
+    purchase = db.query(Purchase).filter(Purchase.store_id == store_id, Purchase.purchase_number == voucher_number).first()
     if not purchase:
         raise HTTPException(status_code=404, detail="Purchase not found")
         
@@ -328,7 +332,8 @@ def get_unified_purchase(
     current_user: User = Depends(get_current_user)
 ):
     """Get a single unified purchase formatted for the Invoice View Modal."""
-    purchase = db.query(Purchase).filter(Purchase.id == id).first()
+    store_id = current_user.tenant_id or 1
+    purchase = db.query(Purchase).filter(Purchase.id == id, Purchase.store_id == store_id).first()
     if not purchase:
         raise HTTPException(status_code=404, detail="Purchase not found")
         
@@ -362,7 +367,8 @@ def delete_unified_purchase(
     current_user: User = Depends(get_current_user)
 ):
     """Soft delete (cancel) a unified purchase."""
-    purchase = db.query(Purchase).filter(Purchase.id == id).first()
+    store_id = current_user.tenant_id or 1
+    purchase = db.query(Purchase).filter(Purchase.id == id, Purchase.store_id == store_id).first()
     if not purchase:
         raise HTTPException(status_code=404, detail="Purchase not found")
         

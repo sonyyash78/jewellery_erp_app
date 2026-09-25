@@ -7,7 +7,6 @@ from decimal import Decimal
 from app.db.database import get_db
 from app.api.dependencies import get_current_user
 from app.models.user import User
-from app.repositories.crm_repo import customer_repo
 from app.schemas.crm import CustomerCreate, CustomerUpdate, CustomerResponse, CustomerListResponse
 from app.models.crm import Customer
 from app.models.customer_ledger import CustomerLedger
@@ -15,7 +14,7 @@ from app.models.invoice import Invoice, InvoiceStatus
 from app.models.exchange import Exchange
 from app.models.metal_rates import MetalRate
 
-router = APIRouter(dependencies=[Depends(get_current_user)])
+router = APIRouter()
 
 
 @router.get("/", response_model=CustomerListResponse)
@@ -24,8 +23,10 @@ def get_customers(
     skip: int = 0,
     limit: int = 100,
     search: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_user),
 ) -> Any:
-    query = db.query(Customer)
+    store_id = current_user.tenant_id or 1
+    query = db.query(Customer).filter(Customer.store_id == store_id)
     if search:
         like = f"%{search}%"
         query = query.filter(
@@ -38,7 +39,7 @@ def get_customers(
         )
     total = query.count()
     items = query.order_by(Customer.id.desc()).offset(skip).limit(limit).all()
-    total_outstanding = db.query(Customer).with_entities(
+    total_outstanding = db.query(Customer).filter(Customer.store_id == store_id).with_entities(
         Customer.outstanding_balance
     ).all()
     outstanding_sum = sum((row[0] or Decimal("0")) for row in total_outstanding)
@@ -53,23 +54,39 @@ def get_customers(
 def create_customer(
     *,
     db: Session = Depends(get_db),
-    customer_in: CustomerCreate
+    customer_in: CustomerCreate,
+    current_user: User = Depends(get_current_user),
 ) -> Any:
-    customer = customer_repo.get_by_phone(db, phone=customer_in.phone_number)
-    if customer:
+    store_id = current_user.tenant_id or 1
+    # Check uniqueness within the same store
+    existing = db.query(Customer).filter(
+        Customer.store_id == store_id,
+        Customer.phone_number == customer_in.phone_number
+    ).first()
+    if existing:
         raise HTTPException(
             status_code=400,
-            detail="A customer with this mobile number already exists.",
+            detail="A customer with this mobile number already exists in your store.",
         )
-    return customer_repo.create(db=db, obj_in=customer_in)
+    
+    db_obj = Customer(
+        **customer_in.model_dump(),
+        store_id=store_id
+    )
+    db.add(db_obj)
+    db.commit()
+    db.refresh(db_obj)
+    return db_obj
 
 
 @router.get("/{id}", response_model=CustomerResponse)
 def get_customer(
     id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> Any:
-    customer = customer_repo.get(db=db, id=id)
+    store_id = current_user.tenant_id or 1
+    customer = db.query(Customer).filter(Customer.id == id, Customer.store_id == store_id).first()
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
     return customer
@@ -80,32 +97,49 @@ def update_customer(
     *,
     db: Session = Depends(get_db),
     id: int,
-    customer_in: CustomerUpdate
+    customer_in: CustomerUpdate,
+    current_user: User = Depends(get_current_user),
 ) -> Any:
-    customer = customer_repo.get(db=db, id=id)
+    store_id = current_user.tenant_id or 1
+    customer = db.query(Customer).filter(Customer.id == id, Customer.store_id == store_id).first()
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
-    return customer_repo.update(db=db, db_obj=customer, obj_in=customer_in)
+    
+    update_data = customer_in.model_dump(exclude_unset=True)
+    for field, val in update_data.items():
+        setattr(customer, field, val)
+        
+    db.commit()
+    db.refresh(customer)
+    return customer
 
 
 @router.delete("/{id}")
 def delete_customer(
     *,
     db: Session = Depends(get_db),
-    id: int
+    id: int,
+    current_user: User = Depends(get_current_user),
 ) -> Any:
-    customer = customer_repo.get(db=db, id=id)
+    store_id = current_user.tenant_id or 1
+    customer = db.query(Customer).filter(Customer.id == id, Customer.store_id == store_id).first()
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
-    customer_repo.remove(db=db, id=id)
+    db.delete(customer)
+    db.commit()
     return {"ok": True}
 
 
 @router.get("/{id}/ledger")
 def get_customer_ledger(
     id: int, 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    store_id = current_user.tenant_id or 1
+    customer = db.query(Customer).filter(Customer.id == id, Customer.store_id == store_id).first()
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
     entries = db.query(CustomerLedger).filter(CustomerLedger.customer_id == id).order_by(CustomerLedger.date.desc(), CustomerLedger.id.desc()).all()
     return entries
 
@@ -114,20 +148,21 @@ def get_customer_ledger(
 def add_customer_ledger_entry(
     id: int, 
     entry: Dict[str, Any], 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    customer = db.query(Customer).filter(Customer.id == id).first()
+    store_id = current_user.tenant_id or 1
+    customer = db.query(Customer).filter(Customer.id == id, Customer.store_id == store_id).first()
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
         
-    debit = float(entry.get('debit') or 0) # Customer owes us (e.g. Bill)
-    credit = float(entry.get('credit') or 0) # Customer paid us (e.g. Cash received)
+    debit = float(entry.get('debit') or 0)
+    credit = float(entry.get('credit') or 0)
     gold_debit = float(entry.get('gold_debit') or 0)
     gold_credit = float(entry.get('gold_credit') or 0)
     silver_debit = float(entry.get('silver_debit') or 0)
     silver_credit = float(entry.get('silver_credit') or 0)
     
-    # Update balance: Outstanding = Old Outstanding + Debit (Bill) - Credit (Payment)
     customer.outstanding_balance = float(customer.outstanding_balance or 0) + debit - credit
     customer.fine_gold_balance = float(customer.fine_gold_balance or 0) + gold_debit - gold_credit
     customer.fine_silver_balance = float(customer.fine_silver_balance or 0) + silver_debit - silver_credit
@@ -154,7 +189,16 @@ def add_customer_ledger_entry(
     return {"ledger": ledger, "new_balance": customer.outstanding_balance, "gold_balance": customer.fine_gold_balance, "silver_balance": customer.fine_silver_balance}
 
 @router.get("/{id}/bills")
-def get_customer_bills(id: int, db: Session = Depends(get_db)):
+def get_customer_bills(
+    id: int, 
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    store_id = current_user.tenant_id or 1
+    customer = db.query(Customer).filter(Customer.id == id, Customer.store_id == store_id).first()
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    
     ledger_entries = db.query(CustomerLedger).filter(CustomerLedger.customer_id == id).order_by(CustomerLedger.date.desc(), CustomerLedger.id.desc()).all()
     
     formatted_bills = []
@@ -172,12 +216,19 @@ def get_customer_bills(id: int, db: Session = Depends(get_db)):
             "balance": float(entry.balance)
         })
     
-    # Customer balances
-    customer = db.query(Customer).filter(Customer.id == id).first()
-    
-    # Get current metal rates
-    latest_gold_rate = db.query(MetalRate).filter(MetalRate.metal_type == 'Gold').order_by(MetalRate.date.desc()).first()
-    latest_silver_rate = db.query(MetalRate).filter(MetalRate.metal_type == 'Silver').order_by(MetalRate.date.desc()).first()
+    latest_gold_rate = db.query(MetalRate).filter(
+        MetalRate.store_id == store_id, 
+        MetalRate.metal_type == 'Gold'
+    ).order_by(MetalRate.date.desc()).first()
+    if not latest_gold_rate:
+        latest_gold_rate = db.query(MetalRate).filter(MetalRate.metal_type == 'Gold').order_by(MetalRate.date.desc()).first()
+        
+    latest_silver_rate = db.query(MetalRate).filter(
+        MetalRate.store_id == store_id, 
+        MetalRate.metal_type == 'Silver'
+    ).order_by(MetalRate.date.desc()).first()
+    if not latest_silver_rate:
+        latest_silver_rate = db.query(MetalRate).filter(MetalRate.metal_type == 'Silver').order_by(MetalRate.date.desc()).first()
     
     current_gold_rate = latest_gold_rate.rate if latest_gold_rate else 7000
     current_silver_rate = latest_silver_rate.rate if latest_silver_rate else 85

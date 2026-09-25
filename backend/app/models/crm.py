@@ -6,10 +6,11 @@ from app.db.database import Base
 class Customer(Base):
     __tablename__ = "customers"
     id = Column(Integer, primary_key=True, index=True)
+    store_id = Column(Integer, default=1, index=True)
     first_name = Column(String(100), nullable=False)
     last_name = Column(String(100))
-    phone_number = Column(String(20), unique=True, index=True, nullable=False)
-    email = Column(String(100), unique=True, index=True)
+    phone_number = Column(String(20), index=True, nullable=False)
+    email = Column(String(100), index=True)
     address = Column(String(255))
     city = Column(String(100))
     state = Column(String(100))
@@ -33,9 +34,10 @@ class Customer(Base):
 class Supplier(Base):
     __tablename__ = "suppliers"
     id = Column(Integer, primary_key=True, index=True)
+    store_id = Column(Integer, default=1, index=True)
     name = Column(String(100), nullable=False)
     contact_person = Column(String(100))
-    mobile = Column(String(20), unique=True, index=True, nullable=False)
+    mobile = Column(String(20), index=True, nullable=False)
     email = Column(String(100))
     address = Column(String(255))
     city = Column(String(100))

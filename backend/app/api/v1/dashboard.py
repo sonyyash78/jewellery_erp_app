@@ -12,10 +12,10 @@ def get_dashboard_metrics(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Get dashboard metrics using unified ReportService.
-    All calculations use CalculationService with correct formulas.
+    Get dashboard metrics scoped to current user's tenant store.
     """
-    return ReportService.get_dashboard_metrics(db)
+    store_id = current_user.tenant_id or 1
+    return ReportService.get_dashboard_metrics(db, store_id=store_id)
 
 @router.get("/chart-data")
 def get_dashboard_charts(
@@ -23,9 +23,10 @@ def get_dashboard_charts(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Get dashboard charts data: sales trend and top categories.
+    Get dashboard charts data scoped to current user's tenant store.
     """
-    return ReportService.get_dashboard_charts_data(db)
+    store_id = current_user.tenant_id or 1
+    return ReportService.get_dashboard_charts_data(db, store_id=store_id)
 
 @router.get("/recent-activity")
 def get_recent_activity(
@@ -35,8 +36,9 @@ def get_recent_activity(
     from app.models.invoice import Invoice
     from app.models.purchase import Purchase
     
-    recent_bills = db.query(Invoice).order_by(Invoice.invoice_date.desc()).limit(5).all()
-    recent_purchases = db.query(Purchase).order_by(Purchase.created_at.desc()).limit(5).all()
+    store_id = current_user.tenant_id or 1
+    recent_bills = db.query(Invoice).filter(Invoice.store_id == store_id).order_by(Invoice.invoice_date.desc()).limit(5).all()
+    recent_purchases = db.query(Purchase).filter(Purchase.store_id == store_id).order_by(Purchase.created_at.desc()).limit(5).all()
     
     bills = [{"id": b.id, "invoice_number": b.invoice_number, "date": b.invoice_date, "amount": float(b.grand_total)} for b in recent_bills]
     purchases = [{"id": p.id, "description": p.purchase_number, "date": p.created_at, "amount": float(p.grand_total)} for p in recent_purchases]

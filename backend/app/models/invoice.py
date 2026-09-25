@@ -29,6 +29,7 @@ class Invoice(Base):
     __tablename__ = "invoices"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    store_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("stores.id", ondelete="CASCADE"), nullable=True, default=1, index=True)
     customer_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("customers.id", ondelete="SET NULL"), nullable=True)
     invoice_number: Mapped[str] = mapped_column(String(100), unique=True, index=True)
     invoice_date: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)

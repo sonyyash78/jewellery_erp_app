@@ -1,4 +1,5 @@
 from app.db.database import Base
+from app.models.store import Store
 from app.models.user import User, Role, Permission
 from app.models.crm import Customer, Supplier
 from app.models.inventory import Inventory, Category, QRInventory

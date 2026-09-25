@@ -8,6 +8,7 @@ class Exchange(Base):
     __tablename__ = "exchanges"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    store_id: Mapped[Optional[int]] = mapped_column(Integer, default=1, index=True)
     customer_id: Mapped[int] = mapped_column(Integer, ForeignKey("customers.id", ondelete="RESTRICT"), index=True)
     exchange_date: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     
