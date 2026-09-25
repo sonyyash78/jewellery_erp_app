@@ -12,7 +12,8 @@ router = APIRouter()
 
 @router.post("/", response_model=SellerResponse)
 def create_seller(seller_in: SellerCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    db_seller = Seller(**seller_in.model_dump())
+    store_id = current_user.tenant_id or 1
+    db_seller = Seller(**seller_in.model_dump(), store_id=store_id)
     db.add(db_seller)
     db.commit()
     db.refresh(db_seller)
@@ -20,13 +21,14 @@ def create_seller(seller_in: SellerCreate, db: Session = Depends(get_db), curren
 
 @router.get("/", response_model=Dict[str, Any])
 def list_sellers(skip: int = Query(0, ge=0), limit: int = Query(100, ge=1), search: str = None, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    query = db.query(Seller).filter(Seller.is_active == True)
+    store_id = current_user.tenant_id or 1
+    query = db.query(Seller).filter(Seller.store_id == store_id, Seller.is_active == True)
     if search:
         query = query.filter(Seller.name.ilike(f"%{search}%") | Seller.mobile.ilike(f"%{search}%"))
     total = query.count()
     items = query.offset(skip).limit(limit).all()
     
-    total_outstanding = sum(s.outstanding_balance for s in db.query(Seller).all())
+    total_outstanding = sum((s.outstanding_balance or 0) for s in db.query(Seller).filter(Seller.store_id == store_id, Seller.is_active == True).all())
     
     # Convert items to SellerResponse
     items_data = [SellerResponse.model_validate(item) for item in items]
@@ -34,14 +36,16 @@ def list_sellers(skip: int = Query(0, ge=0), limit: int = Query(100, ge=1), sear
 
 @router.get("/{seller_id}", response_model=SellerResponse)
 def get_seller(seller_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    seller = db.query(Seller).filter(Seller.id == seller_id, Seller.is_active == True).first()
+    store_id = current_user.tenant_id or 1
+    seller = db.query(Seller).filter(Seller.id == seller_id, Seller.store_id == store_id, Seller.is_active == True).first()
     if not seller:
         raise HTTPException(status_code=404, detail="Supplier not found")
     return seller
 
 @router.put("/{seller_id}", response_model=SellerResponse)
 def update_seller(seller_id: int, seller_in: SellerUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    seller = db.query(Seller).filter(Seller.id == seller_id, Seller.is_active == True).first()
+    store_id = current_user.tenant_id or 1
+    seller = db.query(Seller).filter(Seller.id == seller_id, Seller.store_id == store_id, Seller.is_active == True).first()
     if not seller:
         raise HTTPException(status_code=404, detail="Supplier not found")
     
@@ -55,7 +59,8 @@ def update_seller(seller_id: int, seller_in: SellerUpdate, db: Session = Depends
 
 @router.delete("/{seller_id}")
 def delete_seller(seller_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    seller = db.query(Seller).filter(Seller.id == seller_id, Seller.is_active == True).first()
+    store_id = current_user.tenant_id or 1
+    seller = db.query(Seller).filter(Seller.id == seller_id, Seller.store_id == store_id, Seller.is_active == True).first()
     if not seller:
         raise HTTPException(status_code=404, detail="Supplier not found")
         
@@ -65,6 +70,10 @@ def delete_seller(seller_id: int, db: Session = Depends(get_db), current_user: U
 
 @router.get("/{seller_id}/ledger")
 def get_supplier_ledger(seller_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    store_id = current_user.tenant_id or 1
+    seller = db.query(Seller).filter(Seller.id == seller_id, Seller.store_id == store_id, Seller.is_active == True).first()
+    if not seller:
+        raise HTTPException(status_code=404, detail="Supplier not found")
     from app.models.supplier_ledger import SupplierLedger
     entries = db.query(SupplierLedger).filter(SupplierLedger.seller_id == seller_id).order_by(SupplierLedger.date.desc(), SupplierLedger.id.desc()).all()
     return entries
@@ -79,7 +88,8 @@ def add_supplier_ledger_entry(
     current_user: User = Depends(get_current_user)
 ):
     from app.models.supplier_ledger import SupplierLedger
-    seller = db.query(Seller).filter(Seller.id == seller_id).first()
+    store_id = current_user.tenant_id or 1
+    seller = db.query(Seller).filter(Seller.id == seller_id, Seller.store_id == store_id).first()
     if not seller:
         raise HTTPException(status_code=404, detail="Supplier not found")
         
@@ -117,7 +127,11 @@ def add_supplier_ledger_entry(
     return {"ledger": ledger, "new_balance": seller.outstanding_balance, "gold_balance": seller.fine_gold_balance, "silver_balance": seller.fine_silver_balance}
 
 @router.get("/{seller_id}/bills")
-def get_supplier_bills(seller_id: int, db: Session = Depends(get_db)):
+def get_supplier_bills(seller_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    store_id = current_user.tenant_id or 1
+    seller = db.query(Seller).filter(Seller.id == seller_id, Seller.store_id == store_id).first()
+    if not seller:
+        raise HTTPException(status_code=404, detail="Supplier not found")
     from app.models.supplier_ledger import SupplierLedger
     ledger_entries = db.query(SupplierLedger).filter(SupplierLedger.seller_id == seller_id).order_by(SupplierLedger.date.desc(), SupplierLedger.id.desc()).all()
     
@@ -135,9 +149,6 @@ def get_supplier_bills(seller_id: int, db: Session = Depends(get_db)):
             "credit": float(entry.credit),
             "balance": float(entry.balance)
         })
-    
-    # Supplier balances
-    seller = db.query(Seller).filter(Seller.id == seller_id).first()
     
     # Get current metal rates
     latest_gold_rate = db.query(MetalRate).filter(MetalRate.metal_type == 'Gold').order_by(MetalRate.date.desc()).first()

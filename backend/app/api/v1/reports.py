@@ -19,7 +19,8 @@ def get_sales_report(
     Get sales report with correct totals using ReportService.
     Uses historical transaction rates.
     """
-    return ReportService.get_sales_report(db, start_date, end_date)
+    store_id = current_user.tenant_id or 1
+    return ReportService.get_sales_report(db, start_date, end_date, store_id=store_id)
 
 @router.get("/purchases")
 def get_purchase_report(
@@ -32,7 +33,8 @@ def get_purchase_report(
     Get purchase report with correct totals using ReportService.
     Uses historical transaction rates.
     """
-    return ReportService.get_purchase_report(db, start_date, end_date)
+    store_id = current_user.tenant_id or 1
+    return ReportService.get_purchase_report(db, start_date, end_date, store_id=store_id)
 
 @router.get("/gst")
 def get_gst_report(
@@ -48,7 +50,8 @@ def get_gst_report(
     Input GST = Sum(Purchase GST)  
     Net GST = Output GST - Input GST (ITC)
     """
-    return ReportService.get_gst_report(db, start_date, end_date)
+    store_id = current_user.tenant_id or 1
+    return ReportService.get_gst_report(db, start_date, end_date, store_id=store_id)
 
 @router.get("/profit")
 def get_profit_report(
@@ -66,7 +69,8 @@ def get_profit_report(
     
     GST is NOT included in profit calculations.
     """
-    return ReportService.get_profit_report(db, start_date, end_date)
+    store_id = current_user.tenant_id or 1
+    return ReportService.get_profit_report(db, start_date, end_date, store_id=store_id)
 
 @router.get("/metal-flow")
 def get_metal_flow_report(
@@ -78,7 +82,8 @@ def get_metal_flow_report(
     """
     Get detailed breakdown of physical metal movement.
     """
-    return ReportService.get_metal_flow_report(db, start_date, end_date)
+    store_id = current_user.tenant_id or 1
+    return ReportService.get_metal_flow_report(db, start_date, end_date, store_id=store_id)
 
 @router.get("/inventory")
 def get_inventory_report(
@@ -89,7 +94,8 @@ def get_inventory_report(
     Get inventory report.
     Uses purchase cost (historical rates), not current live rates.
     """
-    return ReportService.get_inventory_report(db)
+    store_id = current_user.tenant_id or 1
+    return ReportService.get_inventory_report(db, store_id=store_id)
 
 @router.get("/customers")
 def get_customer_report(
@@ -100,8 +106,9 @@ def get_customer_report(
     from sqlalchemy import func
     from decimal import Decimal
     
-    total_customers = db.query(Customer).count()
-    total_receivables = db.query(func.sum(Customer.outstanding_balance)).filter(Customer.outstanding_balance > 0).scalar() or 0
+    store_id = current_user.tenant_id or 1
+    total_customers = db.query(Customer).filter(Customer.store_id == store_id).count()
+    total_receivables = db.query(func.sum(Customer.outstanding_balance)).filter(Customer.store_id == store_id, Customer.outstanding_balance > 0).scalar() or 0
     
     return {
         "total": total_customers, 
@@ -117,8 +124,9 @@ def get_supplier_report(
     from sqlalchemy import func
     from decimal import Decimal
     
-    total_suppliers = db.query(Seller).count()
-    total_payables = db.query(func.sum(Seller.outstanding_balance)).filter(Seller.outstanding_balance < 0).scalar() or 0
+    store_id = current_user.tenant_id or 1
+    total_suppliers = db.query(Seller).filter(Seller.store_id == store_id, Seller.is_active == True).count()
+    total_payables = db.query(func.sum(Seller.outstanding_balance)).filter(Seller.store_id == store_id, Seller.is_active == True, Seller.outstanding_balance < 0).scalar() or 0
     
     return {
         "total": total_suppliers, 
@@ -136,7 +144,8 @@ def get_expenses_report(
     from app.models.expense import Expense as ExpenseModel
     from sqlalchemy import func
     
-    query = db.query(ExpenseModel)
+    store_id = current_user.tenant_id or 1
+    query = db.query(ExpenseModel).filter(ExpenseModel.store_id == store_id)
     if start_date:
         query = query.filter(ExpenseModel.expense_date >= start_date)
     if end_date:

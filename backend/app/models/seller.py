@@ -6,6 +6,7 @@ from app.db.base_class import Base
 class Seller(Base):
     __tablename__ = 'sellers'
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    store_id: Mapped[int] = mapped_column(Integer, default=1, index=True)
     name: Mapped[str] = mapped_column(String(100), index=True)
     mobile: Mapped[str] = mapped_column(String(20), index=True)
     aadhaar_pan: Mapped[str] = mapped_column(String(50), nullable=True)

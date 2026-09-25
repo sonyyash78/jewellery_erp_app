@@ -17,12 +17,13 @@ from app.api.dependencies import get_current_user
 
 router = APIRouter()
 
-def get_or_create_seller(db: Session, seller_info: SellerInfo):
-    """Get existing seller by mobile or create a new one."""
-    existing = db.query(Seller).filter(Seller.mobile == seller_info.mobile).first()
+def get_or_create_seller(db: Session, seller_info: SellerInfo, store_id: int = 1):
+    """Get existing seller by mobile or create a new one for specific store."""
+    existing = db.query(Seller).filter(Seller.store_id == store_id, Seller.mobile == seller_info.mobile).first()
     if existing:
         return existing
     seller = Seller(
+        store_id=store_id,
         name=seller_info.name,
         mobile=seller_info.mobile,
         address=seller_info.address,
@@ -42,18 +43,17 @@ def create_unified_purchase(
     current_user: User = Depends(get_current_user)
 ) -> Any:
     """Create a unified purchase with seller info and items array. Backend recalculates all totals."""
+    store_id = current_user.tenant_id or 1
     
     # Get or create seller
     if purchase_in.seller_id:
-        seller = db.query(Seller).filter(Seller.id == purchase_in.seller_id).first()
+        seller = db.query(Seller).filter(Seller.id == purchase_in.seller_id, Seller.store_id == store_id).first()
         if not seller:
             raise HTTPException(status_code=404, detail="Seller not found")
     elif purchase_in.seller:
-        seller = get_or_create_seller(db, purchase_in.seller)
+        seller = get_or_create_seller(db, purchase_in.seller, store_id=store_id)
     else:
         raise HTTPException(status_code=400, detail="Seller information is required")
-    
-    store_id = current_user.tenant_id or 1
     # Create purchase record first
     db_purchase = Purchase(
         store_id=store_id,
