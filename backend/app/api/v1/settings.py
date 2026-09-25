@@ -27,7 +27,15 @@ def get_all_settings(
     settings = db.query(Setting).all()
     res = {s.key: s.value for s in settings}
     
-    # Store-specific overrides
+    # Store-specific overrides for all custom fields
+    if store_id != 1:
+        prefix = f"store_{store_id}_"
+        for s in settings:
+            if s.key.startswith(prefix):
+                pure_key = s.key[len(prefix):]
+                res[pure_key] = s.value
+                
+    # Store model direct overrides
     store = db.query(Store).filter(Store.id == store_id).first()
     if store:
         res["business_name"] = store.name
@@ -35,28 +43,28 @@ def get_all_settings(
         if store.phone:
             res["phone"] = store.phone
             res["store_phone"] = store.phone
-        elif store_id != 1:
+        elif store_id != 1 and "phone" not in res:
             res["phone"] = ""
             res["store_phone"] = ""
 
         if store.email:
             res["email"] = store.email
             res["store_email"] = store.email
-        elif store_id != 1:
+        elif store_id != 1 and "email" not in res:
             res["email"] = current_user.email or ""
             res["store_email"] = current_user.email or ""
 
         if store.address:
             res["address"] = store.address
             res["store_address"] = store.address
-        elif store_id != 1:
+        elif store_id != 1 and "address" not in res:
             res["address"] = ""
             res["store_address"] = ""
 
         if store.gstin:
             res["gstin"] = store.gstin
             res["store_gstin"] = store.gstin
-        elif store_id != 1:
+        elif store_id != 1 and "gstin" not in res:
             res["gstin"] = ""
             res["store_gstin"] = ""
 
@@ -65,10 +73,8 @@ def get_all_settings(
         else:
             res["logo_url"] = "/static/logo.png"
 
-        res["upi_name"] = store.name
-        if store_id != 1:
-            store_upi = db.query(Setting).filter(Setting.key == f"store_{store_id}_upi_id").first()
-            res["upi_id"] = store_upi.value if store_upi else ""
+        if "upi_name" not in res or not res["upi_name"]:
+            res["upi_name"] = store.name
 
     return res
 
@@ -97,9 +103,9 @@ def update_settings(
             elif item.key == "logo_url":
                 store.logo_url = item.value
 
-        # For store-specific UPI or settings, key by store_{store_id}_{key} if not root store
-        if item.key == "upi_id" and store_id != 1:
-            st_key = f"store_{store_id}_upi_id"
+        # For store-specific settings when store_id != 1
+        if store_id != 1:
+            st_key = f"store_{store_id}_{item.key}"
             s_obj = db.query(Setting).filter(Setting.key == st_key).first()
             if s_obj:
                 s_obj.value = item.value
@@ -114,7 +120,14 @@ def update_settings(
                 db.add(Setting(key=item.key, value=item.value))
 
     db.commit()
-    return {"message": "Settings updated"}
+    if store:
+        db.refresh(store)
+    return {
+        "message": "Settings updated",
+        "store_name": store.name if store else "Jewellery ERP",
+        "business_name": store.name if store else "Jewellery ERP",
+        "logo_url": store.logo_url if store and store.logo_url else "/static/logo.png"
+    }
 
 @router.post("/logo")
 async def upload_logo(

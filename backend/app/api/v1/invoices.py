@@ -23,15 +23,24 @@ router = APIRouter()
 def generate_invoice_number(db: Session, store_id: int = 1) -> str:
     """
     Generate unique invoice number.
-    Format: INV-YYYYMMDD-XXXX
+    Format: INV-YYYYMMDD-XXXX for store 1, or INV-S{store_id}-YYYYMMDD-XXXX for other stores.
+    Guaranteed unique across database.
     """
     today = datetime.now().strftime('%Y%m%d')
+    prefix = f"INV-{today}" if store_id == 1 else f"INV-S{store_id}-{today}"
     
-    # Count invoices created today for this store
     today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    count = db.query(Invoice).filter(Invoice.store_id == store_id, Invoice.invoice_date >= today_start).count()
+    count = db.query(Invoice).filter(
+        Invoice.store_id == store_id,
+        Invoice.invoice_date >= today_start
+    ).count() + 1
     
-    return f"INV-{today}-{str(count + 1).zfill(4)}"
+    candidate = f"{prefix}-{str(count).zfill(4)}"
+    while db.query(Invoice).filter(Invoice.invoice_number == candidate).first():
+        count += 1
+        candidate = f"{prefix}-{str(count).zfill(4)}"
+        
+    return candidate
 
 @router.post("/", response_model=InvoiceResponse)
 def create_invoice(
