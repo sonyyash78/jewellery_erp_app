@@ -58,9 +58,9 @@ class InvoiceCreate(BaseModel):
     items: List[InvoiceItemCreate]
     
     # New Hybrid Billing fields
-    bill_type: BillType = BillType.CASH
-    settlement_type: SettlementType = SettlementType.CASH
-    settlement_metal_type: Optional[MetalType] = None
+    bill_type: Optional[str] = "Cash"
+    settlement_type: Optional[str] = "Cash"
+    settlement_metal_type: Optional[str] = None
     metal_received_value: float = 0.0
     metal_received_str: str | None = None
     cash_received: float = 0.0
@@ -88,9 +88,9 @@ class InvoiceResponse(BaseModel):
     grand_total: float
     status: InvoiceStatus
     
-    bill_type: BillType
-    settlement_type: SettlementType
-    settlement_metal_type: Optional[MetalType] = None
+    bill_type: Optional[str] = "Cash"
+    settlement_type: Optional[str] = "Cash"
+    settlement_metal_type: Optional[str] = None
     metal_received_value: float
     cash_received: float
     balance_amount: float
