@@ -26,17 +26,50 @@ class InvoicePDFService:
     COMPANY_GSTIN = ""
     
     @staticmethod
-    def _get_company_details(db: Session) -> Dict[str, str]:
+    def _get_company_details(db: Session, store_id: int = 1) -> Dict[str, str]:
         settings = db.query(Setting).all()
         settings_dict = {s.key: s.value for s in settings}
+        
+        # Override with store-specific settings if store_id != 1
+        if store_id and store_id != 1:
+            prefix = f"store_{store_id}_"
+            for s in settings:
+                if s.key.startswith(prefix):
+                    pure_key = s.key[len(prefix):]
+                    settings_dict[pure_key] = s.value
+
+        from app.models.store import Store
+        store = db.query(Store).filter(Store.id == store_id).first() if store_id else None
+
+        name = store.name if (store and store.name) else (settings_dict.get('business_name') or InvoicePDFService.COMPANY_NAME)
+        address = store.address if (store and store.address) else (settings_dict.get('address') or InvoicePDFService.COMPANY_ADDRESS)
+        phone = store.phone if (store and store.phone) else (settings_dict.get('phone') or InvoicePDFService.COMPANY_PHONE)
+        email = store.email if (store and store.email) else (settings_dict.get('email') or InvoicePDFService.COMPANY_EMAIL)
+        gstin = store.gstin if (store and store.gstin) else (settings_dict.get('gstin') or InvoicePDFService.COMPANY_GSTIN)
+        pan = store.pan if (store and store.pan) else (settings_dict.get('pan') or "")
+        tagline = store.tagline if (store and store.tagline) else (settings_dict.get('tagline') or "Trust. Purity. Elegance.")
+        logo_url = store.logo_url if (store and store.logo_url) else settings_dict.get('logo_url', '/static/logo.png')
+        upi_name = settings_dict.get('upi_name') or name
+        upi_id = settings_dict.get('upi_id') or ""
+
         return {
-            'name': settings_dict.get('business_name') or InvoicePDFService.COMPANY_NAME,
-            'address': settings_dict.get('address') or InvoicePDFService.COMPANY_ADDRESS,
-            'phone': settings_dict.get('phone') or InvoicePDFService.COMPANY_PHONE,
-            'email': settings_dict.get('email') or InvoicePDFService.COMPANY_EMAIL,
-            'gstin': settings_dict.get('gstin') or InvoicePDFService.COMPANY_GSTIN,
-            'pan': settings_dict.get('pan') or "",
-            'tagline': settings_dict.get('tagline') or "Trust. Purity. Elegance."
+            'name': name,
+            'address': address,
+            'phone': phone,
+            'email': email,
+            'gstin': gstin,
+            'pan': pan,
+            'tagline': tagline,
+            'logo_url': logo_url,
+            'upi_id': upi_id,
+            'upi_name': upi_name,
+            'bank_name': settings_dict.get('bank_name') or "",
+            'bank_account_no': settings_dict.get('bank_account_no') or "",
+            'bank_ifsc': settings_dict.get('bank_ifsc') or "",
+            'print_hallmark': settings_dict.get('print_hallmark'),
+            'print_wastage': settings_dict.get('print_wastage'),
+            'print_making_charges': settings_dict.get('print_making_charges'),
+            'print_remarks': settings_dict.get('print_remarks'),
         }
 
     @staticmethod
@@ -59,7 +92,7 @@ class InvoicePDFService:
             raise ValueError(f"Invoice {invoice_id} not found")
         
         # Company details
-        company = InvoicePDFService._get_company_details(db)
+        company = InvoicePDFService._get_company_details(db, getattr(invoice, 'store_id', 1) or 1)
         
         # Invoice details
         invoice_data = {
@@ -213,7 +246,7 @@ class InvoicePDFService:
         if not purchase:
             raise ValueError(f"Purchase {purchase_id} not found")
         
-        company = InvoicePDFService._get_company_details(db)
+        company = InvoicePDFService._get_company_details(db, getattr(purchase, 'store_id', 1) or 1)
         
         invoice_data = {
             'invoice_number': purchase.purchase_number,
@@ -293,7 +326,7 @@ class InvoicePDFService:
         if not exchange:
             raise ValueError(f"Exchange {exchange_id} not found")
         
-        company = InvoicePDFService._get_company_details(db)
+        company = InvoicePDFService._get_company_details(db, getattr(exchange, 'store_id', 1) or 1)
         
         invoice_data = {
             'invoice_number': f"EXC-{exchange.id}",
