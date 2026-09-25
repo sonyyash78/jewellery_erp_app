@@ -52,6 +52,9 @@ def get_current_user(
         raise HTTPException(status_code=404, detail="User not found")
     if not user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
+
+    from app.services.tenant_service import ensure_user_store
+    ensure_user_store(db, user)
     return user
 
 class RoleChecker:

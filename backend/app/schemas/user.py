@@ -20,6 +20,7 @@ class UserBase(BaseModel):
     is_active: bool = True
     role_id: Optional[int] = None
     tenant_id: Optional[int] = None
+    store_name: Optional[str] = None
 
 class UserCreate(UserBase):
     password: str

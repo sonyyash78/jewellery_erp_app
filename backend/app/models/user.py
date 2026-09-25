@@ -35,3 +35,7 @@ class User(Base):
     inventory_transactions = relationship("InventoryTransaction", back_populates="user")
     reports = relationship("GeneratedReport", back_populates="generator")
 
+    @property
+    def store_name(self) -> str:
+        return self.store.name if self.store else "Jeweller App"
+
