@@ -372,7 +372,7 @@ export const renderTableEnd = () => `
   </div>
 `;
 
-export const renderSettlements = (metals: string[], goldSettlement: any, silverSettlement: any) => {
+export const renderSettlements = (metals: string[], goldSettlement: any, silverSettlement: any, _invoice?: any) => {
   const hasGold = metals.includes('Gold');
   const hasSilver = metals.includes('Silver');
 
@@ -384,10 +384,24 @@ export const renderSettlements = (metals: string[], goldSettlement: any, silverS
 
     const fineBilled = data.required || data.fineBilled || 0;
     const fineReceived = data.fineReceived || 0;
-    const fineBalance = Math.max(0, fineBilled - fineReceived);
+    let fineBalance = Math.max(0, fineBilled - fineReceived);
+    const balanceMetalWeight = data.balanceLedger || data.balanceMetalWeight || 0;
+
+    if (_invoice) {
+      if (isGold && _invoice.gold_balance_metal_weight !== undefined && _invoice.gold_balance_metal_weight !== null) {
+        fineBalance = Number(_invoice.gold_balance_metal_weight);
+      } else if (!isGold && _invoice.silver_balance_metal_weight !== undefined && _invoice.silver_balance_metal_weight !== null) {
+        fineBalance = Number(_invoice.silver_balance_metal_weight);
+      }
+      if (_invoice.settlement_type === 'Cash' || _invoice.bill_type === 'Cash') {
+        fineBalance = 0;
+      }
+    } else if (balanceMetalWeight > 0) {
+      fineBalance = balanceMetalWeight;
+    }
+
     const appliedRate = data.price || data.appliedRate || 0;
     const metalValueSettled = data.valueSettled || (fineReceived * (appliedRate / (isGold ? 10 : 1000)));
-    const balanceMetalWeight = data.balanceLedger || data.balanceMetalWeight || 0;
     const isFixed = appliedRate > 0;
     const titleColor = isGold ? '#D4AF37' : '#9CA3AF';
 
@@ -405,9 +419,9 @@ export const renderSettlements = (metals: string[], goldSettlement: any, silverS
             ${isFixed ? `
             <tr><td>Rate</td><td style="text-align: right;">:</td><td style="text-align: right;">&#8377; ${appliedRate.toLocaleString('en-IN')}${!isGold ? '/kg' : '/10g'}</td></tr>
             <tr><td>Value Settled (Metal)</td><td style="text-align: right;">:</td><td style="text-align: right; color: #10B981; font-weight: 800;">&#8377; ${metalValueSettled.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</td></tr>
-            ${balanceMetalWeight > 0 ? `<tr><td>Balance (Ledger)</td><td style="text-align: right;">:</td><td style="text-align: right; color: #DC2626; font-weight: 800;">+ ${balanceMetalWeight.toFixed(3)} gm</td></tr>` : ''}
+            <tr><td>Balance Due</td><td style="text-align: right;">:</td><td style="text-align: right; color: ${fineBalance > 0.001 ? '#DC2626' : '#10B981'}; font-weight: 800;">${fineBalance > 0.001 ? `+ ${fineBalance.toFixed(3)} gm` : '0.000 gm (Settled)'}</td></tr>
             ` : `
-            <tr><td>Physical Balance Due</td><td style="text-align: right;">:</td><td style="text-align: right; color: #DC2626; font-weight: 800;">${fineBalance.toFixed(3)} gm</td></tr>
+            <tr><td>Balance Due</td><td style="text-align: right;">:</td><td style="text-align: right; color: ${fineBalance > 0.001 ? '#DC2626' : '#10B981'}; font-weight: 800;">${fineBalance > 0.001 ? `+ ${fineBalance.toFixed(3)} gm` : '0.000 gm (Settled)'}</td></tr>
             `}
           </table>
         </div>

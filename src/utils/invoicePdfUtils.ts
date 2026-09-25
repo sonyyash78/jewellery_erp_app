@@ -126,7 +126,7 @@ export const generateInvoiceHtml = (data: any): string => {
   // Show metal settlement if there is metal requirement or metal given or hybrid/metal bill
   const hasMetalSettlement = goldBilled.fineReceived > 0 || silverBilled.fineReceived > 0 || goldBilled.balanceLedger > 0 || silverBilled.balanceLedger > 0 || invoice.bill_type !== 'Cash';
   if (hasMetalSettlement) {
-    const settlementHtml = premiumComponents.renderSettlements(metalsArray, goldBilled, silverBilled);
+    const settlementHtml = premiumComponents.renderSettlements(metalsArray, goldBilled, silverBilled, invoice);
     if (settlementHtml) finalHtml += settlementHtml;
   }
 

@@ -120,6 +120,8 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
   // Required metal difference from customer
   const goldRequired = Math.max(0, totalNewGoldFine - totalOldGoldFine);
   const silverRequired = Math.max(0, totalNewSilverFine - totalOldSilverFine);
+  const hasGold = totalNewGoldFine > 0 || totalOldGoldFine > 0;
+  const hasSilver = totalNewSilverFine > 0 || totalOldSilverFine > 0;
 
   // Additional Metal Given by customer in Checkout
   const [goldGiven, setGoldGiven] = useState('');
@@ -129,11 +131,24 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
 
   const [cashReceived, setCashReceived] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'UPI' | 'CHEQUE'>('CASH');
-  const [cashBalanceAction, setCashBalanceAction] = useState<'cash' | 'metal_req' | 'metal_gold' | 'metal_silver'>('cash');
+  const [cashBalanceAction, setCashBalanceAction] = useState<'cash' | 'metal_gold' | 'metal_silver' | 'metal_both'>('cash');
 
   const [submitting, setSubmitting] = useState(false);
 
-  // Compute additional metal values
+  // Compute non-metal charges (Making charges + other expenses + GST)
+  const totalMakingCharges = useMemo(() => {
+    return newItemsRaw.reduce((sum: number, i: any) => 
+      sum + (Number(i.gold_calculation?.making_charges_amount || i.making_charges_amount || 0)), 0);
+  }, [newItemsRaw]);
+
+  const totalOtherCharges = useMemo(() => {
+    return newItemsRaw.reduce((sum: number, i: any) => 
+      sum + (Number(i.gold_calculation?.hallmark_charges || i.hallmark_charges || 0) + Number(i.other_charges || 0)), 0);
+  }, [newItemsRaw]);
+
+  const nonMetalCharges = totalMakingCharges + totalOtherCharges + gstAmount;
+
+  // Compute additional metal values given at checkout counter
   const parsedGoldGiven = parseFloat(goldGiven) || 0;
   const parsedGoldTanch = parseFloat(goldGivenTanch) || 100;
   const fineGoldGiven = parsedGoldGiven * (parsedGoldTanch / 100);
@@ -146,91 +161,91 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
 
   const totalAdditionalMetalValue = goldValueGiven + silverValueGiven;
 
-  // Net monetary balance before cash
-  // Grand Total (New Items + GST) - Old Items Total - Additional Metal Given
-  const netDifference = grand_total - total_old_value;
-  const monetaryBeforeCash = netDifference - totalAdditionalMetalValue;
-  const parsedCash = parseFloat(cashReceived) || 0;
-  const cashBalanceDue = Math.max(0, monetaryBeforeCash - parsedCash);
-
   // Remaining metal requirement after checkout metal given
   const remGoldReq = Math.max(0, goldRequired - fineGoldGiven);
   const remSilverReq = Math.max(0, silverRequired - fineSilverGiven);
 
-  // 4 Settlement Options Math:
-  // Option 1: Keep entire balance as Cash Due (Gold: 0, Silver: 0, Cash: cashBalanceDue)
+  const goldLeftRupees = goldRate > 0 ? remGoldReq * (goldRate / 10) : 0;
+  const silverLeftRupees = silverRate > 0 ? remSilverReq * (silverRate / 1000) : 0;
+  const totalMetalRupeesDue = goldLeftRupees + silverLeftRupees;
 
-  // Option 2: Settle Metal Requirement in Metal Ledger + Keep Remaining GST/Making as Cash Due
-  const goldReqVal = goldRate > 0 ? remGoldReq * (goldRate / 10) : 0;
-  const silverReqVal = silverRate > 0 ? remSilverReq * (silverRate / 1000) : 0;
-  const totalMetalReqVal = goldReqVal + silverReqVal;
+  // Net monetary balance before cash (includes metal value + non-metal charges)
+  const monetaryBeforeCash = totalMetalRupeesDue + nonMetalCharges;
+  const netDifference = grand_total - total_old_value;
+  const parsedCash = parseFloat(cashReceived) || 0;
+  const cashBalanceDue = Math.max(0, monetaryBeforeCash - parsedCash);
 
-  let reqGoldGrams = 0;
-  let reqSilverGrams = 0;
-  let reqCashDue = 0;
+  // --- Dynamic 4 Settlement Options Math ---
 
-  if (totalMetalReqVal > 0) {
-    if (cashBalanceDue >= totalMetalReqVal) {
-      reqGoldGrams = remGoldReq;
-      reqSilverGrams = remSilverReq;
-      reqCashDue = cashBalanceDue - totalMetalReqVal;
-    } else {
-      if (goldReqVal > 0 && silverReqVal === 0) {
-        reqGoldGrams = goldRate > 0 ? (cashBalanceDue / (goldRate / 10)) : 0;
-        reqSilverGrams = 0;
-        reqCashDue = 0;
-      } else if (silverReqVal > 0 && goldReqVal === 0) {
-        reqGoldGrams = 0;
-        reqSilverGrams = silverRate > 0 ? (cashBalanceDue / (silverRate / 1000)) : 0;
-        reqCashDue = 0;
-      } else {
-        if (cashBalanceDue <= goldReqVal) {
-          reqGoldGrams = goldRate > 0 ? (cashBalanceDue / (goldRate / 10)) : 0;
-          reqSilverGrams = 0;
-          reqCashDue = 0;
-        } else {
-          reqGoldGrams = remGoldReq;
-          const remCash = cashBalanceDue - goldReqVal;
-          reqSilverGrams = silverRate > 0 ? (remCash / (silverRate / 1000)) : 0;
-          reqCashDue = 0;
-        }
-      }
-    }
-  } else {
-    reqGoldGrams = 0;
-    reqSilverGrams = 0;
-    reqCashDue = cashBalanceDue;
-  }
+  // Option 1: Keep entire balance as Cash Due (pay all in cash)
+  const opt1CashDue = Math.max(0, monetaryBeforeCash - parsedCash);
+  const opt1GoldToLedger = 0;
+  const opt1SilverToLedger = 0;
 
-  // Option 3: Convert Entire Remaining Balance to Gold Ledger
-  const cashToGoldGrams = goldRate > 0 ? (cashBalanceDue / (goldRate / 10)) : 0;
+  // Option 4: Convert Both Metals to Ledgers (metal_both)
+  // Cash first pays nonMetalCharges (GST, making, expenses).
+  // Any remaining cash DIRECTLY reduces the remaining metal due!
+  const opt4CashDue = Math.max(0, nonMetalCharges - parsedCash);
+  const opt4CashForMetal = Math.max(0, parsedCash - nonMetalCharges);
 
-  // Option 4: Convert Entire Remaining Balance to Silver Ledger
-  const cashToSilverGrams = silverRate > 0 ? (cashBalanceDue / (silverRate / 1000)) : 0;
+  const opt4SilverRupeesPaid = Math.min(silverLeftRupees, opt4CashForMetal);
+  const opt4RemainingCashForGold = opt4CashForMetal - opt4SilverRupeesPaid;
+  const opt4GoldRupeesPaid = Math.min(goldLeftRupees, opt4RemainingCashForGold);
 
-  let finalGoldDebt = 0;
-  let finalSilverDebt = 0;
-  let finalBalanceAmount = cashBalanceDue;
+  const opt4RemainingSilverRupees = Math.max(0, silverLeftRupees - opt4SilverRupeesPaid);
+  const opt4RemainingGoldRupees = Math.max(0, goldLeftRupees - opt4GoldRupeesPaid);
 
-  if (cashBalanceAction === 'metal_req') {
-    finalGoldDebt = reqGoldGrams;
-    finalSilverDebt = reqSilverGrams;
-    finalBalanceAmount = reqCashDue;
-  } else if (cashBalanceAction === 'metal_gold') {
-    finalGoldDebt = cashToGoldGrams;
-    finalSilverDebt = 0;
-    finalBalanceAmount = 0;
+  const opt4SilverToLedger = (silverRate > 0 && opt4RemainingSilverRupees > 0)
+    ? (opt4RemainingSilverRupees / (silverRate / 1000))
+    : 0;
+  const opt4GoldToLedger = (goldRate > 0 && opt4RemainingGoldRupees > 0)
+    ? (opt4RemainingGoldRupees / (goldRate / 10))
+    : 0;
+
+  // Option 2: Convert Metal to Gold Ledger (metal_gold)
+  // Silver & GST must be paid in cash. Any remaining cash reduces Gold!
+  const opt2RequiredCash = nonMetalCharges + silverLeftRupees;
+  const opt2CashDue = Math.max(0, opt2RequiredCash - parsedCash);
+  const opt2CashForGold = Math.max(0, parsedCash - opt2RequiredCash);
+  const opt2GoldRupeesPaid = Math.min(goldLeftRupees, opt2CashForGold);
+  const opt2RemainingGoldRupees = Math.max(0, goldLeftRupees - opt2GoldRupeesPaid);
+  const opt2GoldToLedger = (goldRate > 0 && opt2RemainingGoldRupees > 0)
+    ? (opt2RemainingGoldRupees / (goldRate / 10))
+    : 0;
+  const opt2SilverToLedger = 0;
+
+  // Option 3: Convert Metal to Silver Ledger (metal_silver)
+  // Gold & GST must be paid in cash. Any remaining cash reduces Silver!
+  const opt3RequiredCash = nonMetalCharges + goldLeftRupees;
+  const opt3CashDue = Math.max(0, opt3RequiredCash - parsedCash);
+  const opt3CashForSilver = Math.max(0, parsedCash - opt3RequiredCash);
+  const opt3SilverRupeesPaid = Math.min(silverLeftRupees, opt3CashForSilver);
+  const opt3RemainingSilverRupees = Math.max(0, silverLeftRupees - opt3SilverRupeesPaid);
+  const opt3SilverToLedger = (silverRate > 0 && opt3RemainingSilverRupees > 0)
+    ? (opt3RemainingSilverRupees / (silverRate / 1000))
+    : 0;
+  const opt3GoldToLedger = 0;
+
+  // Currently Selected Action Values:
+  let finalBalanceAmount = opt1CashDue;
+  let finalGoldDebt = opt1GoldToLedger;
+  let finalSilverDebt = opt1SilverToLedger;
+
+  if (cashBalanceAction === 'metal_gold') {
+    finalBalanceAmount = opt2CashDue;
+    finalGoldDebt = opt2GoldToLedger;
+    finalSilverDebt = opt2SilverToLedger;
   } else if (cashBalanceAction === 'metal_silver') {
-    finalGoldDebt = 0;
-    finalSilverDebt = cashToSilverGrams;
-    finalBalanceAmount = 0;
-  } else {
-    finalGoldDebt = 0;
-    finalSilverDebt = 0;
-    finalBalanceAmount = cashBalanceDue;
+    finalBalanceAmount = opt3CashDue;
+    finalGoldDebt = opt3GoldToLedger;
+    finalSilverDebt = opt3SilverToLedger;
+  } else if (cashBalanceAction === 'metal_both') {
+    finalBalanceAmount = opt4CashDue;
+    finalGoldDebt = opt4GoldToLedger;
+    finalSilverDebt = opt4SilverToLedger;
   }
 
-  const isFullySettled = finalBalanceAmount < 0.01 && finalGoldDebt === 0 && finalSilverDebt === 0;
+  const isFullySettled = finalBalanceAmount < 0.01 && finalGoldDebt <= 0.001 && finalSilverDebt <= 0.001;
 
   const fmt = (n?: any) => {
     const num = Number(n);
@@ -344,15 +359,15 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
       });
 
       let backendSettlementType = 'Cash';
-      if (cashBalanceAction === 'metal_gold' || cashBalanceAction === 'metal_silver') {
-        backendSettlementType = 'Metal';
-      } else if (cashBalanceAction === 'metal_req') {
-        backendSettlementType = (finalGoldDebt > 0 || finalSilverDebt > 0) && finalBalanceAmount > 0 ? 'Hybrid' : ((finalGoldDebt > 0 || finalSilverDebt > 0) ? 'Metal' : 'Cash');
+      if (cashBalanceAction !== 'cash') {
+        if (cashBalanceAction === 'metal_both') backendSettlementType = 'Hybrid';
+        else backendSettlementType = 'Metal';
       }
 
       const payload = {
         customer_id: selectedCustomer?.id || null,
         amount_paid: parsedCash,
+        payment_method: paymentMethod,
         total_old_value: total_old_value + totalAdditionalMetalValue,
         total_new_value: total_new_value,
         gst_amount: gstAmount,
@@ -360,6 +375,7 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
         difference_amount: monetaryBeforeCash,
 
         settlement_type: backendSettlementType,
+        settlement_metal_type: cashBalanceAction === 'metal_gold' ? 'Gold' : cashBalanceAction === 'metal_silver' ? 'Silver' : cashBalanceAction === 'metal_both' ? 'Both' : null,
         balance_amount: Math.max(0, finalBalanceAmount),
         gold_balance_metal_weight: finalGoldDebt,
         silver_balance_metal_weight: finalSilverDebt,
@@ -381,6 +397,16 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
             ...pdfRes.data,
             settings: { ...(pdfRes.data?.settings || {}), ...(settingsRes.data || {}) },
           };
+          if (fullPdfData.invoice) {
+            fullPdfData.invoice.amount_paid = parsedCash;
+            fullPdfData.invoice.balance_due = finalBalanceAmount;
+            fullPdfData.invoice.payment_method = paymentMethod;
+            fullPdfData.invoice.bill_type = backendSettlementType;
+            fullPdfData.invoice.settlement_type = backendSettlementType;
+            fullPdfData.invoice.settlement_metal_type = cashBalanceAction === 'metal_gold' ? 'Gold' : cashBalanceAction === 'metal_silver' ? 'Silver' : cashBalanceAction === 'metal_both' ? 'Both' : null;
+            fullPdfData.invoice.gold_balance_metal_weight = finalGoldDebt;
+            fullPdfData.invoice.silver_balance_metal_weight = finalSilverDebt;
+          }
           const html = generateInvoiceHtml(fullPdfData);
           await Print.printAsync({ html });
         } catch (printErr) {
@@ -558,15 +584,31 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
           {/* Monetary Balance & Cash Received */}
           <View style={styles.cashSectionRow}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.gridLabel}>MONETARY BALANCE (AFTER METAL)</Text>
+              <Text style={styles.gridLabel}>TOTAL AMOUNT PAYABLE (IF 100% CASH)</Text>
               <Text style={styles.monetaryAmountText}>₹ {fmt(monetaryBeforeCash)}</Text>
               <Text style={styles.monetarySubText}>
-                ₹{fmt(netDifference)} − ₹{fmt(totalAdditionalMetalValue)} metal
+                Includes ₹{fmt(totalMetalRupeesDue)} metal + ₹{fmt(nonMetalCharges)} GST & charges
               </Text>
             </View>
 
             <View style={{ flex: 1 }}>
-              <Text style={[styles.gridLabel, { color: '#4ade80' }]}>CASH RECEIVED</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <Text style={[styles.gridLabel, { color: '#4ade80' }]}>CASH RECEIVED</Text>
+                <View style={{ flexDirection: 'row', gap: 4 }}>
+                  <TouchableOpacity
+                    onPress={() => setCashReceived(Math.round(nonMetalCharges * 100) / 100 > 0 ? (Math.round(nonMetalCharges * 100) / 100).toString() : '')}
+                    style={{ backgroundColor: 'rgba(217,119,6,0.2)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: '#d97706' }}
+                  >
+                    <Text style={{ fontSize: 9, color: '#f59e0b', fontWeight: 'bold' }}>GST (₹{fmt(nonMetalCharges)})</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setCashReceived(Math.round(monetaryBeforeCash * 100) / 100 > 0 ? (Math.round(monetaryBeforeCash * 100) / 100).toString() : '')}
+                    style={{ backgroundColor: 'rgba(34,197,94,0.2)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: '#22c55e' }}
+                  >
+                    <Text style={{ fontSize: 9, color: '#4ade80', fontWeight: 'bold' }}>Full (₹{fmt(monetaryBeforeCash)})</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
               <TextInput
                 style={styles.cashInput}
                 keyboardType="numeric"
@@ -599,35 +641,35 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
 
           <View style={styles.finalCashDueBox}>
             <View>
-              <Text style={styles.finalCashDueLabel}>Final Cash Due:</Text>
+              <Text style={styles.finalCashDueLabel}>
+                {finalBalanceAmount > 0 ? 'Amount Payable / Cash Due:' : finalBalanceAmount < 0 ? 'Refund to Customer:' : 'Amount Payable:'}
+              </Text>
               <Text style={[styles.finalCashDueValue, { color: finalBalanceAmount > 0 ? '#ef4444' : '#4ade80' }]}>
-                ₹ {fmt(Math.abs(finalBalanceAmount))}
+                {finalBalanceAmount < 0 ? '(Refund) ' : ''}₹ {fmt(Math.abs(finalBalanceAmount))}{finalBalanceAmount === 0 ? ' ✓ (Paid)' : ''}
               </Text>
             </View>
-            {(finalGoldDebt > 0 || finalSilverDebt > 0) && (
-              <View style={{ alignItems: 'flex-end' }}>
-                <Text style={styles.finalCashDueLabel}>Metal Ledger Due:</Text>
-                {finalGoldDebt > 0 && (
-                  <Text style={{ color: '#d4af37', fontWeight: '800', fontSize: 13 }}>
-                    +{finalGoldDebt.toFixed(3)} g Gold
-                  </Text>
-                )}
-                {finalSilverDebt > 0 && (
-                  <Text style={{ color: '#cbd5e1', fontWeight: '800', fontSize: 13 }}>
-                    +{finalSilverDebt.toFixed(3)} g Silver
-                  </Text>
-                )}
-              </View>
-            )}
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={styles.finalCashDueLabel}>Metal to Ledger:</Text>
+              {hasGold && (
+                <Text style={{ color: finalGoldDebt > 0.001 ? '#d4af37' : '#4ade80', fontWeight: '800', fontSize: 13 }}>
+                  {finalGoldDebt > 0.001 ? `+${finalGoldDebt.toFixed(3)} g Gold Due` : '0.000 g Gold (Settled)'}
+                </Text>
+              )}
+              {hasSilver && (
+                <Text style={{ color: finalSilverDebt > 0.001 ? '#cbd5e1' : '#4ade80', fontWeight: '800', fontSize: 13 }}>
+                  {finalSilverDebt > 0.001 ? `+${finalSilverDebt.toFixed(3)} g Silver Due` : '0.000 g Silver (Settled)'}
+                </Text>
+              )}
+            </View>
           </View>
 
-          {cashBalanceDue > 0 && (
+          {(remGoldReq > 0.001 || remSilverReq > 0.001 || cashBalanceDue > 0) && (
             <View style={{ marginTop: 12 }}>
               <Text style={styles.settleChoicePrompt}>
-                HOW TO SETTLE THE ₹ {fmt(cashBalanceDue)} CASH DUE?
+                HOW TO SETTLE THE REMAINING BALANCE?
               </Text>
 
-              {/* Option 1 */}
+              {/* Option 1: All Cash */}
               <TouchableOpacity
                 style={[styles.settleOptionBox, cashBalanceAction === 'cash' && styles.settleOptionBoxActive]}
                 onPress={() => setCashBalanceAction('cash')}
@@ -636,63 +678,71 @@ export default function CheckoutExchangeScreen({ route, navigation }: any) {
                   {cashBalanceAction === 'cash' && <View style={styles.radioInner} />}
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.settleOptionText}>1. Keep as Cash Due</Text>
+                  <Text style={styles.settleOptionText}>1. Keep as Cash Due — pay all in cash</Text>
                   <Text style={styles.settleOptionSubCash}>
-                    Pay ₹ {fmt(cashBalanceDue)} later (No metal ledger change)
+                    Cash Due: ₹ {fmt(opt1CashDue)} (No metal ledger change)
                   </Text>
                 </View>
               </TouchableOpacity>
 
-              {/* Option 2 (Metal Requirement + Cash for GST/Charges) */}
-              <TouchableOpacity
-                style={[styles.settleOptionBox, cashBalanceAction === 'metal_req' && styles.settleOptionBoxActive]}
-                onPress={() => setCashBalanceAction('metal_req')}
-              >
-                <View style={[styles.radioCircle, cashBalanceAction === 'metal_req' && styles.radioCircleActive]}>
-                  {cashBalanceAction === 'metal_req' && <View style={styles.radioInner} />}
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.settleOptionText}>2. Settle Metal Requirement in Ledger + Cash Due</Text>
-                  <Text style={styles.settleOptionSubGold}>
-                    {reqGoldGrams > 0 ? `Gold: +${reqGoldGrams.toFixed(3)} g ` : ''}
-                    {reqSilverGrams > 0 ? `Silver: +${reqSilverGrams.toFixed(3)} g ` : ''}
-                    {reqGoldGrams === 0 && reqSilverGrams === 0 ? 'Metal: Satisfied ' : ''}
-                    | ₹ {fmt(reqCashDue)} Cash Due
-                  </Text>
-                </View>
-              </TouchableOpacity>
+              {/* Option 2: Gold Ledger */}
+              {hasGold && (
+                <TouchableOpacity
+                  style={[styles.settleOptionBox, cashBalanceAction === 'metal_gold' && styles.settleOptionBoxActive]}
+                  onPress={() => setCashBalanceAction('metal_gold')}
+                >
+                  <View style={[styles.radioCircle, cashBalanceAction === 'metal_gold' && styles.radioCircleActive]}>
+                    {cashBalanceAction === 'metal_gold' && <View style={styles.radioInner} />}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.settleOptionText}>2. Convert Metal to Gold Ledger</Text>
+                    <Text style={styles.settleOptionSubGold}>
+                      +{opt2GoldToLedger.toFixed(3)} g Gold to Ledger | ₹ {fmt(opt2CashDue)} Cash Due
+                      {opt2GoldRupeesPaid > 0 ? ` (₹${fmt(opt2GoldRupeesPaid)} cash applied to Gold)` : ''}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              )}
 
-              {/* Option 3 (Gold) */}
-              <TouchableOpacity
-                style={[styles.settleOptionBox, cashBalanceAction === 'metal_gold' && styles.settleOptionBoxActive]}
-                onPress={() => setCashBalanceAction('metal_gold')}
-              >
-                <View style={[styles.radioCircle, cashBalanceAction === 'metal_gold' && styles.radioCircleActive]}>
-                  {cashBalanceAction === 'metal_gold' && <View style={styles.radioInner} />}
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.settleOptionText}>3. Convert Full Balance to Gold Ledger</Text>
-                  <Text style={styles.settleOptionSubGold}>
-                    +{cashToGoldGrams.toFixed(3)} g Gold | ₹ 0.00 Cash Due
-                  </Text>
-                </View>
-              </TouchableOpacity>
+              {/* Option 3: Silver Ledger */}
+              {hasSilver && (
+                <TouchableOpacity
+                  style={[styles.settleOptionBox, cashBalanceAction === 'metal_silver' && styles.settleOptionBoxActive]}
+                  onPress={() => setCashBalanceAction('metal_silver')}
+                >
+                  <View style={[styles.radioCircle, cashBalanceAction === 'metal_silver' && styles.radioCircleActive]}>
+                    {cashBalanceAction === 'metal_silver' && <View style={styles.radioInner} />}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.settleOptionText}>3. Convert Metal to Silver Ledger</Text>
+                    <Text style={styles.settleOptionSubSilver}>
+                      +{opt3SilverToLedger.toFixed(3)} g Silver to Ledger | ₹ {fmt(opt3CashDue)} Cash Due
+                      {opt3SilverRupeesPaid > 0 ? ` (₹${fmt(opt3SilverRupeesPaid)} cash applied to Silver)` : ''}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              )}
 
-              {/* Option 4 (Silver) */}
-              <TouchableOpacity
-                style={[styles.settleOptionBox, cashBalanceAction === 'metal_silver' && styles.settleOptionBoxActive]}
-                onPress={() => setCashBalanceAction('metal_silver')}
-              >
-                <View style={[styles.radioCircle, cashBalanceAction === 'metal_silver' && styles.radioCircleActive]}>
-                  {cashBalanceAction === 'metal_silver' && <View style={styles.radioInner} />}
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.settleOptionText}>4. Convert Full Balance to Silver Ledger</Text>
-                  <Text style={styles.settleOptionSubSilver}>
-                    +{cashToSilverGrams.toFixed(3)} g Silver | ₹ 0.00 Cash Due
-                  </Text>
-                </View>
-              </TouchableOpacity>
+              {/* Option 4: Both Metals */}
+              {(hasGold || hasSilver) && (
+                <TouchableOpacity
+                  style={[styles.settleOptionBox, cashBalanceAction === 'metal_both' && styles.settleOptionBoxActive]}
+                  onPress={() => setCashBalanceAction('metal_both')}
+                >
+                  <View style={[styles.radioCircle, cashBalanceAction === 'metal_both' && styles.radioCircleActive]}>
+                    {cashBalanceAction === 'metal_both' && <View style={styles.radioInner} />}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.settleOptionText}>4. Convert Both Metals to Ledgers</Text>
+                    <Text style={styles.settleOptionSubGold}>
+                      {hasGold ? `Gold: +${opt4GoldToLedger.toFixed(3)} g ${opt4GoldRupeesPaid > 0 ? `(₹${fmt(opt4GoldRupeesPaid)} pd)` : ''}` : ''}
+                      {hasGold && hasSilver ? ' | ' : ''}
+                      {hasSilver ? `Silver: +${opt4SilverToLedger.toFixed(3)} g ${opt4SilverRupeesPaid > 0 ? `(₹${fmt(opt4SilverRupeesPaid)} pd)` : ''}` : ''}
+                      {opt4CashDue > 0 ? ` | ₹${fmt(opt4CashDue)} Cash Due` : ' | ₹0 Cash Due'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              )}
             </View>
           )}
         </View>
