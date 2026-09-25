@@ -79,11 +79,18 @@ export default function LoginScreen({ navigation }: any) {
   };
 
   const handleAuth = async () => {
-    const emailVal = email.trim();
+    const emailVal = email.trim().toLowerCase();
     const passVal = password.trim();
 
     if (!emailVal) {
       Alert.alert('Validation Error', 'Please enter your email address');
+      return;
+    }
+
+    // Email format validation (requires @ and domain)
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailVal.includes('@') || !emailRegex.test(emailVal)) {
+      Alert.alert('Invalid Email', 'Please enter a valid email address with "@" (e.g., name@example.com)');
       return;
     }
 

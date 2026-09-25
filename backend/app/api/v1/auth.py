@@ -34,11 +34,12 @@ def _issue_token(user: User) -> dict:
 
 
 def _authenticate(db: Session, username_or_email: str, password: str) -> User:
-    # Try username first
-    user = user_repo.get_by_username(db, username=username_or_email)
-    # If not found, try email
-    if not user:
-        user = user_repo.get_by_email(db, email=username_or_email)
+    clean_id = username_or_email.strip()
+    from sqlalchemy import func
+    user = db.query(User).filter(
+        (func.lower(User.username) == clean_id.lower()) | 
+        (func.lower(User.email) == clean_id.lower())
+    ).first()
         
     if not user or not security.verify_password(password, user.hashed_password):
         raise HTTPException(status_code=400, detail="Incorrect username, email, or password")
@@ -198,20 +199,25 @@ def register_user(
     user_in: UserCreate
 ) -> Any:
     """Register new user."""
-    user = user_repo.get_by_username(db, username=user_in.username)
-    if user:
+    clean_username = user_in.username.strip().lower()
+    clean_email = (user_in.email or user_in.username).strip().lower()
+
+    if "@" not in clean_email or "." not in clean_email:
         raise HTTPException(
             status_code=400,
-            detail="The user with this username already exists in the system.",
+            detail="Please provide a valid email address with '@' (e.g. user@example.com).",
         )
-    
-    if user_in.email:
-        user_email = user_repo.get_by_email(db, email=user_in.email)
-        if user_email:
-            raise HTTPException(
-                status_code=400,
-                detail="A user with this email address already exists.",
-            )
+
+    from sqlalchemy import func
+    existing_user = db.query(User).filter(
+        (func.lower(User.username) == clean_username) | 
+        (func.lower(User.email) == clean_email)
+    ).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=400,
+            detail="An account with this email address already exists.",
+        )
 
     # Validate role_id exists
     if user_in.role_id is not None:
@@ -224,9 +230,9 @@ def register_user(
 
     hashed_password = security.get_password_hash(user_in.password)
     db_obj = User(
-        username=user_in.username,
-        email=user_in.email,
-        full_name=user_in.full_name,
+        username=clean_username,
+        email=clean_email,
+        full_name=user_in.full_name or clean_email.split('@')[0],
         hashed_password=hashed_password,
         role_id=user_in.role_id,
         is_active=True
@@ -250,10 +256,12 @@ class ResetPasswordRequest(BaseModel):
 
 @router.post("/forgot-password")
 def forgot_password(req: ForgotPasswordRequest, db: Session = Depends(get_db)):
-    email_clean = req.email.strip()
-    user = user_repo.get_by_email(db, email=email_clean)
-    if not user:
-        user = user_repo.get_by_username(db, username=email_clean)
+    email_clean = req.email.strip().lower()
+    from sqlalchemy import func
+    user = db.query(User).filter(
+        (func.lower(User.email) == email_clean) |
+        (func.lower(User.username) == email_clean)
+    ).first()
     if not user:
         raise HTTPException(status_code=404, detail="No registered account found with this email address.")
     
@@ -265,13 +273,15 @@ def forgot_password(req: ForgotPasswordRequest, db: Session = Depends(get_db)):
 
 @router.post("/reset-password")
 def reset_password(req: ResetPasswordRequest, db: Session = Depends(get_db)):
-    email_clean = req.email.strip()
+    email_clean = req.email.strip().lower()
     if len(req.new_password.strip()) < 4:
         raise HTTPException(status_code=400, detail="Password must be at least 4 characters long.")
         
-    user = user_repo.get_by_email(db, email=email_clean)
-    if not user:
-        user = user_repo.get_by_username(db, username=email_clean)
+    from sqlalchemy import func
+    user = db.query(User).filter(
+        (func.lower(User.email) == email_clean) |
+        (func.lower(User.username) == email_clean)
+    ).first()
     if not user:
         raise HTTPException(status_code=404, detail="No registered account found with this email address.")
         
