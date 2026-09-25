@@ -49,6 +49,9 @@ export default function BillingScreen({ navigation }: any) {
             {item.customer ? `${item.customer.first_name} ${item.customer.last_name || ''}`.trim() : 'Walk-in'}
           </Text>
           <Text style={styles.phone}>{item.customer?.phone_number || '-'}</Text>
+          <Text style={{ color: Number(item.tax_amount || 0) > 0 ? '#4ade80' : '#888', fontSize: 11, marginTop: 2 }}>
+            {Number(item.tax_amount || 0) > 0 ? `GST: ₹${Number(item.tax_amount).toFixed(2)} (3%)` : 'Without GST (0%)'}
+          </Text>
         </View>
         <View style={styles.amountContainer}>
           <Text style={styles.amount}>₹ {Number(item.grand_total).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>

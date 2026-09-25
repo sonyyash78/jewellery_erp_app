@@ -139,7 +139,14 @@ export default function CreateInvoiceScreen({ navigation }: any) {
     setItems(updated);
   };
 
+  const [gstType, setGstType] = useState<'same' | 'inter' | 'none'>('same');
+  const [globalDiscount, setGlobalDiscount] = useState('');
+
   const subtotal = items.reduce((acc, item) => acc + (Number(item.final_price) || 0), 0);
+  const discountNum = parseFloat(globalDiscount) || 0;
+  const taxableAmount = Math.max(0, subtotal - discountNum);
+  const taxAmount = (gstType === 'same' || gstType === 'inter') ? Math.round(taxableAmount * 0.03 * 100) / 100 : 0;
+  const grandTotal = Math.round(taxableAmount + taxAmount);
 
   const handleSave = () => {
     if (items.length === 0) {
@@ -148,9 +155,11 @@ export default function CreateInvoiceScreen({ navigation }: any) {
     }
     navigation.navigate('Checkout', {
       items,
-      subtotal,
-      tax: 0,
-      grandTotal: subtotal,
+      subtotal: taxableAmount,
+      tax: taxAmount,
+      discount: discountNum,
+      grandTotal: grandTotal,
+      gstType: gstType,
       selectedCustomer
     });
   };
@@ -200,10 +209,81 @@ export default function CreateInvoiceScreen({ navigation }: any) {
               </View>
             ))}
 
+            {/* GST Options */}
+            <View style={styles.gstCard}>
+              <Text style={styles.sectionHeaderTitle}>GST OPTIONS</Text>
+              <View style={styles.gstOptionsRow}>
+                {[
+                  { label: 'Intra-State (CGST 1.5% + SGST 1.5% = 3%)', val: 'same' },
+                  { label: 'Inter-State (IGST 3%)', val: 'inter' },
+                  { label: 'Without GST (0%)', val: 'none' }
+                ].map(opt => (
+                  <TouchableOpacity
+                    key={opt.val}
+                    style={[styles.gstOptionBtn, gstType === opt.val && styles.gstOptionBtnActive]}
+                    onPress={() => setGstType(opt.val as any)}
+                  >
+                    <View style={[styles.radioCircle, gstType === opt.val && styles.radioCircleActive]}>
+                      {gstType === opt.val && <View style={styles.radioInner} />}
+                    </View>
+                    <Text style={[styles.gstOptionText, gstType === opt.val && styles.gstOptionTextActive]}>
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Discount Row */}
+              <View style={styles.discountRow}>
+                <Text style={styles.discountLabel}>Bill Discount (₹):</Text>
+                <TextInput
+                  style={styles.discountInput}
+                  keyboardType="numeric"
+                  value={globalDiscount}
+                  onChangeText={setGlobalDiscount}
+                  placeholder="0.00"
+                  placeholderTextColor="#666"
+                />
+              </View>
+            </View>
+
+            {/* Totals Card */}
             <View style={styles.totalsCard}>
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>Subtotal (Taxable Amount):</Text>
+                <Text style={styles.totalValue}>₹{taxableAmount.toFixed(2)}</Text>
+              </View>
+              {discountNum > 0 && (
+                <View style={styles.totalRow}>
+                  <Text style={[styles.totalLabel, { color: '#ef4444' }]}>Discount:</Text>
+                  <Text style={[styles.totalValue, { color: '#ef4444' }]}>- ₹{discountNum.toFixed(2)}</Text>
+                </View>
+              )}
+              {gstType === 'same' ? (
+                <>
+                  <View style={styles.totalRow}>
+                    <Text style={styles.totalLabel}>CGST (1.5%):</Text>
+                    <Text style={styles.totalValue}>₹{(taxAmount / 2).toFixed(2)}</Text>
+                  </View>
+                  <View style={styles.totalRow}>
+                    <Text style={styles.totalLabel}>SGST (1.5%):</Text>
+                    <Text style={styles.totalValue}>₹{(taxAmount / 2).toFixed(2)}</Text>
+                  </View>
+                </>
+              ) : gstType === 'inter' ? (
+                <View style={styles.totalRow}>
+                  <Text style={styles.totalLabel}>IGST (3%):</Text>
+                  <Text style={styles.totalValue}>₹{taxAmount.toFixed(2)}</Text>
+                </View>
+              ) : (
+                <View style={styles.totalRow}>
+                  <Text style={styles.totalLabel}>GST (0%):</Text>
+                  <Text style={styles.totalValue}>₹0.00</Text>
+                </View>
+              )}
               <View style={[styles.totalRow, styles.grandTotalRow]}>
                 <Text style={styles.grandTotalLabel}>Grand Total</Text>
-                <Text style={styles.grandTotalValue}>₹{subtotal.toFixed(2)}</Text>
+                <Text style={styles.grandTotalValue}>₹{grandTotal.toFixed(2)}</Text>
               </View>
             </View>
 
@@ -337,5 +417,94 @@ const styles = StyleSheet.create({
   addNewBtnText: { color: '#d4af37', fontWeight: 'bold' },
   input: { backgroundColor: '#0a0a0a', color: '#fff', borderWidth: 1, borderColor: '#333', padding: 12, borderRadius: 8, marginBottom: 12 },
   addButton: { padding: 12, borderRadius: 8, alignItems: 'center' },
-  addButtonText: { color: '#fff', fontWeight: 'bold' }
+  addButtonText: { color: '#fff', fontWeight: 'bold' },
+
+  gstCard: {
+    backgroundColor: '#141414',
+    borderWidth: 1,
+    borderColor: '#333',
+    padding: 14,
+    borderRadius: 8,
+    marginTop: 16
+  },
+  sectionHeaderTitle: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#d4af37',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 10
+  },
+  gstOptionsRow: {
+    gap: 8,
+    marginBottom: 12
+  },
+  gstOptionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: '#1e1e1e',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#2d2d2d'
+  },
+  gstOptionBtnActive: {
+    borderColor: '#d4af37',
+    backgroundColor: 'rgba(212, 175, 55, 0.1)'
+  },
+  radioCircle: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderColor: '#666',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10
+  },
+  radioCircleActive: {
+    borderColor: '#d4af37'
+  },
+  radioInner: {
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    backgroundColor: '#d4af37'
+  },
+  gstOptionText: {
+    color: '#aaa',
+    fontSize: 13,
+    fontWeight: '500'
+  },
+  gstOptionTextActive: {
+    color: '#fff',
+    fontWeight: 'bold'
+  },
+  discountRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#262626'
+  },
+  discountLabel: {
+    color: '#ccc',
+    fontSize: 13,
+    fontWeight: '600'
+  },
+  discountInput: {
+    backgroundColor: '#0a0a0a',
+    borderWidth: 1,
+    borderColor: '#ef4444',
+    color: '#ef4444',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    fontSize: 14,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    width: 110,
+    textAlign: 'right'
+  }
 });
