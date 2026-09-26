@@ -45,6 +45,11 @@ export default function CreateInventoryScreen({ navigation }: any) {
       return;
     }
 
+    if (tanch + wastage > 100) {
+      Alert.alert('Validation Error', 'Tanch % + Wastage % cannot be greater than 100%');
+      return;
+    }
+
     try {
       setLoading(true);
       await axiosClient.post('/stock/', {

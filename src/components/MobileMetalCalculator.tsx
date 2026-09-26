@@ -157,6 +157,12 @@ export default function MobileMetalCalculator({ onAdd, buttonLabel = "ADD ITEM",
         Alert.alert('Validation Error', 'Net weight must be greater than 0');
         return;
       }
+      const touch = parseFloat(gTouch) || 0;
+      const waste = parseFloat(gWastage) || 0;
+      if (touch + waste > 100) {
+        Alert.alert('Validation Error', 'Tanch % + Wastage % cannot be greater than 100%');
+        return;
+      }
       onAdd({
         metalType: 'Gold',
         itemName: itemName || 'Gold Item',
@@ -164,8 +170,8 @@ export default function MobileMetalCalculator({ onAdd, buttonLabel = "ADD ITEM",
         grossWeight: gross,
         stoneWeight: parseFloat(gStone) || 0,
         netWeight: c.net,
-        touchPurity: parseFloat(gTouch) || 0,
-        wastage: parseFloat(gWastage) || 0,
+        touchPurity: touch,
+        wastage: waste,
         fineWeight: c.fine,
         metalRate: parseFloat(gRate) || 0,
         metalValue: c.metalVal,
@@ -189,6 +195,12 @@ export default function MobileMetalCalculator({ onAdd, buttonLabel = "ADD ITEM",
         Alert.alert('Validation Error', 'Net weight must be greater than 0');
         return;
       }
+      const touch = parseFloat(sTouch) || 0;
+      const waste = parseFloat(sWastage) || 0;
+      if (touch + waste > 100) {
+        Alert.alert('Validation Error', 'Tanch % + Wastage % cannot be greater than 100%');
+        return;
+      }
       onAdd({
         metalType: 'Silver',
         itemName: itemName || 'Silver Item',
@@ -196,8 +208,8 @@ export default function MobileMetalCalculator({ onAdd, buttonLabel = "ADD ITEM",
         grossWeight: gross,
         stoneWeight: parseFloat(sStone) || 0,
         netWeight: c.net,
-        touchPurity: parseFloat(sTouch) || 0,
-        wastage: parseFloat(sWastage) || 0,
+        touchPurity: touch,
+        wastage: waste,
         fineWeight: c.fine,
         metalRate: parseFloat(sRate) || 0,
         metalValue: c.metalVal,
