@@ -10,7 +10,6 @@ export const ENV = {
   
   // Internet Cloudflare Tunnel for Port 8001:
   // 1. Double-click `start_app_tunnel.bat`
-  // 2. Paste generated HTTPS URL below and append `/api/v1`
-  API_BASE_URL: 'https://gps-phrases-modelling-forecast.trycloudflare.com/api/v1',
+  API_BASE_URL: 'https://headquarters-operating-fotos-mar.trycloudflare.com/api/v1',
 };
 

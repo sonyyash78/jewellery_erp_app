@@ -3,7 +3,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from pydantic import BaseModel
 from datetime import datetime
-from app.api.dependencies import get_db, get_current_user
+from app.api.dependencies import get_db, get_current_user, require_tenant_id
+from app.models.user import User
 from app.models.invoice import Invoice
 from app.models.purchase import Purchase
 from app.models.stock_item import StockItem
@@ -16,42 +17,59 @@ class AIQuery(BaseModel):
     prompt: str
 
 @router.post("/chat")
-def process_ai_chat(query: AIQuery, db: Session = Depends(get_db)):
+def process_ai_chat(
+    query: AIQuery,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    store_id = require_tenant_id(current_user)
     prompt = query.prompt.lower().strip()
     now = datetime.now()
     start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
-    # 1. Today's Sales
+    # 1. Today's Sales (scoped to tenant)
     if "today" in prompt and "sale" in prompt:
-        sales = db.query(func.sum(Invoice.grand_total)).filter(Invoice.invoice_date >= start_of_day).scalar() or 0
+        sales = db.query(func.sum(Invoice.grand_total)).filter(
+            Invoice.store_id == store_id,
+            Invoice.invoice_date >= start_of_day
+        ).scalar() or 0
         return {"response": f"**Today's Total Sales** amount to **₹{sales:,.2f}**."}
 
-    # 2. Today's Purchases
+    # 2. Today's Purchases (scoped to tenant)
     if "today" in prompt and "purchase" in prompt:
-        purchases = db.query(func.sum(Purchase.grand_total)).filter(Purchase.created_at >= start_of_day).scalar() or 0
+        purchases = db.query(func.sum(Purchase.grand_total)).filter(
+            Purchase.store_id == store_id,
+            Purchase.created_at >= start_of_day
+        ).scalar() or 0
         return {"response": f"**Today's Total Purchases** amount to **₹{purchases:,.2f}**."}
 
-    # 3. Top Customers
+    # 3. Top Customers (scoped to tenant)
     if "top" in prompt and "customer" in prompt:
-        # Sort by those who bought most? Or just list top 5
-        customers = db.query(Customer).order_by(Customer.id.desc()).limit(5).all()
+        customers = db.query(Customer).filter(
+            Customer.store_id == store_id
+        ).order_by(Customer.id.desc()).limit(5).all()
         lines = [f"- **{c.first_name} {c.last_name or ''}**: Ph: {c.phone_number}" for c in customers]
-        return {"response": "**Your Recent Customers:**\n" + "\n".join(lines)}
+        return {"response": "**Your Recent Customers:**\n" + ("\n".join(lines) if lines else "No customers found.")}
 
-    # 4. Low Stock
+    # 4. Low Stock (scoped to tenant)
     if "low" in prompt and "stock" in prompt:
-        # Since weight is dynamic, let's just count total Active items
-        active = db.query(StockItem).filter(StockItem.status == 'Active').count()
+        active = db.query(StockItem).filter(
+            StockItem.store_id == store_id,
+            StockItem.status.in_(['Available', 'Active'])
+        ).count()
         if active < 10:
             return {"response": f"⚠️ **Low Stock Alert**: You only have **{active}** active items in inventory!"}
         return {"response": f"✅ Your inventory is healthy with **{active}** active items ready to sell."}
 
-    # 5. Search Customer
+    # 5. Search Customer (scoped to tenant)
     if "search customer" in prompt:
         name = prompt.replace("search customer", "").strip()
         if not name:
             return {"response": "Please provide a name, e.g., 'search customer Rahul'"}
-        c = db.query(Customer).filter(Customer.first_name.ilike(f"%{name}%")).first()
+        c = db.query(Customer).filter(
+            Customer.store_id == store_id,
+            Customer.first_name.ilike(f"%{name}%")
+        ).first()
         if c:
             return {"response": f"Found **{c.first_name} {c.last_name or ''}**\nPhone: {c.phone_number}\nOutstanding: ₹{c.outstanding_balance or 0}"}
         return {"response": f"Could not find any customer matching '{name}'."}

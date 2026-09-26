@@ -140,11 +140,9 @@ export default function CreateInvoiceScreen({ navigation }: any) {
   };
 
   const [gstType, setGstType] = useState<'same' | 'inter' | 'none'>('same');
-  const [globalDiscount, setGlobalDiscount] = useState('');
 
   const subtotal = items.reduce((acc, item) => acc + (Number(item.final_price) || 0), 0);
-  const discountNum = parseFloat(globalDiscount) || 0;
-  const taxableAmount = Math.max(0, subtotal - discountNum);
+  const taxableAmount = subtotal;
   const taxAmount = (gstType === 'same' || gstType === 'inter') ? Math.round(taxableAmount * 0.03 * 100) / 100 : 0;
   const grandTotal = Math.round(taxableAmount + taxAmount);
 
@@ -155,9 +153,9 @@ export default function CreateInvoiceScreen({ navigation }: any) {
     }
     navigation.navigate('Checkout', {
       items,
-      subtotal: taxableAmount,
+      subtotal: subtotal,
       tax: taxAmount,
-      discount: discountNum,
+      discount: 0,
       grandTotal: grandTotal,
       gstType: gstType,
       selectedCustomer
@@ -232,19 +230,6 @@ export default function CreateInvoiceScreen({ navigation }: any) {
                   </TouchableOpacity>
                 ))}
               </View>
-
-              {/* Discount Row */}
-              <View style={styles.discountRow}>
-                <Text style={styles.discountLabel}>Bill Discount (₹):</Text>
-                <TextInput
-                  style={styles.discountInput}
-                  keyboardType="numeric"
-                  value={globalDiscount}
-                  onChangeText={setGlobalDiscount}
-                  placeholder="0.00"
-                  placeholderTextColor="#666"
-                />
-              </View>
             </View>
 
             {/* Totals Card */}
@@ -253,12 +238,6 @@ export default function CreateInvoiceScreen({ navigation }: any) {
                 <Text style={styles.totalLabel}>Subtotal (Taxable Amount):</Text>
                 <Text style={styles.totalValue}>₹{taxableAmount.toFixed(2)}</Text>
               </View>
-              {discountNum > 0 && (
-                <View style={styles.totalRow}>
-                  <Text style={[styles.totalLabel, { color: '#ef4444' }]}>Discount:</Text>
-                  <Text style={[styles.totalValue, { color: '#ef4444' }]}>- ₹{discountNum.toFixed(2)}</Text>
-                </View>
-              )}
               {gstType === 'same' ? (
                 <>
                   <View style={styles.totalRow}>
@@ -480,31 +459,5 @@ const styles = StyleSheet.create({
   gstOptionTextActive: {
     color: '#fff',
     fontWeight: 'bold'
-  },
-  discountRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#262626'
-  },
-  discountLabel: {
-    color: '#ccc',
-    fontSize: 13,
-    fontWeight: '600'
-  },
-  discountInput: {
-    backgroundColor: '#0a0a0a',
-    borderWidth: 1,
-    borderColor: '#ef4444',
-    color: '#ef4444',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-    fontSize: 14,
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-    width: 110,
-    textAlign: 'right'
   }
 });

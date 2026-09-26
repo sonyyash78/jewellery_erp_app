@@ -41,14 +41,15 @@ class InvoicePDFService:
         from app.models.store import Store
         store = db.query(Store).filter(Store.id == store_id).first() if store_id else None
 
-        name = store.name if (store and store.name) else (settings_dict.get('business_name') or InvoicePDFService.COMPANY_NAME)
-        address = store.address if (store and store.address) else (settings_dict.get('address') or InvoicePDFService.COMPANY_ADDRESS)
-        phone = store.phone if (store and store.phone) else (settings_dict.get('phone') or InvoicePDFService.COMPANY_PHONE)
-        email = store.email if (store and store.email) else (settings_dict.get('email') or InvoicePDFService.COMPANY_EMAIL)
-        gstin = store.gstin if (store and store.gstin) else (settings_dict.get('gstin') or InvoicePDFService.COMPANY_GSTIN)
+        default_name = "SAIDEEP JEWELLERS" if (store_id == 1) else (f"Store #{store_id}" if store_id else "Jewellery Store")
+        name = store.name if (store and store.name) else (settings_dict.get('business_name') or default_name)
+        address = store.address if (store and store.address) else (settings_dict.get('address') if store_id == 1 else (store.address if store else ""))
+        phone = store.phone if (store and store.phone) else (settings_dict.get('phone') if store_id == 1 else (store.phone if store else ""))
+        email = store.email if (store and store.email) else (settings_dict.get('email') if store_id == 1 else (store.email if store else ""))
+        gstin = store.gstin if (store and store.gstin) else (settings_dict.get('gstin') if store_id == 1 else (store.gstin if store else ""))
         pan = store.pan if (store and store.pan) else (settings_dict.get('pan') or "")
         tagline = store.tagline if (store and store.tagline) else (settings_dict.get('tagline') or "Trust. Purity. Elegance.")
-        logo_url = store.logo_url if (store and store.logo_url) else settings_dict.get('logo_url', '/static/logo.png')
+        logo_url = store.logo_url if (store and store.logo_url) else settings_dict.get('logo_url', '')
         
         # Read logo directly from disk and encode to base64 Data URL for instant, reliable rendering in PDFs
         logo_data_url = ""
@@ -70,7 +71,8 @@ class InvoicePDFService:
                 candidate_files.append(f"logo_store_{store_id}.jpg")
                 candidate_files.append(f"logo_store_{store_id}.jpeg")
                 candidate_files.append(f"logo_store_{store_id}.webp")
-            candidate_files.extend(["logo_store_5.png", "logo_store_3.png", "logo_store_1.png", "logo.png"])
+            if store_id == 1:
+                candidate_files.extend(["logo_store_1.png", "logo.png"])
             
             chosen_path = None
             for s_dir in search_dirs:
@@ -297,6 +299,9 @@ class InvoicePDFService:
         
         company = InvoicePDFService._get_company_details(db, getattr(purchase, 'store_id', 1) or 1)
         
+        cash_paid = float(purchase.cash_paid or 0)
+        balance_due = float(purchase.balance_amount if purchase.balance_amount is not None else (purchase.grand_total - cash_paid))
+        
         invoice_data = {
             'invoice_number': purchase.purchase_number,
             'invoice_date': purchase.created_at.strftime('%Y-%m-%d'),
@@ -304,16 +309,20 @@ class InvoicePDFService:
             'subtotal': float(purchase.total_taxable),
             'tax_amount': float(purchase.cgst + purchase.sgst + purchase.igst),
             'discount_amount': 0.0,
-            'grand_total': float(purchase.grand_total)
+            'grand_total': float(purchase.grand_total),
+            'amount_paid': cash_paid,
+            'cash_paid': cash_paid,
+            'cash_received': cash_paid,
+            'balance_due': balance_due,
+            'balance_amount': balance_due,
+            'bill_type': purchase.bill_type or 'Cash',
+            'settlement_type': purchase.settlement_type or 'Cash',
+            'settlement_metal_type': purchase.settlement_metal_type,
+            'metal_given_value': float(purchase.metal_given_value or 0),
+            'metal_received_value': float(purchase.metal_given_value or 0),
+            'gold_balance_metal_weight': float(purchase.gold_balance_metal_weight or 0),
+            'silver_balance_metal_weight': float(purchase.silver_balance_metal_weight or 0)
         }
-        
-        # Fetch payment amount from SupplierLedger if it exists
-        payment_entry = db.query(SupplierLedger).filter(
-            SupplierLedger.voucher_number == f"PAY-{purchase.purchase_number}"
-        ).first()
-        amount_paid = float(payment_entry.debit) if payment_entry else 0.0
-        invoice_data['amount_paid'] = amount_paid
-        invoice_data['balance_due'] = invoice_data['grand_total'] - amount_paid
 
         address_parts = []
         if purchase.seller:
@@ -340,6 +349,8 @@ class InvoicePDFService:
                 'stone_weight': float(item.stone_weight),
                 'net_weight': float(item.net_weight),
                 'pure_weight': float(item.fine_weight),
+                'fine_weight': float(item.fine_weight),
+                'touch_purity': float(item.touch_purity),
                 'tanch_percentage': float(item.touch_purity),
                 'making_charges': float(item.labour_charge + item.testing_melting_charge + item.hallmark_charge + item.other_charges),
                 'metal_value': float(item.metal_value),
@@ -377,28 +388,64 @@ class InvoicePDFService:
         
         company = InvoicePDFService._get_company_details(db, getattr(exchange, 'store_id', 1) or 1)
         
+        # Read settlement values from exchange entity with fallback to CustomerLedger
+        amount_paid = float(getattr(exchange, 'amount_paid', 0.0) or 0.0)
+        gold_balance_metal = float(getattr(exchange, 'gold_balance_metal_weight', 0.0) or 0.0)
+        silver_balance_metal = float(getattr(exchange, 'silver_balance_metal_weight', 0.0) or 0.0)
+        balance_due = float(exchange.balance_amount if getattr(exchange, 'balance_amount', None) is not None else exchange.difference_amount)
+        settlement_type = getattr(exchange, 'settlement_type', None) or 'Cash'
+
+        # Fallback to CustomerLedger if not populated on Exchange (for historical records)
+        if amount_paid == 0.0 and gold_balance_metal == 0.0 and silver_balance_metal == 0.0:
+            from app.models.customer_ledger import CustomerLedger
+            ledger_entry = db.query(CustomerLedger).filter(
+                CustomerLedger.voucher_number == f"EXC-{exchange.id}"
+            ).first()
+            if ledger_entry:
+                is_metal = 'Settled in Metal' in (ledger_entry.description or '')
+                settlement_type = 'Metal' if is_metal else 'Cash'
+                gold_balance_metal = float(ledger_entry.gold_debit or 0.0)
+                silver_balance_metal = float(ledger_entry.silver_debit or 0.0)
+                amount_paid = float(ledger_entry.credit or 0.0)
+                balance_due = max(0.0, float(ledger_entry.debit or 0.0) - amount_paid)
+
+        # Ensure unpaid non-metal charges (GST, etc.) are always payable in cash and never zeroed out
+        non_metal_charges = float(exchange.gst_amount or 0.0)
+        if settlement_type in ('Metal', 'Hybrid') and balance_due < (non_metal_charges - amount_paid) - 0.01:
+            balance_due = max(0.0, non_metal_charges - amount_paid)
+
+        settlement_metal_type = None
+        if gold_balance_metal > 0.001 and silver_balance_metal > 0.001:
+            settlement_metal_type = 'Both'
+        elif gold_balance_metal > 0.001:
+            settlement_metal_type = 'Gold'
+        elif silver_balance_metal > 0.001:
+            settlement_metal_type = 'Silver'
+
+        vouch_number = f"EXC-{exchange.id}-{exchange.verification_token}" if getattr(exchange, 'verification_token', None) else f"EXC-{exchange.id}"
         invoice_data = {
-            'invoice_number': f"EXC-{exchange.id}",
+            'invoice_number': vouch_number,
             'invoice_date': exchange.exchange_date.strftime('%Y-%m-%d'),
             'status': "Completed",
             'subtotal': float(exchange.total_new_value),
             'tax_amount': float(exchange.gst_amount),
-            'discount_amount': float(exchange.total_old_value), # We use discount for trade-in value in old format, but better pass specifically
-            'grand_total': float(exchange.difference_amount),
+            'discount_amount': 0.0,
+            'grand_total': float(exchange.total_new_value + exchange.gst_amount),
             'total_old_value': float(exchange.total_old_value),
             'total_new_value': float(exchange.total_new_value),
-            'difference_amount': float(exchange.difference_amount)
+            'difference_amount': float(exchange.difference_amount),
+            'amount_paid': amount_paid,
+            'cash_paid': amount_paid,
+            'cash_received': amount_paid,
+            'balance_due': balance_due,
+            'balance_amount': balance_due,
+            'gold_balance_metal_weight': gold_balance_metal,
+            'silver_balance_metal_weight': silver_balance_metal,
+            'settlement_type': settlement_type,
+            'settlement_metal_type': settlement_metal_type,
+            'metal_received_value': float(exchange.total_old_value or 0.0),
+            'bill_type': 'Exchange'
         }
-        
-        # Fetch payment amount from CustomerLedger if it exists
-        from app.models.customer_ledger import CustomerLedger
-        payment_entry = db.query(CustomerLedger).filter(
-            CustomerLedger.voucher_number == f"PAY-EXC-{exchange.id}"
-        ).first()
-        
-        amount_paid = float(payment_entry.credit) - float(payment_entry.debit) if payment_entry else 0.0
-        invoice_data['amount_paid'] = amount_paid
-        invoice_data['balance_due'] = invoice_data['grand_total'] - amount_paid
         
         customer_data = {
             'name': f"{exchange.customer.first_name} {exchange.customer.last_name or ''}".strip() if exchange.customer else 'Unknown Customer',

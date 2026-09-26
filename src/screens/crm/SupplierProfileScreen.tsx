@@ -144,11 +144,20 @@ export default function SupplierProfileScreen({ route, navigation }: any) {
     }
   };
 
+  const getStatementHtml = async () => {
+    let company: any = null;
+    try {
+      const sRes = await axiosClient.get('/settings/');
+      company = sRes.data;
+    } catch {}
+    const party = item || { name: supplierName, first_name: supplierName };
+    return generateLedgerStatementHtml('Supplier', party, data, company);
+  };
+
   const handlePreviewStatement = async () => {
     try {
       setPdfGenerating(true);
-      const party = item || { name: supplierName, first_name: supplierName };
-      const html = generateLedgerStatementHtml('Supplier', party, data);
+      const html = await getStatementHtml();
       await Print.printAsync({ html });
     } catch (error: any) {
       console.error('Error previewing statement:', error);
@@ -161,8 +170,7 @@ export default function SupplierProfileScreen({ route, navigation }: any) {
   const handleDownloadStatementPdf = async () => {
     try {
       setPdfGenerating(true);
-      const party = item || { name: supplierName, first_name: supplierName };
-      const html = generateLedgerStatementHtml('Supplier', party, data);
+      const html = await getStatementHtml();
       
       const { base64 } = await Print.printToFileAsync({ html, base64: true });
       const sanitizedName = (supplierName || 'Supplier').replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -335,10 +343,10 @@ export default function SupplierProfileScreen({ route, navigation }: any) {
         <View style={styles.actionBtns}>
           <TouchableOpacity 
             style={styles.statementBtn} 
-            onPress={handlePreviewStatement}
+            onPress={handleDownloadStatementPdf}
             disabled={pdfGenerating}
           >
-            <Ionicons name="eye-outline" size={13} color="#d4af37" />
+            <Ionicons name="download-outline" size={13} color="#d4af37" />
             <Text style={styles.statementBtnText}>Statement</Text>
           </TouchableOpacity>
           <TouchableOpacity 

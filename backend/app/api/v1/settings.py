@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, UploadFile, File
+﻿from fastapi import APIRouter, Depends, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import Dict, Any, List
 from pydantic import BaseModel
-from app.api.dependencies import get_db, get_current_user
+from app.api.dependencies import require_tenant_id, get_db, get_current_user
 from app.models.setting import Setting
 from app.models.user import User
 from app.schemas.metal_rate import MetalRateResponse
@@ -23,7 +23,7 @@ def get_all_settings(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    store_id = current_user.tenant_id or 1
+    store_id = require_tenant_id(current_user)
     settings = db.query(Setting).all()
     res = {s.key: s.value for s in settings}
     
@@ -85,7 +85,7 @@ def update_settings(
     current_user: User = Depends(get_current_user)
 ):
     import re
-    store_id = current_user.tenant_id or 1
+    store_id = require_tenant_id(current_user)
     store = db.query(Store).filter(Store.id == store_id).first()
 
     for item in settings_in:
@@ -148,7 +148,7 @@ async def upload_logo(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    store_id = current_user.tenant_id or 1
+    store_id = require_tenant_id(current_user)
     
     # Locate all static directories
     target_static_dirs = [

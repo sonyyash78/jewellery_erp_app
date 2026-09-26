@@ -78,6 +78,36 @@ def _ensure_schema():
         if "stock_item_id" in cols and not cols["stock_item_id"].get("nullable", False):
             with engine.begin() as conn:
                 conn.execute(text("DROP TABLE IF EXISTS exchange_new_items"))
+
+    # 3. Ensure invoice_items has stock_item_id
+    if "invoice_items" in tables:
+        cols = {c["name"] for c in insp.get_columns("invoice_items")}
+        if "stock_item_id" not in cols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE invoice_items ADD COLUMN stock_item_id INT NULL"))
+                try:
+                    conn.execute(text("ALTER TABLE invoice_items ADD CONSTRAINT fk_invoice_items_stock_item FOREIGN KEY (stock_item_id) REFERENCES stock_items(id) ON DELETE SET NULL"))
+                except Exception:
+                    pass
+
+    # 4. Ensure exchanges has all modern columns
+    if "exchanges" in tables:
+        cols = {c["name"] for c in insp.get_columns("exchanges")}
+        with engine.begin() as conn:
+            if "amount_paid" not in cols:
+                conn.execute(text("ALTER TABLE exchanges ADD COLUMN amount_paid DECIMAL(12,2) DEFAULT 0.0"))
+            if "balance_amount" not in cols:
+                conn.execute(text("ALTER TABLE exchanges ADD COLUMN balance_amount DECIMAL(12,2) DEFAULT 0.0"))
+            if "settlement_type" not in cols:
+                conn.execute(text("ALTER TABLE exchanges ADD COLUMN settlement_type VARCHAR(50) DEFAULT 'Cash'"))
+            if "gold_balance_metal_weight" not in cols:
+                conn.execute(text("ALTER TABLE exchanges ADD COLUMN gold_balance_metal_weight DECIMAL(12,3) DEFAULT 0.0"))
+            if "silver_balance_metal_weight" not in cols:
+                conn.execute(text("ALTER TABLE exchanges ADD COLUMN silver_balance_metal_weight DECIMAL(12,3) DEFAULT 0.0"))
+            if "verification_token" not in cols:
+                conn.execute(text("ALTER TABLE exchanges ADD COLUMN verification_token VARCHAR(64) NULL"))
+            if "status" not in cols:
+                conn.execute(text("ALTER TABLE exchanges ADD COLUMN status VARCHAR(50) DEFAULT 'Completed'"))
                 
     Base.metadata.create_all(bind=engine)
 

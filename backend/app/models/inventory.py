@@ -16,6 +16,7 @@ class ItemStatus(str, enum.Enum):
 class Category(Base):
     __tablename__ = "categories"
     id = Column(Integer, primary_key=True, index=True)
+    store_id = Column(Integer, ForeignKey("stores.id"), nullable=True, default=1, index=True)
     name = Column(String(50), unique=True, index=True, nullable=False)
     description = Column(String(255))
     metal_type = Column(Enum(MetalType), nullable=False)
@@ -26,6 +27,7 @@ class Category(Base):
 class Inventory(Base):
     __tablename__ = "inventory"
     id = Column(Integer, primary_key=True, index=True)
+    store_id = Column(Integer, ForeignKey("stores.id"), nullable=True, default=1, index=True)
     item_name = Column(String(100), nullable=False)
     item_code = Column(String(20), unique=True, index=True, nullable=False)  # Auto-generated: GLD-000001
     category_id = Column(Integer, ForeignKey("categories.id"))

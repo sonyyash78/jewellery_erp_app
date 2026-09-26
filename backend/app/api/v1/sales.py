@@ -4,7 +4,7 @@ from typing import List
 from decimal import Decimal
 from datetime import datetime
 
-from app.api.dependencies import get_db, get_current_user
+from app.api.dependencies import get_db, get_current_user, require_tenant_id
 from app.models.user import User
 from app.models.invoice import Invoice, InvoiceStatus
 from app.models.invoice_item import InvoiceItem
@@ -30,9 +30,13 @@ def create_sale(
     current_user: User = Depends(get_current_user)
 ):
     """Create a sale (invoice)."""
-    # 1. Validate customer exists (if provided)
+    store_id = require_tenant_id(current_user)
+    # 1. Validate customer exists (if provided) — scoped to tenant
     if invoice_in.customer_id is not None:
-        customer = db.query(Customer).filter(Customer.id == invoice_in.customer_id).first()
+        customer = db.query(Customer).filter(
+            Customer.id == invoice_in.customer_id,
+            Customer.store_id == store_id,
+        ).first()
         if not customer:
             raise HTTPException(
                 status_code=404,
@@ -66,7 +70,8 @@ def create_sale(
             discount_amount=invoice_in.discount_amount,
             grand_total=invoice_in.grand_total,
             status=invoice_in.status,
-            created_by=current_user.id
+            created_by=current_user.id,
+            store_id=store_id,
         )
         db.add(db_invoice)
         db.flush() # Get ID
@@ -103,10 +108,15 @@ def create_sale(
                 )
                 metal_rate_val = Decimal(str(calc_in.applied_rate))
                 
+                touch_purity_val = Decimal(str(getattr(calc_in, 'touch_purity', 100.0) or 100.0))
+                wastage_val = Decimal(str(getattr(calc_in, 'wastage', 0.0) or 0.0))
+                
                 # Use calculation service for selling calculation
                 calc_result = CalculationService.calculate_selling(
                     net_weight=Decimal(str(calc_in.net_weight)),
                     metal_rate=metal_rate_val / Decimal('10'),
+                    touch_purity=touch_purity_val,
+                    wastage=wastage_val,
                     making_rate=Decimal(str(calc_in.making_charges_amount)),
                     making_type='FIXED',
                     hallmark=Decimal(str(calc_in.hallmark_charges)),
@@ -122,6 +132,9 @@ def create_sale(
                     gross_weight=calc_in.gross_weight,
                     stone_weight=calc_in.stone_weight,
                     net_weight=calc_in.net_weight,
+                    touch_purity=float(touch_purity_val),
+                    wastage=float(wastage_val),
+                    fine_weight=float(calc_result['fine_weight']),
                     making_charges_amount=float(calc_result['making_charge']),
                     hallmark_charges=calc_in.hallmark_charges,
                     total_gold_value=float(calc_result['metal_value'])
@@ -147,10 +160,15 @@ def create_sale(
                 )
                 metal_rate_val = Decimal(str(calc_in.applied_rate))
                 
+                touch_purity_val = Decimal(str(getattr(calc_in, 'tanch_percentage', 100.0) or 100.0))
+                wastage_val = Decimal(str(getattr(calc_in, 'wastage', 0.0) or 0.0))
+                
                 # Use calculation service
                 calc_result = CalculationService.calculate_selling(
                     net_weight=Decimal(str(calc_in.net_weight)),
                     metal_rate=metal_rate_val / Decimal('1000'),
+                    touch_purity=touch_purity_val,
+                    wastage=wastage_val,
                     making_rate=Decimal(str(calc_in.making_charges_amount)),
                     making_type='FIXED',
                     hallmark=Decimal('0'),
@@ -159,11 +177,8 @@ def create_sale(
                     gst_rate=Decimal('3')
                 )
                 
-                # Calculate tanch percentage
-                pure_weight = calc_in.net_weight
-                tanch_percentage = (
-                    (pure_weight / calc_in.gross_weight * 100.0) if calc_in.gross_weight else 0.0
-                )
+                pure_weight = float(calc_result['fine_weight'])
+                tanch_percentage = float(touch_purity_val)
                 
                 db_silver = SilverCalculation(
                     invoice_item_id=db_item.id,
@@ -177,12 +192,21 @@ def create_sale(
                 )
                 db.add(db_silver)
             
-            # 6. Mark StockItem as Sold if this was a scanned item
+            # 6. Mark StockItem as Sold if this was a scanned item (with row locking)
             if hasattr(item_in, "stock_item_id") and item_in.stock_item_id:
                 from app.models.stock_item import StockItem
-                stock_item = db.query(StockItem).filter(StockItem.id == item_in.stock_item_id).first()
-                if stock_item:
-                    stock_item.status = "Sold"
+                stock_item = db.query(StockItem).filter(
+                    StockItem.id == item_in.stock_item_id,
+                    StockItem.store_id == store_id,
+                ).with_for_update().first()
+                if not stock_item:
+                    raise HTTPException(status_code=404, detail=f"Stock item {item_in.stock_item_id} not found")
+                if stock_item.status != "Available":
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Stock item '{stock_item.item_name or stock_item.item_code}' is already {stock_item.status}"
+                    )
+                stock_item.status = "Sold"
                 
         db.commit()
         db.refresh(db_invoice)
@@ -193,7 +217,7 @@ def create_sale(
         raise
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/", response_model=List[InvoiceResponse])
 def list_sales(
@@ -203,7 +227,10 @@ def list_sales(
     current_user: User = Depends(get_current_user)
 ):
     """List all sales (invoices)."""
-    invoices = db.query(Invoice).order_by(Invoice.id.desc()).offset(skip).limit(limit).all()
+    store_id = require_tenant_id(current_user)
+    invoices = db.query(Invoice).filter(
+        Invoice.store_id == store_id,
+    ).order_by(Invoice.id.desc()).offset(skip).limit(limit).all()
     return invoices
 
 @router.get("/{id}", response_model=InvoiceResponse)
@@ -213,7 +240,11 @@ def get_sale(
     current_user: User = Depends(get_current_user)
 ):
     """Get a specific sale (invoice)."""
-    invoice = db.query(Invoice).filter(Invoice.id == id).first()
+    store_id = require_tenant_id(current_user)
+    invoice = db.query(Invoice).filter(
+        Invoice.id == id,
+        Invoice.store_id == store_id,
+    ).first()
     if not invoice:
         raise HTTPException(status_code=404, detail="Sale not found")
     return invoice
@@ -228,7 +259,11 @@ def link_customer_to_invoice(
     current_user: User = Depends(get_current_user)
 ):
     """Link a customer to an existing invoice."""
-    invoice = db.query(Invoice).filter(Invoice.id == id).first()
+    store_id = require_tenant_id(current_user)
+    invoice = db.query(Invoice).filter(
+        Invoice.id == id,
+        Invoice.store_id == store_id,
+    ).first()
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
         
@@ -236,7 +271,10 @@ def link_customer_to_invoice(
     if not customer_id:
         raise HTTPException(status_code=400, detail="customer_id is required")
         
-    customer = db.query(Customer).filter(Customer.id == customer_id).first()
+    customer = db.query(Customer).filter(
+        Customer.id == customer_id,
+        Customer.store_id == store_id,
+    ).first()
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
         

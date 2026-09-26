@@ -5,7 +5,7 @@ from sqlalchemy import or_
 from decimal import Decimal
 
 from app.db.database import get_db
-from app.api.dependencies import get_current_user
+from app.api.dependencies import require_tenant_id, get_current_user
 from app.models.user import User
 from app.schemas.crm import CustomerCreate, CustomerUpdate, CustomerResponse, CustomerListResponse
 from app.models.crm import Customer
@@ -25,7 +25,7 @@ def get_customers(
     search: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    store_id = current_user.tenant_id or 1
+    store_id = require_tenant_id(current_user)
     query = db.query(Customer).filter(Customer.store_id == store_id)
     if search:
         like = f"%{search}%"
@@ -57,7 +57,7 @@ def create_customer(
     customer_in: CustomerCreate,
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    store_id = current_user.tenant_id or 1
+    store_id = require_tenant_id(current_user)
     # Check uniqueness within the same store
     existing = db.query(Customer).filter(
         Customer.store_id == store_id,
@@ -85,7 +85,7 @@ def get_customer(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    store_id = current_user.tenant_id or 1
+    store_id = require_tenant_id(current_user)
     customer = db.query(Customer).filter(Customer.id == id, Customer.store_id == store_id).first()
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
@@ -100,7 +100,7 @@ def update_customer(
     customer_in: CustomerUpdate,
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    store_id = current_user.tenant_id or 1
+    store_id = require_tenant_id(current_user)
     customer = db.query(Customer).filter(Customer.id == id, Customer.store_id == store_id).first()
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
@@ -121,7 +121,7 @@ def delete_customer(
     id: int,
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    store_id = current_user.tenant_id or 1
+    store_id = require_tenant_id(current_user)
     customer = db.query(Customer).filter(Customer.id == id, Customer.store_id == store_id).first()
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
@@ -136,7 +136,7 @@ def get_customer_ledger(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    store_id = current_user.tenant_id or 1
+    store_id = require_tenant_id(current_user)
     customer = db.query(Customer).filter(Customer.id == id, Customer.store_id == store_id).first()
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
@@ -151,7 +151,7 @@ def add_customer_ledger_entry(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    store_id = current_user.tenant_id or 1
+    store_id = require_tenant_id(current_user)
     customer = db.query(Customer).filter(Customer.id == id, Customer.store_id == store_id).first()
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
@@ -194,12 +194,14 @@ def get_customer_bills(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    store_id = current_user.tenant_id or 1
+    store_id = require_tenant_id(current_user)
     customer = db.query(Customer).filter(Customer.id == id, Customer.store_id == store_id).first()
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
     
-    ledger_entries = db.query(CustomerLedger).filter(CustomerLedger.customer_id == id).order_by(CustomerLedger.date.desc(), CustomerLedger.id.desc()).all()
+    ledger_entries = db.query(CustomerLedger).filter(
+        CustomerLedger.customer_id == id
+    ).order_by(CustomerLedger.date.desc(), CustomerLedger.id.desc()).all()
     
     formatted_bills = []
     for entry in ledger_entries:
@@ -212,7 +214,7 @@ def get_customer_bills(
         bal = float(entry.balance or 0.0)
         formatted_bills.append({
             "id": entry.id,
-            "date": entry.date,
+            "date": str(entry.date) if entry.date else None,
             "type": entry.voucher_type,
             "bill_no": entry.voucher_number or '-',
             "summary": entry.description or '-',

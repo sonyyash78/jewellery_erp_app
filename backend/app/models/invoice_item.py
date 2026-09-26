@@ -15,12 +15,14 @@ class InvoiceItem(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     invoice_id: Mapped[int] = mapped_column(Integer, ForeignKey("invoices.id", ondelete="CASCADE"))
     inventory_item_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("inventory_items.id", ondelete="SET NULL"), nullable=True)
+    stock_item_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("stock_items.id", ondelete="SET NULL"), nullable=True)
     item_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     item_type: Mapped[ItemType] = mapped_column(Enum(ItemType))
     final_price: Mapped[float] = mapped_column(DECIMAL(12, 2))
 
     invoice: Mapped["Invoice"] = relationship("Invoice", back_populates="items")
     inventory_item: Mapped["InventoryItem"] = relationship("InventoryItem", back_populates="invoice_items")
+    stock_item: Mapped[Optional["StockItem"]] = relationship("StockItem", foreign_keys=[stock_item_id])
     
     gold_calculation: Mapped[Optional["GoldCalculation"]] = relationship("GoldCalculation", back_populates="invoice_item", uselist=False, cascade="all, delete-orphan")
     silver_calculation: Mapped[Optional["SilverCalculation"]] = relationship("SilverCalculation", back_populates="invoice_item", uselist=False, cascade="all, delete-orphan")

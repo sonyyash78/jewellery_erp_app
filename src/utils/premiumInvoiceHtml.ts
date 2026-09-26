@@ -393,7 +393,7 @@ export const renderSettlements = (metals: string[], goldSettlement: any, silverS
       } else if (!isGold && _invoice.silver_balance_metal_weight !== undefined && _invoice.silver_balance_metal_weight !== null) {
         fineBalance = Number(_invoice.silver_balance_metal_weight);
       }
-      if (_invoice.settlement_type === 'Cash' || _invoice.bill_type === 'Cash') {
+      if (_invoice.settlement_type === 'Cash' || (_invoice.bill_type === 'Cash' && !_invoice.gold_balance_metal_weight && !_invoice.silver_balance_metal_weight)) {
         fineBalance = 0;
       }
     } else if (balanceMetalWeight > 0) {
@@ -404,6 +404,21 @@ export const renderSettlements = (metals: string[], goldSettlement: any, silverS
     const metalValueSettled = data.valueSettled || (fineReceived * (appliedRate / (isGold ? 10 : 1000)));
     const isFixed = appliedRate > 0;
     const titleColor = isGold ? '#D4AF37' : '#9CA3AF';
+
+    const physicalDiff = Math.max(0, fineBilled - fineReceived);
+    let balanceLabel = '';
+    let balanceColor = '#10B981';
+
+    if (fineBalance > 0.001) {
+      balanceColor = '#DC2626';
+      balanceLabel = `+ ${fineBalance.toFixed(3)} gm (To ${isGold ? 'Gold' : 'Silver'} Ledger)`;
+    } else if (physicalDiff > 0.001) {
+      balanceColor = '#2563EB';
+      balanceLabel = `0.000 gm (Settled in Cash)`;
+    } else {
+      balanceColor = '#10B981';
+      balanceLabel = `0.000 gm (Settled)`;
+    }
 
     return `
       <div style="flex: 1; border: ${border}; border-radius: 6px; background: ${bg}; display: flex; flex-direction: column; box-sizing: border-box; overflow: hidden; ${fullWidth ? 'width: 100%;' : ''}">
@@ -419,9 +434,9 @@ export const renderSettlements = (metals: string[], goldSettlement: any, silverS
             ${isFixed ? `
             <tr><td>Rate</td><td style="text-align: right;">:</td><td style="text-align: right;">&#8377; ${appliedRate.toLocaleString('en-IN')}${!isGold ? '/kg' : '/10g'}</td></tr>
             <tr><td>Value Settled (Metal)</td><td style="text-align: right;">:</td><td style="text-align: right; color: #10B981; font-weight: 800;">&#8377; ${metalValueSettled.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</td></tr>
-            <tr><td>Balance Due</td><td style="text-align: right;">:</td><td style="text-align: right; color: ${fineBalance > 0.001 ? '#DC2626' : '#10B981'}; font-weight: 800;">${fineBalance > 0.001 ? `+ ${fineBalance.toFixed(3)} gm` : '0.000 gm (Settled)'}</td></tr>
+            <tr><td>Balance Due</td><td style="text-align: right;">:</td><td style="text-align: right; color: ${balanceColor}; font-weight: 800;">${balanceLabel}</td></tr>
             ` : `
-            <tr><td>Balance Due</td><td style="text-align: right;">:</td><td style="text-align: right; color: ${fineBalance > 0.001 ? '#DC2626' : '#10B981'}; font-weight: 800;">${fineBalance > 0.001 ? `+ ${fineBalance.toFixed(3)} gm` : '0.000 gm (Settled)'}</td></tr>
+            <tr><td>Balance Due</td><td style="text-align: right;">:</td><td style="text-align: right; color: ${balanceColor}; font-weight: 800;">${balanceLabel}</td></tr>
             `}
           </table>
         </div>
@@ -435,18 +450,36 @@ export const renderSettlements = (metals: string[], goldSettlement: any, silverS
 
   const fullWidth = (showGold && !showSilver) || (!showGold && showSilver);
 
+  // Settlement Option Banner Badge
+  const st = (_invoice?.settlement_type || '').toLowerCase();
+  const smt = (_invoice?.settlement_metal_type || '').toLowerCase();
+  const goldBal = Number(_invoice?.gold_balance_metal_weight || 0);
+  const silverBal = Number(_invoice?.silver_balance_metal_weight || 0);
+
+  let settlementBadge = '';
+  if (smt === 'both' || (goldBal > 0.001 && silverBal > 0.001)) {
+    settlementBadge = `<div style="text-align: center; margin-bottom: 2px;"><span style="background: #EFF6FF; border: 1px solid #93C5FD; color: #1E40AF; padding: 1px 6px; border-radius: 8px; font-size: 8px; font-weight: 800; letter-spacing: 0.5px;">OPTION 4: BOTH METALS TO LEDGERS (Gold &amp; Silver to Ledgers | Charges in Cash)</span></div>`;
+  } else if (smt === 'gold' || (goldBal > 0.001 && silverBal <= 0.001)) {
+    settlementBadge = `<div style="text-align: center; margin-bottom: 2px;"><span style="background: #FEF3C7; border: 1px solid #FCD34D; color: #92400E; padding: 1px 6px; border-radius: 8px; font-size: 8px; font-weight: 800; letter-spacing: 0.5px;">OPTION 2: GOLD TO LEDGER (Remaining Gold to Ledger | Silver &amp; Charges in Cash)</span></div>`;
+  } else if (smt === 'silver' || (silverBal > 0.001 && goldBal <= 0.001)) {
+    settlementBadge = `<div style="text-align: center; margin-bottom: 2px;"><span style="background: #F3F4F6; border: 1px solid #D1D5DB; color: #374151; padding: 1px 6px; border-radius: 8px; font-size: 8px; font-weight: 800; letter-spacing: 0.5px;">OPTION 3: SILVER TO LEDGER (Remaining Silver to Ledger | Gold &amp; Charges in Cash)</span></div>`;
+  } else if (st === 'cash' || _invoice?.bill_type === 'Cash' || (_invoice && goldBal <= 0.001 && silverBal <= 0.001 && (goldSettlement.fineReceived > 0 || silverSettlement.fineReceived > 0 || goldSettlement.required > 0 || silverSettlement.required > 0 || (goldSettlement as any).fineBilled > 0 || (silverSettlement as any).fineBilled > 0))) {
+    settlementBadge = `<div style="text-align: center; margin-bottom: 2px;"><span style="background: #ECFDF5; border: 1px solid #A7F3D0; color: #065F46; padding: 1px 6px; border-radius: 8px; font-size: 8px; font-weight: 800; letter-spacing: 0.5px;">OPTION 1: CASH SETTLEMENT (All Metal &amp; Bill Dues Settled in Cash)</span></div>`;
+  }
+
   return `
     <div class="settlement-section">
       <div style="text-align: center; color: var(--gold); font-family: 'Cinzel', serif; font-weight: 700; font-size: 9.5px; margin-bottom: 2px;">
           <svg viewBox="0 0 24 24" style="width: 10px; height: 10px; fill: currentColor; vertical-align: middle; margin-right: 4px;"><path d="M12 2L4 6v2h16V6l-8-4zm0 2.5l5.5 2.75h-11L12 4.5zM4 10v9h16v-9H4zm14 7H6v-5h12v5z"/></svg>
           METAL SETTLEMENT
       </div>
+      ${settlementBadge}
       <div style="display: flex; gap: 6px; width: 100%; box-sizing: border-box;">
           ${showGold ? generateBox('GOLD', goldSettlement, fullWidth) : ''}
           ${showSilver ? generateBox('SILVER', silverSettlement, fullWidth) : ''}
       </div>
       <div style="text-align: center; font-size: 8px; color: #7f8c8d; margin-top: 2px;">
-          If fine balance is 0.000 gm, no fine is due. If there is any difference, fine due will be charged as per rate.
+          If fine balance is 0.000 gm, no fine is due to ledger. Metal converted to ledger is credited to customer account.
       </div>
     </div>
   `;
@@ -462,6 +495,7 @@ export const renderBottomRow = (
   customer?: any
 ) => {
   const isExchange = (invoice.invoice_number || '').startsWith('EXC-') || invoice.bill_type === 'Exchange' || totals.type === 'exchange';
+  const isPurchase = (invoice.invoice_number || '').startsWith('PUR-') || invoice.bill_type === 'Purchase' || totals.type === 'purchase';
   const taxableAmount  = invoice.subtotal || totals.taxableAmount || 0;
   const gstAmount      = invoice.tax_amount || totals.totalGst || 0;
   const grossTotal     = taxableAmount + gstAmount;
@@ -473,9 +507,6 @@ export const renderBottomRow = (
   const goldLedger     = invoice.gold_balance_metal_weight || 0;
   const silverLedger   = invoice.silver_balance_metal_weight || 0;
 
-  // Previous Balance / Prev Bill
-  const prevBalance    = Number(customer?.previous_balance || invoice.previous_balance || totals.previous_balance || 0);
-  const netPayableWithPrev = Math.max(0, balanceDue + cashPaid + prevBalance);
 
   const hasGold   = metals.includes('Gold');
   const hasSilver = metals.includes('Silver');
@@ -521,58 +552,81 @@ export const renderBottomRow = (
       </div>`;
   }
 
-  const payableAmount = prevBalance > 0 ? netPayableWithPrev : Math.max(0, balanceDue);
+  // This bill due only (never show previous ledger full balance or cumulative balances)
+  const payableAmount = Math.max(0, balanceDue);
+  const isCashCleared = payableAmount <= 0.01;
 
-  let settlementContent = `
-    <div style="background: #FEF2F2; border: 1.5px solid #FCA5A5; border-radius: 6px; padding: 5px 6px; width: 100%; box-sizing: border-box;">
-      <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px dashed #FECACA; padding-bottom: 3px; margin-bottom: 4px;">
-        <div style="display: flex; align-items: center; gap: 4px;">
-          <div style="width: 16px; height: 16px; border-radius: 50%; background: #EF4444; color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-            <svg viewBox="0 0 24 24" style="width: 10px; height: 10px; fill: white;"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+  const hasMetalToLedger = goldLedger > 0.001 || silverLedger > 0.001;
+  let settlementContent = '';
+
+  if (isCashCleared && !hasMetalToLedger) {
+    settlementContent = `
+      <div style="background: #ECFDF5; border: 1.5px solid #86EFAC; border-radius: 6px; padding: 4px 6px; width: 100%; box-sizing: border-box;">
+        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px dashed #BBF7D0; padding-bottom: 2px; margin-bottom: 3px;">
+          <div style="display: flex; align-items: center; gap: 4px;">
+            <div style="width: 14px; height: 14px; border-radius: 50%; background: #10B981; color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+              <svg viewBox="0 0 24 24" style="width: 9px; height: 9px; fill: white;"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+            </div>
+            <span style="color: #166534; font-family: 'Cinzel', serif; font-size: 8.5px; font-weight: 800; letter-spacing: 0.5px;">FINAL SETTLEMENT</span>
           </div>
-          <span style="color: #991B1B; font-family: 'Cinzel', serif; font-size: 9px; font-weight: 800; letter-spacing: 0.5px;">FINAL SETTLEMENT</span>
+          <span style="background: #DCFCE7; color: #166534; font-size: 7px; font-weight: 700; padding: 1px 5px; border-radius: 3px;">FULLY PAID &#10003;</span>
         </div>
-        <span style="background: ${payableAmount > 0 || goldLedger > 0 || silverLedger > 0 ? '#FEE2E2' : '#DCFCE7'}; color: ${payableAmount > 0 || goldLedger > 0 || silverLedger > 0 ? '#991B1B' : '#166534'}; font-size: 7.5px; font-weight: 700; padding: 1px 5px; border-radius: 3px;">${payableAmount > 0 || goldLedger > 0 || silverLedger > 0 ? 'DUE' : 'SETTLED'}</span>
-      </div>
+        <div style="color: #065F46; font-size: 8px; font-weight: 700; text-align: center; padding: 2px 0;">All dues cleared for this bill.</div>
+      </div>`;
+  } else {
+    // Build due blocks: cash due + metal to ledger (this bill only)
+    let dueBlocks = '';
+    if (payableAmount > 0.01) {
+      dueBlocks += `
+          <div style="background: #FFFFFF; border: 1px solid #FCA5A5; border-radius: 4px; padding: 2px 5px; display: flex; justify-content: space-between; align-items: center;">
+            <span style="color: #7F1D1D; font-size: 8px; font-weight: 800;">${isPurchase ? 'PAYABLE DUE:' : 'CASH DUE:'}</span>
+            <span style="color: #991B1B; font-size: 10.5px; font-weight: 900;">&#8377; ${formatCurrency(payableAmount)}</span>
+          </div>`;
+    }
+    if (goldLedger > 0.001) {
+      dueBlocks += `
+          <div style="background: #FFFDF5; border: 1px solid #FDE68A; border-radius: 4px; padding: 2px 5px; display: flex; justify-content: space-between; align-items: center;">
+            <span style="color: #92400E; font-size: 8px; font-weight: 800;">GOLD TO LEDGER:</span>
+            <span style="color: #B45309; font-size: 10.5px; font-weight: 900;">+${goldLedger.toFixed(3)} gm</span>
+          </div>`;
+    }
+    if (silverLedger > 0.001) {
+      dueBlocks += `
+          <div style="background: #F9FAFB; border: 1px solid #D1D5DB; border-radius: 4px; padding: 2px 5px; display: flex; justify-content: space-between; align-items: center;">
+            <span style="color: #374151; font-size: 8px; font-weight: 800;">SILVER TO LEDGER:</span>
+            <span style="color: #1F2937; font-size: 10.5px; font-weight: 900;">+${silverLedger.toFixed(3)} gm</span>
+          </div>`;
+    }
 
-      <div style="display: flex; flex-direction: column; gap: 3px;">
-        ${payableAmount > 0 ? `
-          <div style="background: #FFFFFF; border: 1px solid #FCA5A5; border-radius: 4px; padding: 3px 6px; display: flex; justify-content: space-between; align-items: center;">
-            <span style="color: #7F1D1D; font-size: 8.5px; font-weight: 800;">AMOUNT PAYABLE:</span>
-            <span style="color: #991B1B; font-size: 11.5px; font-weight: 900;">&#8377; ${formatCurrency(payableAmount)}</span>
-          </div>
-        ` : `
-          <div style="background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 4px; padding: 3px 6px; display: flex; justify-content: space-between; align-items: center;">
-            <span style="color: #065F46; font-size: 8.5px; font-weight: 800;">CASH STATUS:</span>
-            <span style="color: #064E3B; font-size: 11px; font-weight: 900;">&#10004; FULLY PAID</span>
-          </div>
-        `}
+    const hasOnlyMetal = payableAmount <= 0.01 && (goldLedger > 0.001 || silverLedger > 0.001);
+    const headerBg = hasOnlyMetal ? '#FFFBEB' : '#FEF2F2';
+    const headerBorder = hasOnlyMetal ? '#FDE68A' : '#FCA5A5';
+    const headerTextColor = hasOnlyMetal ? '#92400E' : '#991B1B';
+    const badgeText = hasOnlyMetal ? 'LEDGER' : 'DUE';
 
-        ${goldLedger > 0 ? `
-          <div style="background: #FFFDF5; border: 1px solid #FDE68A; border-radius: 4px; padding: 3px 6px; display: flex; justify-content: space-between; align-items: center;">
-            <span style="color: #92400E; font-size: 8.5px; font-weight: 800;">GOLD LEDGER:</span>
-            <span style="color: #B45309; font-size: 11.5px; font-weight: 900;">+${goldLedger.toFixed(3)} gm</span>
+    settlementContent = `
+      <div style="background: ${headerBg}; border: 1.5px solid ${headerBorder}; border-radius: 6px; padding: 4px 6px; width: 100%; box-sizing: border-box;">
+        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px dashed ${headerBorder}; padding-bottom: 2px; margin-bottom: 3px;">
+          <div style="display: flex; align-items: center; gap: 4px;">
+            <div style="width: 14px; height: 14px; border-radius: 50%; background: ${hasOnlyMetal ? '#F59E0B' : '#EF4444'}; color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+              <svg viewBox="0 0 24 24" style="width: 9px; height: 9px; fill: white;"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+            </div>
+            <span style="color: ${headerTextColor}; font-family: 'Cinzel', serif; font-size: 8.5px; font-weight: 800; letter-spacing: 0.5px;">FINAL SETTLEMENT</span>
           </div>
-        ` : ''}
-
-        ${silverLedger > 0 ? `
-          <div style="background: #F9FAFB; border: 1px solid #D1D5DB; border-radius: 4px; padding: 3px 6px; display: flex; justify-content: space-between; align-items: center;">
-            <span style="color: #374151; font-size: 8.5px; font-weight: 800;">SILVER LEDGER:</span>
-            <span style="color: #1F2937; font-size: 11.5px; font-weight: 900;">+${silverLedger.toFixed(3)} gm</span>
-          </div>
-        ` : ''}
-      </div>
-
-      <div style="color: #991B1B; font-size: 7px; text-align: center; font-style: italic; margin-top: 3px;">
-        ${payableAmount > 0 || goldLedger > 0 || silverLedger > 0 ? 'Please settle remaining cash & metal dues.' : 'All dues settled. Thank you!'}
-      </div>
-    </div>`;
+          <span style="background: ${hasOnlyMetal ? '#FEF3C7' : '#FEE2E2'}; color: ${headerTextColor}; font-size: 7px; font-weight: 700; padding: 1px 5px; border-radius: 3px;">${badgeText}</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          ${dueBlocks}
+        </div>
+        <div style="color: ${headerTextColor}; font-size: 6.5px; text-align: center; font-style: italic; margin-top: 2px;">This bill due only.</div>
+      </div>`;
+  }
 
   let paymentDetailsRows = `
-    <tr><td>Cash Paid</td><td style="text-align:right;">:</td><td style="text-align:right; font-weight: 700;">&#8377; ${formatCurrency(cashPaid)}</td></tr>
+    <tr><td>${isPurchase ? 'Cash Paid' : 'Cash Received'}</td><td style="text-align:right;">:</td><td style="text-align:right; font-weight: 700;">&#8377; ${formatCurrency(cashPaid)}</td></tr>
     ${metalValue > 0 ? `<tr><td>Metal Value Settled</td><td style="text-align:right;">:</td><td style="text-align:right; font-weight: 700;">&#8377; ${formatCurrency(metalValue)}</td></tr>` : ''}
     <tr><td>Date</td><td style="text-align:right;">:</td><td style="text-align:right;">${formatDate(invoice.invoice_date)}</td></tr>
-    <tr><td>Mode</td><td style="text-align:right;">:</td><td style="text-align:right;">${invoice.payment_mode || 'CASH'}</td></tr>
+    <tr><td>Mode</td><td style="text-align:right;">:</td><td style="text-align:right;">${invoice.payment_method || invoice.payment_mode || 'CASH'}</td></tr>
     ${(fineGoldRec > 0 || fineSilverRec > 0) ? `
       <tr>
         <td>Metal Settled</td>
@@ -580,8 +634,9 @@ export const renderBottomRow = (
         <td style="text-align:right;">${fineGoldRec > 0 ? `${fineGoldRec.toFixed(3)}g Gold` : ''} ${fineSilverRec > 0 ? `${fineSilverRec.toFixed(3)}g Silver` : ''}</td>
       </tr>
     ` : ''}
-    ${goldLedger > 0 ? `<tr><td style="color:var(--red);font-weight:700;">Gold Ledger</td><td style="text-align:right;">:</td><td style="text-align:right;color:var(--red);font-weight:700;">+${goldLedger.toFixed(3)} gm</td></tr>` : ''}
-    ${silverLedger > 0 ? `<tr><td style="color:var(--red);font-weight:700;">Silver Ledger</td><td style="text-align:right;">:</td><td style="text-align:right;color:var(--red);font-weight:700;">+${silverLedger.toFixed(3)} gm</td></tr>` : ''}
+    ${goldLedger > 0 ? `<tr><td style="color:#B45309;font-weight:700;">Gold to Ledger</td><td style="text-align:right;">:</td><td style="text-align:right;color:#B45309;font-weight:700;">+${goldLedger.toFixed(3)} gm</td></tr>` : ''}
+    ${silverLedger > 0 ? `<tr><td style="color:#1F2937;font-weight:700;">Silver to Ledger</td><td style="text-align:right;">:</td><td style="text-align:right;color:#1F2937;font-weight:700;">+${silverLedger.toFixed(3)} gm</td></tr>` : ''}
+    ${payableAmount > 0.01 ? `<tr><td style="color:var(--red);font-weight:700;">Cash Due</td><td style="text-align:right;">:</td><td style="text-align:right;color:var(--red);font-weight:700;">&#8377; ${formatCurrency(payableAmount)}</td></tr>` : ''}
   `;
 
   return `
@@ -609,14 +664,6 @@ export const renderBottomRow = (
                 <td>${isExchange ? 'Less: Old Items Deposited' : 'Ledger / Metal Settled'}</td>
                 <td style="text-align:right;">:</td>
                 <td style="text-align:right; color: var(--red); font-weight: 700;">- &#8377; ${formatCurrency(metalValue)}</td>
-              </tr>
-            ` : ''}
-            ${prevBalance > 0 ? `
-              <tr><td colspan="3"><hr style="border: none; border-top: 1px dashed #E5E7EB; margin: 2px 0;"></td></tr>
-              <tr>
-                <td style="color: #B45309; font-weight: 700;">Prev Bill / Old Due</td>
-                <td style="text-align:right;">:</td>
-                <td style="text-align:right; color: #B45309; font-weight: 700;">+ &#8377; ${formatCurrency(prevBalance)}</td>
               </tr>
             ` : ''}
           </table>

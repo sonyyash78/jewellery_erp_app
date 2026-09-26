@@ -249,8 +249,9 @@ class ReportService:
         net_cash_flow = total_sales - total_purchases
         
         return {
-            'net_profit': float(CalculationService._round_final(net_cash_flow)),
-            'gross_profit': float(CalculationService._round_final(net_cash_flow)),
+            'net_profit': float(CalculationService._round_final(net_amount_profit)),
+            'gross_profit': float(CalculationService._round_final(gross_amount_profit)),
+            'net_cash_flow': float(CalculationService._round_final(net_cash_flow)),
             'total_expenses': float(CalculationService._round_final(total_expenses)),
             'business_cash_flow': {
                 'Sales (Invoices)': float(CalculationService._round_final(total_invoice_sales)),

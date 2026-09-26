@@ -4,7 +4,7 @@ from typing import List, Optional
 from decimal import Decimal
 from datetime import date, datetime
 
-from app.api.dependencies import get_db, get_current_user
+from app.api.dependencies import require_tenant_id, get_db, get_current_user
 from app.models.user import User
 from app.models.invoice import Invoice, InvoiceStatus
 from app.models.invoice_item import InvoiceItem
@@ -48,7 +48,7 @@ def create_invoice(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    store_id = current_user.tenant_id or 1
+    store_id = require_tenant_id(current_user)
     # 1. Validate customer exists if provided
     if invoice_in.customer_id is not None:
         customer = db.query(Customer).filter(Customer.id == invoice_in.customer_id, Customer.store_id == store_id).first()
@@ -76,6 +76,25 @@ def create_invoice(
             detail=f"Invalid grand_total: expected {calculated_grand_total:.2f}, got {invoice_in.grand_total:.2f}"
         )
     
+    # 2.5 Lock and validate all StockItems upfront (atomic concurrency protection)
+    from app.models.stock_item import StockItem
+    stock_ids = [item.stock_item_id for item in invoice_in.items if hasattr(item, 'stock_item_id') and item.stock_item_id is not None]
+    stock_items_map = {}
+    if stock_ids:
+        stock_items = db.query(StockItem).filter(
+            StockItem.id.in_(stock_ids),
+            StockItem.store_id == store_id
+        ).with_for_update().all()
+        if len(stock_items) != len(set(stock_ids)):
+            raise HTTPException(status_code=404, detail="One or more stock items not found")
+        for si in stock_items:
+            if si.status != "Available":
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Stock item '{si.item_name or si.item_code}' is already {si.status}"
+                )
+            stock_items_map[si.id] = si
+
     try:
         # 3. Create Invoice
         db_invoice = Invoice(
@@ -112,6 +131,7 @@ def create_invoice(
             db_item = InvoiceItem(
                 invoice_id=db_invoice.id,
                 inventory_item_id=item_in.inventory_item_id,
+                stock_item_id=getattr(item_in, 'stock_item_id', None),
                 item_name=item_in.item_name,
                 item_type=item_in.item_type,
                 final_price=item_in.final_price
@@ -228,14 +248,10 @@ def create_invoice(
             
             # 6. Mark StockItem as Sold if this was a scanned item
             if hasattr(item_in, 'stock_item_id') and item_in.stock_item_id:
-                from app.models.stock_item import StockItem
-                stock_item = db.query(StockItem).filter(StockItem.id == item_in.stock_item_id).first()
+                stock_item = stock_items_map.get(item_in.stock_item_id)
                 if stock_item:
                     stock_item.status = "Sold"
-                
-        db.commit()
-        db.refresh(db_invoice)
-        
+
         # 7. Update Customer Ledger if Customer is provided
         if invoice_in.customer_id and customer:
             # Accumulate any metal that was sold 'unfixed' (applied_rate == 0)
@@ -305,9 +321,10 @@ def create_invoice(
                 silver_balance=customer.fine_silver_balance
             )
             db.add(ledger_entry)
-                
-            db.commit()
 
+        # Commit everything atomically in a single transaction
+        db.commit()
+        db.refresh(db_invoice)
         return db_invoice
         
     except HTTPException:
@@ -315,7 +332,7 @@ def create_invoice(
         raise
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/", response_model=List[InvoiceResponse])
 def list_invoices(
@@ -338,7 +355,7 @@ def list_invoices(
     - end_date: Filter to date
     - customer_id: Filter by customer
     """
-    store_id = current_user.tenant_id or 1
+    store_id = require_tenant_id(current_user)
     query = db.query(Invoice).filter(Invoice.store_id == store_id)
     
     # Search filter
@@ -378,7 +395,7 @@ def get_invoice(
     current_user: User = Depends(get_current_user)
 ):
     """Get single invoice by ID with all details."""
-    store_id = current_user.tenant_id or 1
+    store_id = require_tenant_id(current_user)
     invoice = db.query(Invoice).filter(Invoice.id == id, Invoice.store_id == store_id).first()
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
@@ -390,17 +407,82 @@ def delete_invoice(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Delete invoice (soft delete - mark as cancelled)."""
-    store_id = current_user.tenant_id or 1
+    """Delete invoice (cancel with reversal of inventory, customer balances, and ledger)."""
+    store_id = require_tenant_id(current_user)
     invoice = db.query(Invoice).filter(Invoice.id == id, Invoice.store_id == store_id).first()
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
     
-    # Soft delete - change status to Cancelled
-    invoice.status = InvoiceStatus.CANCELLED
-    db.commit()
+    if invoice.status == InvoiceStatus.CANCELLED:
+        raise HTTPException(status_code=400, detail="Invoice is already cancelled")
     
-    return {"message": "Invoice cancelled successfully"}
+    try:
+        # 1. Restore Stock Items to Available
+        from app.models.stock_item import StockItem
+        for item in invoice.items:
+            stock_id = getattr(item, 'stock_item_id', None)
+            if stock_id:
+                stock_item = db.query(StockItem).filter(
+                    StockItem.id == stock_id,
+                    StockItem.store_id == store_id
+                ).first()
+                if stock_item and stock_item.status == "Sold":
+                    stock_item.status = "Available"
+        
+        # 2. Reverse Customer Ledger and Balance if applicable
+        if invoice.customer_id:
+            customer = db.query(Customer).filter(
+                Customer.id == invoice.customer_id,
+                Customer.store_id == store_id
+            ).first()
+            if customer:
+                # Find original invoice ledger entry
+                orig_ledger = db.query(CustomerLedger).filter(
+                    CustomerLedger.customer_id == customer.id,
+                    CustomerLedger.voucher_number == invoice.invoice_number
+                ).order_by(CustomerLedger.id.desc()).first()
+                
+                if orig_ledger:
+                    net_cash = float(orig_ledger.debit or 0.0) - float(orig_ledger.credit or 0.0)
+                    net_gold = float(orig_ledger.gold_debit or 0.0) - float(orig_ledger.gold_credit or 0.0)
+                    net_silver = float(orig_ledger.silver_debit or 0.0) - float(orig_ledger.silver_credit or 0.0)
+                else:
+                    net_cash = float(invoice.balance_amount or 0.0)
+                    net_gold = float(invoice.gold_balance_metal_weight or 0.0)
+                    net_silver = float(invoice.silver_balance_metal_weight or 0.0)
+                
+                customer.outstanding_balance = float(customer.outstanding_balance or 0.0) - net_cash
+                customer.fine_gold_balance = float(customer.fine_gold_balance or 0.0) - net_gold
+                customer.fine_silver_balance = float(customer.fine_silver_balance or 0.0) - net_silver
+                
+                # Create reversal ledger entry
+                reversal = CustomerLedger(
+                    customer_id=customer.id,
+                    voucher_type="Cancellation",
+                    voucher_number=f"REV-{invoice.invoice_number}",
+                    description=f"Cancellation reversal of Invoice {invoice.invoice_number}",
+                    debit=float(orig_ledger.credit or 0.0) if orig_ledger else 0.0,
+                    credit=float(orig_ledger.debit or 0.0) if orig_ledger else net_cash,
+                    balance=customer.outstanding_balance,
+                    gold_debit=float(orig_ledger.gold_credit or 0.0) if orig_ledger else 0.0,
+                    gold_credit=float(orig_ledger.gold_debit or 0.0) if orig_ledger else net_gold,
+                    gold_balance=customer.fine_gold_balance,
+                    silver_debit=float(orig_ledger.silver_credit or 0.0) if orig_ledger else 0.0,
+                    silver_credit=float(orig_ledger.silver_debit or 0.0) if orig_ledger else net_silver,
+                    silver_balance=customer.fine_silver_balance
+                )
+                db.add(reversal)
+        
+        # 3. Mark status as Cancelled
+        invoice.status = InvoiceStatus.CANCELLED
+        db.commit()
+        return {"message": "Invoice cancelled and reversed successfully"}
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to cancel invoice")
 
 from pydantic import BaseModel
 class LinkCustomerRequest(BaseModel):
@@ -414,11 +496,12 @@ def link_customer_to_invoice(
     current_user: User = Depends(get_current_user)
 ):
     """Link an existing invoice to a customer."""
-    invoice = db.query(Invoice).filter(Invoice.id == id).first()
+    store_id = require_tenant_id(current_user)
+    invoice = db.query(Invoice).filter(Invoice.id == id, Invoice.store_id == store_id).first()
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
         
-    customer = db.query(Customer).filter(Customer.id == req.customer_id).first()
+    customer = db.query(Customer).filter(Customer.id == req.customer_id, Customer.store_id == store_id).first()
     if not customer:
         raise HTTPException(status_code=404, detail=f"Customer with id {req.customer_id} not found")
         
@@ -434,12 +517,14 @@ def get_invoice_stats(
 ):
     """Get invoice statistics for dashboard."""
     from sqlalchemy import func
+    store_id = require_tenant_id(current_user)
     
-    total_invoices = db.query(Invoice).count()
-    total_paid = db.query(Invoice).filter(Invoice.status == InvoiceStatus.PAID).count()
-    total_draft = db.query(Invoice).filter(Invoice.status == InvoiceStatus.DRAFT).count()
+    total_invoices = db.query(Invoice).filter(Invoice.store_id == store_id).count()
+    total_paid = db.query(Invoice).filter(Invoice.store_id == store_id, Invoice.status == InvoiceStatus.PAID).count()
+    total_draft = db.query(Invoice).filter(Invoice.store_id == store_id, Invoice.status == InvoiceStatus.DRAFT).count()
     
     total_revenue = db.query(func.sum(Invoice.grand_total)).filter(
+        Invoice.store_id == store_id,
         Invoice.status == InvoiceStatus.PAID
     ).scalar() or 0
     
@@ -457,6 +542,10 @@ def get_invoice_pdf_data(
     current_user: User = Depends(get_current_user)
 ):
     """Get invoice data formatted for PDF generation."""
+    store_id = require_tenant_id(current_user)
+    invoice = db.query(Invoice).filter(Invoice.id == id, Invoice.store_id == store_id).first()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
     try:
         return InvoicePDFService.get_invoice_pdf_data(id, db)
     except ValueError as e:
@@ -469,6 +558,7 @@ def get_pdf_data_by_voucher(
     current_user: User = Depends(get_current_user)
 ):
     """Get pdf data using just the voucher string."""
+    store_id = require_tenant_id(current_user)
     try:
         # If it's a payment row, try to extract the base bill number
         base_voucher = voucher_number
@@ -476,18 +566,22 @@ def get_pdf_data_by_voucher(
             base_voucher = base_voucher[4:]
             
         if base_voucher.startswith("INV-"):
-            invoice = db.query(Invoice).filter(Invoice.invoice_number == base_voucher).first()
+            invoice = db.query(Invoice).filter(Invoice.invoice_number == base_voucher, Invoice.store_id == store_id).first()
             if not invoice:
                 raise ValueError(f"Invoice {base_voucher} not found")
             return InvoicePDFService.get_invoice_pdf_data(invoice.id, db)
             
         elif base_voucher.startswith("EXC-"):
             exchange_id = int(base_voucher.split("-")[1])
+            from app.models.exchange import Exchange
+            exchange = db.query(Exchange).filter(Exchange.id == exchange_id, Exchange.store_id == store_id).first()
+            if not exchange:
+                raise ValueError(f"Exchange {base_voucher} not found")
             return InvoicePDFService.get_exchange_pdf_data(exchange_id, db)
             
         elif base_voucher.startswith("PUR-"):
             from app.models.purchase import Purchase
-            purchase = db.query(Purchase).filter(Purchase.purchase_number == base_voucher).first()
+            purchase = db.query(Purchase).filter(Purchase.purchase_number == base_voucher, Purchase.store_id == store_id).first()
             if not purchase:
                 raise ValueError(f"Purchase {base_voucher} not found")
             return InvoicePDFService.get_purchase_pdf_data(purchase.id, db)

@@ -57,6 +57,21 @@ def get_current_user(
     ensure_user_store(db, user)
     return user
 
+
+def require_tenant_id(user: User) -> int:
+    """Safely extract tenant_id from the authenticated user.
+
+    Replaces the dangerous ``current_user.tenant_id or 1`` pattern.
+    If tenant_id is None/0 this raises HTTP 403 instead of silently
+    falling back to Store 1's data.
+    """
+    if not user.tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User has no assigned store. Contact your administrator.",
+        )
+    return user.tenant_id
+
 class RoleChecker:
     def __init__(self, allowed_roles: list[str]):
         self.allowed_roles = allowed_roles
@@ -75,10 +90,6 @@ class RoleChecker:
             )
 
         if role_name and role_name in self.allowed_roles:
-            return user
-
-        # Allow if no role assigned yet (dev bootstrap)
-        if role_name is None and "Admin" in self.allowed_roles:
             return user
 
         raise HTTPException(

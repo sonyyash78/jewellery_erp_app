@@ -14,6 +14,7 @@ class Bill(Base):
     id = Column(Integer, primary_key=True, index=True)
     invoice_number = Column(String(50), unique=True, nullable=False, index=True)
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
+    store_id = Column(Integer, default=1, index=True)
     
     total_amount = Column(Numeric(12, 2), nullable=False)
     discount = Column(Numeric(12, 2), default=0.0)

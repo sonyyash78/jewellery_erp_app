@@ -36,6 +36,33 @@ export const generateInvoiceHtml = (data: any): string => {
   let totals = { totalGoldAmount: 0, totalSilverAmount: 0, totalMakingCharges: 0, totalOtherCharges: 0, metal_received_value: 0 };
   const detectedMetals = new Set<string>();
 
+  const getItemFineWeight = (item: any): number => {
+    const directFine = Number(
+      item.gold_calculation?.fine_weight ||
+      item.silver_calculation?.pure_weight ||
+      item.silver_calculation?.fine_weight ||
+      item.fine_weight ||
+      item.pure_weight ||
+      0
+    );
+    if (directFine > 0) return directFine;
+
+    const netWt = Number(item.net_weight || item.gross_weight || item.gold_calculation?.net_weight || item.silver_calculation?.net_weight || 0);
+    const purity = Number(
+      item.touch_purity ||
+      item.tanch_percentage ||
+      item.touch ||
+      item.purity ||
+      item.gold_calculation?.touch_purity ||
+      item.silver_calculation?.tanch_percentage ||
+      0
+    );
+    if (netWt > 0 && purity > 0) {
+      return Math.round(netWt * purity * 10) / 1000;
+    }
+    return netWt;
+  };
+
   items.forEach((item: any) => {
     const isGold = item.item_type === 'Gold' || normalizeMetal(item.metal_type) === 'Gold';
     if (isGold) detectedMetals.add('Gold');
@@ -45,7 +72,7 @@ export const generateInvoiceHtml = (data: any): string => {
     const other = Number(item.other_charges || 0) + Number(item.hallmark_charges || item.hallmark_charge || 0);
     let val = Number(item.metal_value || item.final_price || item.taxable_amount || 0);
 
-    const fineWt = Number(item.gold_calculation?.fine_weight || item.silver_calculation?.pure_weight || item.fine_weight || item.net_weight || 0);
+    const fineWt = getItemFineWeight(item);
     const appliedRate = Number(item.applied_rate || item.metal_rate || item.gold_calculation?.applied_rate || item.silver_calculation?.applied_rate || 0);
 
     if (isGold) {
@@ -65,7 +92,7 @@ export const generateInvoiceHtml = (data: any): string => {
 
   oldItems.forEach((item: any) => {
     const isGold = item.item_type === 'Gold' || normalizeMetal(item.metal_type) === 'Gold';
-    const fineWt = Number(item.gold_calculation?.fine_weight || item.silver_calculation?.pure_weight || item.fine_weight || item.net_weight || 0);
+    const fineWt = getItemFineWeight(item);
     const appliedRate = Number(item.applied_rate || item.metal_rate || item.gold_calculation?.applied_rate || item.silver_calculation?.applied_rate || (isGold ? goldBilled.price : silverBilled.price) || (isGold ? 72500 : 90000));
     const itemVal = Number(item.final_price || item.calculated_value || item.metal_value || (fineWt * (appliedRate / (isGold ? 10 : 1000))) || 0);
 
@@ -124,7 +151,7 @@ export const generateInvoiceHtml = (data: any): string => {
   finalHtml += premiumComponents.renderTableEnd();
 
   // Show metal settlement if there is metal requirement or metal given or hybrid/metal bill
-  const hasMetalSettlement = goldBilled.fineReceived > 0 || silverBilled.fineReceived > 0 || goldBilled.balanceLedger > 0 || silverBilled.balanceLedger > 0 || invoice.bill_type !== 'Cash';
+  const hasMetalSettlement = goldBilled.required > 0 || silverBilled.required > 0 || goldBilled.fineReceived > 0 || silverBilled.fineReceived > 0 || goldBilled.balanceLedger > 0 || silverBilled.balanceLedger > 0 || invoice.bill_type !== 'Cash' || Boolean(invoice.settlement_type);
   if (hasMetalSettlement) {
     const settlementHtml = premiumComponents.renderSettlements(metalsArray, goldBilled, silverBilled, invoice);
     if (settlementHtml) finalHtml += settlementHtml;

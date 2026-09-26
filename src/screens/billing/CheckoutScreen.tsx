@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import React, { useState, useMemo, useEffect } from 'react';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Modal, FlatList, KeyboardAvoidingView, Platform } from 'react-native';
 import { axiosClient } from '../../api/axiosClient';
 import * as Print from 'expo-print';
 import { generateInvoiceHtml } from '../../utils/invoicePdfUtils';
@@ -12,11 +12,60 @@ export default function CheckoutScreen({ route, navigation }: any) {
     discount = 0,
     grandTotal: initialGrandTotal = 0,
     gstType: initialGstType = 'same',
-    selectedCustomer = null
+    selectedCustomer: initialCustomer = null
   } = route.params || {};
 
   const [loading, setLoading] = useState(false);
   const [gstType, setGstType] = useState<'same' | 'inter' | 'none'>(initialGstType || 'same');
+
+  // Customer selection state
+  const [selectedCustomer, setSelectedCustomer] = useState<any>(initialCustomer || null);
+  const [customers, setCustomers] = useState<any[]>([]);
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [showCustomerModal, setShowCustomerModal] = useState(false);
+  const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
+  const [newCustomerFirstName, setNewCustomerFirstName] = useState('');
+  const [newCustomerPhone, setNewCustomerPhone] = useState('');
+
+  useEffect(() => {
+    fetchCustomers();
+  }, []);
+
+  const fetchCustomers = async () => {
+    try {
+      const response = await axiosClient.get('/customers/');
+      setCustomers(response.data.items || response.data || []);
+    } catch (error) {
+      console.log('Failed to fetch customers', error);
+    }
+  };
+
+  const handleAddNewCustomer = async () => {
+    if (!newCustomerFirstName) {
+      Alert.alert('Error', 'Please enter a name');
+      return;
+    }
+    const cleanedPhone = newCustomerPhone.replace(/\D/g, '');
+    if (cleanedPhone.length !== 10 && cleanedPhone.length !== 12) {
+      Alert.alert('Error', 'Mobile number must be exactly 10 digits');
+      return;
+    }
+    try {
+      const response = await axiosClient.post('/customers/', {
+        first_name: newCustomerFirstName,
+        phone_number: cleanedPhone
+      });
+      const newCust = response.data;
+      setCustomers([newCust, ...customers]);
+      setSelectedCustomer(newCust);
+      setShowAddCustomerModal(false);
+      setShowCustomerModal(false);
+      setNewCustomerFirstName('');
+      setNewCustomerPhone('');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to add customer');
+    }
+  };
 
   // Dynamic GST calculation
   const currentTax = (gstType === 'same' || gstType === 'inter')
@@ -52,11 +101,13 @@ export default function CheckoutScreen({ route, navigation }: any) {
     let tg = 0, ts = 0, gr = 0, sr = 0;
     (items || []).forEach((item: any) => {
       if (item.item_type === 'Gold') {
-        tg += (item.gold_calculation?.fine_weight || item.net_weight || 0);
-        if (!gr) gr = item.gold_calculation?.applied_rate || 0;
+        const fw = Number(item.gold_calculation?.fine_weight || item.fine_weight || item.pure_weight || (item.net_weight && item.touch_purity ? (item.net_weight * item.touch_purity / 100) : item.net_weight) || 0);
+        tg += fw;
+        if (!gr) gr = item.gold_calculation?.applied_rate || item.applied_rate || 0;
       } else if (item.item_type === 'Silver') {
-        ts += (item.silver_calculation?.pure_weight || item.net_weight || 0);
-        if (!sr) sr = item.silver_calculation?.applied_rate || 0;
+        const fw = Number(item.silver_calculation?.pure_weight || item.silver_calculation?.fine_weight || item.fine_weight || item.pure_weight || (item.net_weight && item.tanch_percentage ? (item.net_weight * item.tanch_percentage / 100) : item.net_weight) || 0);
+        ts += fw;
+        if (!sr) sr = item.silver_calculation?.applied_rate || item.applied_rate || 0;
       }
     });
     return {
@@ -382,53 +433,51 @@ export default function CheckoutScreen({ route, navigation }: any) {
 
         {/* MONETARY BALANCE & CASH RECEIVED */}
         <View style={styles.card}>
-          <View style={styles.cashSectionRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.lbl}>TOTAL AMOUNT PAYABLE (IF 100% CASH)</Text>
-              <Text style={styles.monetaryBal}>₹ {fmt(monetaryBeforeCash)}</Text>
-              <Text style={{ color: '#888', fontSize: 11, marginTop: 2 }}>
-                Includes ₹{fmt(totalMetalRupeesDue)} metal + ₹{fmt(nonMetalCharges)} GST & charges
-              </Text>
-            </View>
+          <View style={styles.payableBox}>
+            <Text style={styles.lbl}>TOTAL AMOUNT PAYABLE (IF 100% CASH)</Text>
+            <Text style={styles.monetaryBal}>₹ {fmt(monetaryBeforeCash)}</Text>
+            <Text style={{ color: '#888', fontSize: 11, marginTop: 2 }}>
+              Includes ₹{fmt(totalMetalRupeesDue)} metal + ₹{fmt(nonMetalCharges)} GST & charges
+            </Text>
+          </View>
 
-            <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                <Text style={[styles.lbl, { color: '#4ade80' }]}>CASH RECEIVED</Text>
-                <View style={{ flexDirection: 'row', gap: 4 }}>
-                  <TouchableOpacity
-                    onPress={() => setCashReceived(Math.round(nonMetalCharges * 100) / 100 > 0 ? (Math.round(nonMetalCharges * 100) / 100).toString() : '')}
-                    style={{ backgroundColor: 'rgba(217,119,6,0.2)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: '#d97706' }}
-                  >
-                    <Text style={{ fontSize: 9, color: '#f59e0b', fontWeight: 'bold' }}>GST (₹{fmt(nonMetalCharges)})</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => setCashReceived(Math.round(monetaryBeforeCash * 100) / 100 > 0 ? (Math.round(monetaryBeforeCash * 100) / 100).toString() : '')}
-                    style={{ backgroundColor: 'rgba(34,197,94,0.2)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: '#22c55e' }}
-                  >
-                    <Text style={{ fontSize: 9, color: '#4ade80', fontWeight: 'bold' }}>Full (₹{fmt(monetaryBeforeCash)})</Text>
-                  </TouchableOpacity>
-                </View>
+          <View style={styles.cashReceivedBox}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <Text style={[styles.lbl, { color: '#4ade80', marginBottom: 0 }]}>CASH RECEIVED</Text>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                <TouchableOpacity
+                  onPress={() => setCashReceived(Math.round(nonMetalCharges * 100) / 100 > 0 ? (Math.round(nonMetalCharges * 100) / 100).toString() : '')}
+                  style={{ backgroundColor: 'rgba(217,119,6,0.2)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4, borderWidth: 1, borderColor: '#d97706' }}
+                >
+                  <Text style={{ fontSize: 10, color: '#f59e0b', fontWeight: 'bold' }}>GST (₹{fmt(nonMetalCharges)})</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setCashReceived(Math.round(monetaryBeforeCash * 100) / 100 > 0 ? (Math.round(monetaryBeforeCash * 100) / 100).toString() : '')}
+                  style={{ backgroundColor: 'rgba(34,197,94,0.2)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4, borderWidth: 1, borderColor: '#22c55e' }}
+                >
+                  <Text style={{ fontSize: 10, color: '#4ade80', fontWeight: 'bold' }}>Full (₹{fmt(monetaryBeforeCash)})</Text>
+                </TouchableOpacity>
               </View>
-              <TextInput
-                style={styles.inputLarge}
-                keyboardType="numeric"
-                value={cashReceived}
-                onChangeText={setCashReceived}
-                placeholder="0"
-                placeholderTextColor="#555"
-              />
-              
-              <View style={styles.paymentMethods}>
-                {(['Cash', 'UPI', 'Cheque'] as const).map(m => (
-                  <TouchableOpacity
-                    key={m}
-                    style={[styles.payBtn, paymentMethod === m && styles.payBtnActive]}
-                    onPress={() => setPaymentMethod(m)}
-                  >
-                    <Text style={[styles.payBtnText, paymentMethod === m && styles.payBtnTextActive]}>{m}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+            </View>
+            <TextInput
+              style={styles.inputLarge}
+              keyboardType="numeric"
+              value={cashReceived}
+              onChangeText={setCashReceived}
+              placeholder="0"
+              placeholderTextColor="#555"
+            />
+            
+            <View style={styles.paymentMethods}>
+              {(['Cash', 'UPI', 'Cheque'] as const).map(m => (
+                <TouchableOpacity
+                  key={m}
+                  style={[styles.payBtn, paymentMethod === m && styles.payBtnActive]}
+                  onPress={() => setPaymentMethod(m)}
+                >
+                  <Text style={[styles.payBtnText, paymentMethod === m && styles.payBtnTextActive]}>{m}</Text>
+                </TouchableOpacity>
+              ))}
             </View>
           </View>
         </View>
@@ -439,7 +488,7 @@ export default function CheckoutScreen({ route, navigation }: any) {
           <View style={styles.finalSummaryBox}>
             <View>
               <Text style={styles.lbl}>
-                {finalBalanceAmount > 0 ? 'Amount Payable / Cash Due:' : finalBalanceAmount < 0 ? 'Refund to Customer:' : 'Amount Payable:'}
+                {finalBalanceAmount > 0 ? 'This Bill Cash Due:' : finalBalanceAmount < 0 ? 'Refund to Customer:' : 'This Bill Cash Due:'}
               </Text>
               <Text style={[styles.finalCashText, { color: finalBalanceAmount > 0 ? '#ef4444' : '#4ade80' }]}>
                 {finalBalanceAmount < 0 ? '(Refund) ' : ''}₹ {fmt(Math.abs(finalBalanceAmount))}{finalBalanceAmount === 0 ? ' ✓ (Paid)' : ''}
@@ -449,12 +498,12 @@ export default function CheckoutScreen({ route, navigation }: any) {
               <Text style={styles.lbl}>Metal to Ledger:</Text>
               {hasGold && (
                 <Text style={{ color: finalGoldDebt > 0.001 ? '#d4af37' : '#4ade80', fontWeight: '800', fontSize: 13 }}>
-                  {finalGoldDebt > 0.001 ? `+${finalGoldDebt.toFixed(3)} g Gold Due` : '0.000 g Gold (Settled)'}
+                  {finalGoldDebt > 0.001 ? `+${finalGoldDebt.toFixed(3)} g Gold` : '0.000 g Gold (Settled)'}
                 </Text>
               )}
               {hasSilver && (
                 <Text style={{ color: finalSilverDebt > 0.001 ? '#cbd5e1' : '#4ade80', fontWeight: '800', fontSize: 13 }}>
-                  {finalSilverDebt > 0.001 ? `+${finalSilverDebt.toFixed(3)} g Silver Due` : '0.000 g Silver (Settled)'}
+                  {finalSilverDebt > 0.001 ? `+${finalSilverDebt.toFixed(3)} g Silver` : '0.000 g Silver (Settled)'}
                 </Text>
               )}
             </View>
@@ -542,6 +591,26 @@ export default function CheckoutScreen({ route, navigation }: any) {
           )}
         </View>
 
+        {/* SELECT CUSTOMER */}
+        <View style={styles.card}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <Text style={styles.sectionHeaderTitle}>SELECT CUSTOMER</Text>
+            <TouchableOpacity style={styles.newCustBtn} onPress={() => setShowAddCustomerModal(true)}>
+              <Text style={styles.newCustBtnText}>+ New</Text>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity style={styles.customerSelector} onPress={() => setShowCustomerModal(true)}>
+            <Text style={styles.customerSelectorText}>
+              {selectedCustomer
+                ? `${selectedCustomer.first_name} ${selectedCustomer.last_name || ''} (${selectedCustomer.phone_number})`
+                : '-- Walk-in Customer --'}
+            </Text>
+            <Text style={{ color: '#d4af37', fontSize: 14 }}>▼</Text>
+          </TouchableOpacity>
+          <Text style={styles.custWarningText}>* A customer must be selected for outstanding balances.</Text>
+        </View>
+
         {/* Action Buttons */}
         <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
           <TouchableOpacity 
@@ -563,6 +632,104 @@ export default function CheckoutScreen({ route, navigation }: any) {
         
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* Customer Picker Modal */}
+      <Modal visible={showCustomerModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Customer</Text>
+              <TouchableOpacity onPress={() => setShowCustomerModal(false)}>
+                <Text style={styles.modalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 }}>
+              <TextInput
+                style={styles.modalSearchInput}
+                placeholder="Search by name or phone..."
+                placeholderTextColor="#666"
+                value={customerSearch}
+                onChangeText={setCustomerSearch}
+              />
+            </View>
+
+            <FlatList
+              data={customers.filter((c: any) => {
+                if (!customerSearch) return true;
+                const q = customerSearch.toLowerCase();
+                const name = `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase();
+                const phone = (c.phone_number || '').toLowerCase();
+                return name.includes(q) || phone.includes(q);
+              })}
+              keyExtractor={(item) => String(item.id)}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.customerItem,
+                    selectedCustomer?.id === item.id && styles.customerItemActive
+                  ]}
+                  onPress={() => {
+                    setSelectedCustomer(item);
+                    setShowCustomerModal(false);
+                  }}
+                >
+                  <Text style={styles.customerName}>
+                    {item.first_name} {item.last_name || ''}
+                  </Text>
+                  <Text style={styles.customerPhone}>{item.phone_number}</Text>
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Add New Customer Modal */}
+      <Modal visible={showAddCustomerModal} transparent animationType="slide">
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalOverlay}
+        >
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Add New Customer</Text>
+              <TouchableOpacity onPress={() => setShowAddCustomerModal(false)}>
+                <Text style={styles.modalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ padding: 16 }}>
+              <Text style={styles.inputLabel}>Name *</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={newCustomerFirstName}
+                onChangeText={setNewCustomerFirstName}
+                placeholder="Enter customer name"
+                placeholderTextColor="#666"
+              />
+
+              <Text style={[styles.inputLabel, { marginTop: 12 }]}>Mobile Number *</Text>
+              <TextInput
+                style={styles.modalInput}
+                keyboardType="phone-pad"
+                value={newCustomerPhone}
+                onChangeText={setNewCustomerPhone}
+                placeholder="10-digit mobile number"
+                placeholderTextColor="#666"
+                maxLength={10}
+              />
+
+              <TouchableOpacity
+                style={styles.addCustomerSubmitBtn}
+                onPress={handleAddNewCustomer}
+              >
+                <Text style={styles.addCustomerSubmitBtnText}>Add & Select Customer</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -657,4 +824,139 @@ const styles = StyleSheet.create({
   saveButton: { backgroundColor: '#d4af37', padding: 14, borderRadius: 8, alignItems: 'center' },
   saveButtonDisabled: { opacity: 0.5 },
   saveButtonText: { color: '#000', fontSize: 16, fontWeight: 'bold' },
+
+  payableBox: {
+    backgroundColor: '#0d0d10',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#222',
+    marginBottom: 12
+  },
+  cashReceivedBox: {
+    backgroundColor: '#0d0d10',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#166534',
+  },
+  newCustBtn: {
+    backgroundColor: 'rgba(212, 175, 55, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#d4af37',
+  },
+  newCustBtnText: {
+    color: '#d4af37',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  customerSelector: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#18181f',
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 6,
+    padding: 10,
+  },
+  customerSelectorText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  custWarningText: {
+    color: '#777',
+    fontSize: 9,
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#121216',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#222',
+  },
+  modalTitle: {
+    color: '#d4af37',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  modalCloseText: {
+    color: '#aaa',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  modalSearchInput: {
+    backgroundColor: '#1c1c24',
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 8,
+    color: '#fff',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+  },
+  customerItem: {
+    padding: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1a1a22',
+  },
+  customerItemActive: {
+    backgroundColor: 'rgba(212, 175, 55, 0.1)',
+  },
+  customerName: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  customerPhone: {
+    color: '#777',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  inputLabel: {
+    color: '#aaa',
+    fontSize: 11,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  modalInput: {
+    backgroundColor: '#1c1c24',
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 6,
+    color: '#fff',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 13,
+  },
+  addCustomerSubmitBtn: {
+    backgroundColor: '#d4af37',
+    borderRadius: 6,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 18,
+  },
+  addCustomerSubmitBtnText: {
+    color: '#000',
+    fontWeight: '800',
+    fontSize: 13,
+  },
 });

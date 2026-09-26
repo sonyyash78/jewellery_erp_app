@@ -4,7 +4,7 @@ from typing import List, Dict, Any
 import qrcode
 import os
 
-from app.api.dependencies import get_db, get_current_user
+from app.api.dependencies import require_tenant_id, get_db, get_current_user
 from app.models.user import User
 from app.models.stock_item import StockItem
 from app.schemas.stock import StockItemCreate, StockItemUpdate, StockItemResponse
@@ -16,11 +16,11 @@ os.makedirs(QR_DIR, exist_ok=True)
 
 @router.post("/", response_model=StockItemResponse)
 def create_stock_item(item_in: StockItemCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    store_id = current_user.tenant_id or 1
+    store_id = require_tenant_id(current_user)
     prefix = "GLD" if item_in.metal.lower() == 'gold' else "SLV" if item_in.metal.lower() == 'silver' else "ITM"
     
+    # Get last item to increment sequence globally across all stores (due to global unique index)
     last_item = db.query(StockItem).filter(
-        StockItem.store_id == store_id,
         StockItem.item_code.startswith(prefix)
     ).order_by(StockItem.id.desc()).first()
     
@@ -32,7 +32,12 @@ def create_stock_item(item_in: StockItemCreate, db: Session = Depends(get_db), c
             new_num = 1
     else:
         new_num = 1
+    
+    # Ensure item_code doesn't collide with any existing item
     item_code = f"{prefix}-{str(new_num).zfill(6)}"
+    while db.query(StockItem).filter(StockItem.item_code == item_code).first():
+        new_num += 1
+        item_code = f"{prefix}-{str(new_num).zfill(6)}"
     
     qr = qrcode.QRCode(
         version=1,
@@ -71,7 +76,7 @@ def list_stock_items(
     db: Session = Depends(get_db), 
     current_user: User = Depends(get_current_user)
 ):
-    store_id = current_user.tenant_id or 1
+    store_id = require_tenant_id(current_user)
     query = db.query(StockItem).filter(StockItem.store_id == store_id)
     
     if search:
@@ -93,7 +98,7 @@ def list_stock_items(
 
 @router.get("/scan/{item_code}", response_model=StockItemResponse)
 def scan_stock_item(item_code: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    store_id = current_user.tenant_id or 1
+    store_id = require_tenant_id(current_user)
     item = db.query(StockItem).filter(StockItem.store_id == store_id, StockItem.item_code == item_code).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
@@ -101,9 +106,17 @@ def scan_stock_item(item_code: str, db: Session = Depends(get_db), current_user:
         raise HTTPException(status_code=400, detail="Item already sold")
     return item
 
+@router.get("/{item_id}", response_model=StockItemResponse)
+def get_stock_item(item_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    store_id = require_tenant_id(current_user)
+    item = db.query(StockItem).filter(StockItem.store_id == store_id, StockItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    return item
+
 @router.delete("/{item_id}")
 def delete_stock_item(item_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    store_id = current_user.tenant_id or 1
+    store_id = require_tenant_id(current_user)
     item = db.query(StockItem).filter(StockItem.store_id == store_id, StockItem.id == item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
@@ -113,7 +126,7 @@ def delete_stock_item(item_id: int, db: Session = Depends(get_db), current_user:
 
 @router.put("/{item_id}", response_model=StockItemResponse)
 def update_stock_item(item_id: int, item_in: StockItemUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    store_id = current_user.tenant_id or 1
+    store_id = require_tenant_id(current_user)
     item = db.query(StockItem).filter(StockItem.store_id == store_id, StockItem.id == item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")

@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+﻿from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 import os
 from datetime import datetime
 from sqlalchemy.orm import Session
 from app.core.config import settings
-from app.api.dependencies import get_db, get_current_user
+from app.api.dependencies import require_tenant_id, get_db, get_current_user
 from app.models.user import User
 from app.models.store import Store
 
@@ -48,7 +48,7 @@ def download_backup(
     import pandas as pd
     from app.db.database import engine
 
-    store_id = current_user.tenant_id or 1
+    store_id = require_tenant_id(current_user)
     store = db.query(Store).filter(Store.id == store_id).first()
     store_slug = (store.name if store else f"store_{store_id}").replace(" ", "_").lower()
 
@@ -100,7 +100,7 @@ def download_backup(
 
     except Exception as e:
         print(f"Backup failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Backup failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Backup failed")
     
     return FileResponse(
         path=backup_path, 
@@ -118,7 +118,7 @@ def download_excel_backup(
     import zipfile
     from app.db.database import engine
     
-    store_id = current_user.tenant_id or 1
+    store_id = require_tenant_id(current_user)
     store = db.query(Store).filter(Store.id == store_id).first()
     store_slug = (store.name if store else f"store_{store_id}").replace(" ", "_").lower()
 
@@ -167,7 +167,7 @@ def download_excel_backup(
             
     except Exception as e:
         print(f"Excel Backup failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Excel Backup failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Excel Backup failed")
     
     return FileResponse(
         path=zip_path, 

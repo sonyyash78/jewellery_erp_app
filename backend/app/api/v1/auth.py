@@ -1,4 +1,4 @@
-from datetime import timedelta
+﻿from datetime import timedelta
 from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
@@ -153,7 +153,7 @@ def google_login(
                 email = user_data.get("email")
                 name = user_data.get("name", email.split('@')[0] if email else "Google User")
         except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Invalid Google token or access token: {str(e)}")
+            raise HTTPException(status_code=400, detail="Invalid Google token or access token")
 
     if not email:
         raise HTTPException(status_code=400, detail="Google authentication did not provide a valid email.")

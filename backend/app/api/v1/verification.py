@@ -31,10 +31,15 @@ def verify_voucher(voucher_number: str, db: Session = Depends(get_db)) -> Dict[s
             data = InvoicePDFService.get_invoice_pdf_data(invoice.id, db)
 
         elif base_voucher.startswith("EXC-"):
-            exchange_id = int(base_voucher.split("-")[1])
+            parts = base_voucher.split("-")
+            exchange_id = int(parts[1])
             exchange = db.query(Exchange).filter(Exchange.id == exchange_id).first()
             if not exchange:
                 raise ValueError(f"Exchange {base_voucher} not found in official registry.")
+            # If the exchange has a verification_token, require matching token
+            if getattr(exchange, 'verification_token', None):
+                if len(parts) < 3 or parts[2].upper() != exchange.verification_token.upper():
+                    raise ValueError(f"Invalid verification token for Exchange {base_voucher}. Full secure voucher token is required.")
             data = InvoicePDFService.get_exchange_pdf_data(exchange.id, db)
 
         elif base_voucher.startswith("PUR-"):

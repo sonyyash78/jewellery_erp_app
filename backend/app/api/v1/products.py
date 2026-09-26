@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
-from app.api.dependencies import get_db, get_current_user
+from app.api.dependencies import get_db, get_current_user, require_tenant_id
 from app.models.user import User
 from app.schemas.product import ProductCreate, ProductResponse, ProductListResponse
 from app.services import product_service
@@ -43,6 +43,13 @@ def delete_product(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Soft delete a product."""
+    """Soft delete a product (restricted to admin / primary store)."""
+    store_id = require_tenant_id(current_user)
+    user_role = str(getattr(current_user, 'role', '')).lower()
+    if store_id != 1 and user_role not in ('admin', 'superadmin'):
+        raise HTTPException(
+            status_code=403,
+            detail="Unauthorized: Only primary administrators can delete catalog products."
+        )
     product_service.delete_product(db, product_id, current_user.id)
     return {"message": "Product soft deleted"}

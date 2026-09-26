@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends
+﻿from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from app.api.dependencies import get_db, get_current_user
+from app.api.dependencies import require_tenant_id, get_db, get_current_user
 from app.models.user import User
 from app.services.report_service import ReportService
 
@@ -14,7 +14,7 @@ def get_dashboard_metrics(
     """
     Get dashboard metrics scoped to current user's tenant store.
     """
-    store_id = current_user.tenant_id or 1
+    store_id = require_tenant_id(current_user)
     return ReportService.get_dashboard_metrics(db, store_id=store_id)
 
 @router.get("/chart-data")
@@ -25,7 +25,7 @@ def get_dashboard_charts(
     """
     Get dashboard charts data scoped to current user's tenant store.
     """
-    store_id = current_user.tenant_id or 1
+    store_id = require_tenant_id(current_user)
     return ReportService.get_dashboard_charts_data(db, store_id=store_id)
 
 @router.get("/recent-activity")
@@ -36,7 +36,7 @@ def get_recent_activity(
     from app.models.invoice import Invoice
     from app.models.purchase import Purchase
     
-    store_id = current_user.tenant_id or 1
+    store_id = require_tenant_id(current_user)
     recent_bills = db.query(Invoice).filter(Invoice.store_id == store_id).order_by(Invoice.invoice_date.desc()).limit(5).all()
     recent_purchases = db.query(Purchase).filter(Purchase.store_id == store_id).order_by(Purchase.created_at.desc()).limit(5).all()
     

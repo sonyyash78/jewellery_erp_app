@@ -189,17 +189,39 @@ export const generateLedgerStatementHtml = (
   };
 
   const partyName = (party?.first_name ? `${party.first_name} ${party.last_name || ''}`.trim() : (party?.name || 'Party')).toUpperCase();
-  const partyPhone = party?.phone_number || party?.mobile || 'N/A';
-  const partyGst = party?.gst_number || 'N/A';
-  const partyPan = party?.aadhaar_pan || 'N/A';
+  const partyPhone = party?.phone_number || party?.mobile || party?.phone || 'N/A';
+  const partyGst = party?.gst_number || party?.gstin || 'N/A';
+  const partyPan = party?.aadhaar_pan || party?.pan || 'N/A';
   const partyAddress = party?.address || 'N/A';
 
-  const outstanding = Number(data?.outstanding_balance || 0);
-  const fineGold = Number(data?.fine_gold_balance || 0);
-  const fineSilver = Number(data?.fine_silver_balance || 0);
-  const goldRate = Number(data?.current_gold_rate || 7000);
-  const silverRate = Number(data?.current_silver_rate || 85);
-  const bills: any[] = data?.bills || [];
+  const bills: any[] = Array.isArray(data) ? data : (data?.bills || []);
+  
+  const latestBill = bills.length > 0 ? bills[0] : null;
+  const outstanding = Number(
+    data?.outstanding_balance !== undefined ? data.outstanding_balance :
+    (party?.outstanding_balance !== undefined ? party.outstanding_balance :
+    (latestBill?.balance !== undefined ? latestBill.balance : 0))
+  );
+
+  const fineGold = Number(
+    data?.fine_gold_balance !== undefined ? data.fine_gold_balance :
+    (party?.fine_gold_balance !== undefined ? party.fine_gold_balance :
+    (latestBill?.gold_balance !== undefined ? latestBill.gold_balance : 0))
+  );
+
+  const fineSilver = Number(
+    data?.fine_silver_balance !== undefined ? data.fine_silver_balance :
+    (party?.fine_silver_balance !== undefined ? party.fine_silver_balance :
+    (latestBill?.silver_balance !== undefined ? latestBill.silver_balance : 0))
+  );
+
+  const goldRate = Number(data?.current_gold_rate || 7250);
+  const silverRate = Number(data?.current_silver_rate || 90);
+
+  let totalDebit = 0;
+  let totalCredit = 0;
+  let totalGoldChange = 0;
+  let totalSilverChange = 0;
 
   const rowsHtml = bills.map((b: any, index: number) => {
     const d = b.date ? new Date(b.date).toLocaleDateString('en-IN') : '-';
@@ -208,6 +230,11 @@ export const generateLedgerStatementHtml = (
     const bal = Number(b.balance || 0);
     const gChg = Number(b.gold_change || 0);
     const sChg = Number(b.silver_change || 0);
+
+    totalDebit += deb;
+    totalCredit += cred;
+    totalGoldChange += gChg;
+    totalSilverChange += sChg;
 
     return `
       <tr>
@@ -242,6 +269,7 @@ export const generateLedgerStatementHtml = (
       tr { page-break-inside: avoid !important; }
       thead { display: table-header-group !important; }
       .party-and-summary { page-break-inside: avoid !important; }
+      .closing-summary-card { page-break-inside: avoid !important; }
       .footer { page-break-inside: avoid !important; }
     }
     body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #fff; color: #1f2937; padding: 8px; line-height: 1.35; font-size: 11px; }
@@ -306,20 +334,21 @@ export const generateLedgerStatementHtml = (
 
       <div class="summary-card">
         <div class="sum-col">
-          <div class="sum-lbl">Fine Gold</div>
-          <div class="sum-val" style="color: #fbbf24;">${fineGold.toFixed(3)} g</div>
-          <div class="sum-sub">@ ₹${goldRate}/g</div>
+          <div class="sum-lbl">Gold Ledger Due</div>
+          <div class="sum-val" style="color: #fbbf24;">${Math.abs(fineGold).toFixed(3)} g</div>
+          <div class="sum-sub">${fineGold > 0.001 ? (partyType === 'Supplier' ? 'To Pay' : 'Due to Receive') : (fineGold < -0.001 ? 'Advance' : 'Settled')}</div>
         </div>
         <div class="sum-col">
-          <div class="sum-lbl">Fine Silver</div>
-          <div class="sum-val" style="color: #e5e7eb;">${fineSilver.toFixed(3)} g</div>
-          <div class="sum-sub">@ ₹${silverRate}/g</div>
+          <div class="sum-lbl">Silver Ledger Due</div>
+          <div class="sum-val" style="color: #e5e7eb;">${Math.abs(fineSilver).toFixed(3)} g</div>
+          <div class="sum-sub">${fineSilver > 0.001 ? (partyType === 'Supplier' ? 'To Pay' : 'Due to Receive') : (fineSilver < -0.001 ? 'Advance' : 'Settled')}</div>
         </div>
         <div class="sum-col">
-          <div class="sum-lbl">Net Outstanding</div>
-          <div class="sum-val" style="color: ${outstanding > 0 ? '#ef4444' : '#10b981'};">
-            ₹ ${Math.abs(outstanding).toLocaleString('en-IN', { minimumFractionDigits: 2 })} ${partyType === 'Supplier' ? (outstanding > 0 ? '(Cr - Payable)' : (outstanding < 0 ? '(Dr - Advance)' : '')) : (outstanding > 0 ? '(Dr - Due)' : (outstanding < 0 ? '(Cr - Advance)' : ''))}
+          <div class="sum-lbl">Cash / Ledger Due</div>
+          <div class="sum-val" style="color: ${outstanding > 0 ? '#ef4444' : (outstanding < 0 ? '#10b981' : '#fff')};">
+            ₹ ${Math.abs(outstanding).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
           </div>
+          <div class="sum-sub">${partyType === 'Supplier' ? (outstanding > 0 ? 'Payable (Cr)' : (outstanding < 0 ? 'Advance (Dr)' : 'Cleared ✓')) : (outstanding > 0 ? 'Due (Dr)' : (outstanding < 0 ? 'Advance (Cr)' : 'Cleared ✓'))}</div>
         </div>
       </div>
     </div>
@@ -342,7 +371,74 @@ export const generateLedgerStatementHtml = (
       <tbody>
         ${rowsHtml.length > 0 ? rowsHtml : '<tr><td colspan="10" style="text-align: center; padding: 16px; color: #9ca3af;">No transaction records found</td></tr>'}
       </tbody>
+      ${bills.length > 0 ? `
+      <tfoot>
+        <tr style="background: #f3f4f6; font-weight: 800; border-top: 2px solid #d1d5db;">
+          <td colspan="5" style="text-align: right; text-transform: uppercase; font-size: 9px; padding: 6px 5px;">TOTAL TRANSACTIONS:</td>
+          <td style="text-align: right; color: #b45309; padding: 6px 5px;">${totalGoldChange !== 0 ? (totalGoldChange > 0 ? '+' : '') + totalGoldChange.toFixed(3) + ' g' : '-'}</td>
+          <td style="text-align: right; color: #4b5563; padding: 6px 5px;">${totalSilverChange !== 0 ? (totalSilverChange > 0 ? '+' : '') + totalSilverChange.toFixed(3) + ' g' : '-'}</td>
+          <td style="text-align: right; color: #dc2626; padding: 6px 5px;">₹ ${totalDebit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+          <td style="text-align: right; color: #16a34a; padding: 6px 5px;">₹ ${totalCredit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+          <td style="text-align: right; color: #111827; padding: 6px 5px; font-weight: 800;">₹ ${Math.abs(outstanding).toLocaleString('en-IN', { minimumFractionDigits: 2 })} ${partyType === 'Supplier' ? (outstanding > 0 ? 'Cr' : (outstanding < 0 ? 'Dr' : '')) : (outstanding > 0 ? 'Dr' : (outstanding < 0 ? 'Cr' : ''))}</td>
+        </tr>
+      </tfoot>
+      ` : ''}
     </table>
+
+    <!-- CLOSING LEDGER & METAL DUE CARD -->
+    <div style="background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 10px 12px; margin-top: 10px; margin-bottom: 14px; page-break-inside: avoid;">
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed #cbd5e1; padding-bottom: 5px; margin-bottom: 8px;">
+        <div style="font-size: 10px; font-weight: 800; color: #1e293b; text-transform: uppercase; letter-spacing: 0.5px;">
+          CLOSING LEDGER &amp; METAL BALANCE SUMMARY
+        </div>
+        <span style="background: ${outstanding > 0 ? '#fee2e2' : (outstanding < 0 ? '#f0fdf4' : '#f1f5f9')}; color: ${outstanding > 0 ? '#991b1b' : (outstanding < 0 ? '#166534' : '#475569')}; font-size: 8.5px; font-weight: 800; padding: 2px 7px; border-radius: 4px; text-transform: uppercase;">
+          ${partyType === 'Supplier' 
+            ? (outstanding > 0 ? 'PAYABLE DUE (Cr)' : (outstanding < 0 ? 'ADVANCE PAID (Dr)' : 'FULLY SETTLED'))
+            : (outstanding > 0 ? 'RECEIVABLE DUE (Dr)' : (outstanding < 0 ? 'ADVANCE BALANCE (Cr)' : 'FULLY SETTLED'))}
+        </span>
+      </div>
+
+      <div style="display: flex; gap: 8px;">
+        <!-- Cash / Amount Due -->
+        <div style="flex: 1.2; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 6px 8px;">
+          <div style="font-size: 8px; font-weight: 700; color: #64748b; text-transform: uppercase;">Cash / Amount Due</div>
+          <div style="font-size: 14px; font-weight: 800; color: ${outstanding > 0 ? '#dc2626' : (outstanding < 0 ? '#16a34a' : '#0f172a')}; margin-top: 2px;">
+            ₹ ${Math.abs(outstanding).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+          </div>
+          <div style="font-size: 7.5px; font-weight: 600; color: ${outstanding > 0 ? '#991b1b' : '#166534'}; margin-top: 1px;">
+            ${partyType === 'Supplier' 
+              ? (outstanding > 0 ? 'Amount to Pay Supplier (Cr)' : (outstanding < 0 ? 'Advance Paid (Dr)' : 'Nil Balance'))
+              : (outstanding > 0 ? 'Pending from Customer (Dr)' : (outstanding < 0 ? 'Advance with Store (Cr)' : 'Nil Balance'))}
+          </div>
+        </div>
+
+        <!-- Gold Metal Due -->
+        <div style="flex: 1; background: #fffdf5; border: 1px solid #fde68a; border-radius: 6px; padding: 6px 8px;">
+          <div style="font-size: 8px; font-weight: 700; color: #92400e; text-transform: uppercase;">Pure Gold Due (24K)</div>
+          <div style="font-size: 14px; font-weight: 800; color: #b45309; margin-top: 2px;">
+            ${Math.abs(fineGold).toFixed(3)} gm
+          </div>
+          <div style="font-size: 7.5px; font-weight: 600; color: #92400e; margin-top: 1px;">
+            ${fineGold > 0.001 
+              ? (partyType === 'Supplier' ? 'Gold to Give Supplier' : 'Gold Due to Receive')
+              : (fineGold < -0.001 ? 'Gold Advance' : '0.000 gm (Settled)')}
+          </div>
+        </div>
+
+        <!-- Silver Metal Due -->
+        <div style="flex: 1; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 8px;">
+          <div style="font-size: 8px; font-weight: 700; color: #475569; text-transform: uppercase;">Pure Silver Due (99.9%)</div>
+          <div style="font-size: 14px; font-weight: 800; color: #334155; margin-top: 2px;">
+            ${Math.abs(fineSilver).toFixed(3)} gm
+          </div>
+          <div style="font-size: 7.5px; font-weight: 600; color: #475569; margin-top: 1px;">
+            ${fineSilver > 0.001 
+              ? (partyType === 'Supplier' ? 'Silver to Give Supplier' : 'Silver Due to Receive')
+              : (fineSilver < -0.001 ? 'Silver Advance' : '0.000 gm (Settled)')}
+          </div>
+        </div>
+      </div>
+    </div>
 
     <div class="footer">
       <div>This is a computer-generated statement and does not require a physical signature.</div>

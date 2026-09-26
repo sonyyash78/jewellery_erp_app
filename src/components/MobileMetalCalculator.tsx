@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert } from 'react-native';
 
 export interface ItemPayload {
   metalType: 'Gold' | 'Silver';
@@ -148,11 +148,20 @@ export default function MobileMetalCalculator({ onAdd, buttonLabel = "ADD ITEM",
 
   const handleAdd = () => {
     if (metal === 'Gold') {
+      const gross = parseFloat(gGross) || 0;
+      if (gross <= 0) {
+        Alert.alert('Validation Error', 'Gross weight must be greater than 0');
+        return;
+      }
+      if (c.net <= 0) {
+        Alert.alert('Validation Error', 'Net weight must be greater than 0');
+        return;
+      }
       onAdd({
         metalType: 'Gold',
         itemName: itemName || 'Gold Item',
         category: gCategory,
-        grossWeight: parseFloat(gGross) || 0,
+        grossWeight: gross,
         stoneWeight: parseFloat(gStone) || 0,
         netWeight: c.net,
         touchPurity: parseFloat(gTouch) || 0,
@@ -171,11 +180,20 @@ export default function MobileMetalCalculator({ onAdd, buttonLabel = "ADD ITEM",
       // Reset
       setGGross(''); setGStone(''); setGMakingValue('0'); setGHallmark('0'); setGOther('0'); setGDiscount('0');
     } else {
+      const gross = parseFloat(sGross) || 0;
+      if (gross <= 0) {
+        Alert.alert('Validation Error', 'Gross weight must be greater than 0');
+        return;
+      }
+      if (c.net <= 0) {
+        Alert.alert('Validation Error', 'Net weight must be greater than 0');
+        return;
+      }
       onAdd({
         metalType: 'Silver',
         itemName: itemName || 'Silver Item',
         category: sCategory,
-        grossWeight: parseFloat(sGross) || 0,
+        grossWeight: gross,
         stoneWeight: parseFloat(sStone) || 0,
         netWeight: c.net,
         touchPurity: parseFloat(sTouch) || 0,

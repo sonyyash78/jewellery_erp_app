@@ -13,7 +13,7 @@ from app.models.user import User
 from app.models.gold_rate import GoldRate
 from app.models.silver_rate import SilverRate
 from datetime import datetime
-from app.api.dependencies import get_current_user
+from app.api.dependencies import require_tenant_id, get_current_user
 
 router = APIRouter()
 
@@ -43,7 +43,7 @@ def create_unified_purchase(
     current_user: User = Depends(get_current_user)
 ) -> Any:
     """Create a unified purchase with seller info and items array. Backend recalculates all totals."""
-    store_id = current_user.tenant_id or 1
+    store_id = require_tenant_id(current_user)
     
     # Get or create seller
     if purchase_in.seller_id:
@@ -177,7 +177,7 @@ def create_unified_purchase(
     db.commit()
     db.refresh(db_purchase)
     
-    return {"message": "Purchase saved", "purchase_number": db_purchase.purchase_number}
+    return {"message": "Purchase saved", "id": db_purchase.id, "purchase_number": db_purchase.purchase_number}
 
 @router.get("/", response_model=List[GoldPurchaseResponse])
 def get_purchases(
@@ -197,7 +197,7 @@ def get_unified_purchases_history(
     current_user: User = Depends(get_current_user)
 ) -> Any:
     """Get all unified purchases."""
-    store_id = current_user.tenant_id or 1
+    store_id = require_tenant_id(current_user)
     query = db.query(Purchase).filter(Purchase.store_id == store_id)
     total = query.count()
     items = query.order_by(Purchase.id.desc()).offset(skip).limit(limit).all()
@@ -301,6 +301,10 @@ def get_purchase_pdf_data(
     current_user: User = Depends(get_current_user)
 ):
     """Get purchase data formatted for PDF generation."""
+    store_id = require_tenant_id(current_user)
+    purchase = db.query(Purchase).filter(Purchase.id == id, Purchase.store_id == store_id).first()
+    if not purchase:
+        raise HTTPException(status_code=404, detail="Purchase not found")
     try:
         from app.services.invoice_pdf_service import InvoicePDFService
         return InvoicePDFService.get_purchase_pdf_data(id, db)
@@ -314,7 +318,7 @@ def get_purchase_pdf_data_by_voucher(
     current_user: User = Depends(get_current_user)
 ):
     """Get purchase data formatted for PDF generation using voucher number."""
-    store_id = current_user.tenant_id or 1
+    store_id = require_tenant_id(current_user)
     purchase = db.query(Purchase).filter(Purchase.store_id == store_id, Purchase.purchase_number == voucher_number).first()
     if not purchase:
         raise HTTPException(status_code=404, detail="Purchase not found")
@@ -332,7 +336,7 @@ def get_unified_purchase(
     current_user: User = Depends(get_current_user)
 ):
     """Get a single unified purchase formatted for the Invoice View Modal."""
-    store_id = current_user.tenant_id or 1
+    store_id = require_tenant_id(current_user)
     purchase = db.query(Purchase).filter(Purchase.id == id, Purchase.store_id == store_id).first()
     if not purchase:
         raise HTTPException(status_code=404, detail="Purchase not found")
@@ -366,12 +370,66 @@ def delete_unified_purchase(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Soft delete (cancel) a unified purchase."""
-    store_id = current_user.tenant_id or 1
+    """Soft delete (cancel) a unified purchase and reverse supplier ledger and balances."""
+    store_id = require_tenant_id(current_user)
     purchase = db.query(Purchase).filter(Purchase.id == id, Purchase.store_id == store_id).first()
     if not purchase:
         raise HTTPException(status_code=404, detail="Purchase not found")
         
-    purchase.status = PurchaseStatus.CANCELLED
-    db.commit()
-    return {"message": "Purchase cancelled successfully"}
+    if purchase.status == PurchaseStatus.CANCELLED:
+        raise HTTPException(status_code=400, detail="Purchase is already cancelled")
+
+    try:
+        from app.models.supplier_ledger import SupplierLedger
+        from app.models.seller import Seller
+
+        if purchase.seller_id:
+            seller = db.query(Seller).filter(
+                Seller.id == purchase.seller_id,
+                Seller.store_id == store_id
+            ).first()
+            if seller:
+                orig_ledger = db.query(SupplierLedger).filter(
+                    SupplierLedger.seller_id == seller.id,
+                    SupplierLedger.voucher_number == purchase.purchase_number
+                ).order_by(SupplierLedger.id.desc()).first()
+
+                if orig_ledger:
+                    net_cash = float(orig_ledger.credit or 0.0) - float(orig_ledger.debit or 0.0)
+                    net_gold = float(orig_ledger.gold_credit or 0.0) - float(orig_ledger.gold_debit or 0.0)
+                    net_silver = float(orig_ledger.silver_credit or 0.0) - float(orig_ledger.silver_debit or 0.0)
+                else:
+                    net_cash = float(purchase.grand_total or 0.0)
+                    net_gold = 0.0
+                    net_silver = 0.0
+
+                seller.outstanding_balance = float(seller.outstanding_balance or 0.0) - net_cash
+                seller.fine_gold_balance = float(seller.fine_gold_balance or 0.0) - net_gold
+                seller.fine_silver_balance = float(seller.fine_silver_balance or 0.0) - net_silver
+
+                reversal = SupplierLedger(
+                    seller_id=seller.id,
+                    voucher_type="Cancellation",
+                    voucher_number=f"REV-{purchase.purchase_number}",
+                    description=f"Cancellation reversal of Purchase {purchase.purchase_number}",
+                    debit=float(orig_ledger.credit or 0.0) if orig_ledger else net_cash,
+                    credit=float(orig_ledger.debit or 0.0) if orig_ledger else 0.0,
+                    balance=seller.outstanding_balance,
+                    gold_debit=float(orig_ledger.gold_credit or 0.0) if orig_ledger else net_gold,
+                    gold_credit=float(orig_ledger.gold_debit or 0.0) if orig_ledger else 0.0,
+                    gold_balance=seller.fine_gold_balance,
+                    silver_debit=float(orig_ledger.silver_credit or 0.0) if orig_ledger else net_silver,
+                    silver_credit=float(orig_ledger.silver_debit or 0.0) if orig_ledger else 0.0,
+                    silver_balance=seller.fine_silver_balance
+                )
+                db.add(reversal)
+
+        purchase.status = PurchaseStatus.CANCELLED
+        db.commit()
+        return {"message": "Purchase cancelled and reversed successfully"}
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to cancel purchase")

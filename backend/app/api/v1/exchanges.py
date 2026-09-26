@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Dict, Any, List
-from app.api.dependencies import get_db, get_current_user
+from app.api.dependencies import require_tenant_id, get_db, get_current_user
 from app.models.user import User
 from app.models.exchange import Exchange
 from app.models.exchange_item import ExchangeItem
@@ -20,7 +20,7 @@ def create_exchange(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    store_id = current_user.tenant_id or 1
+    store_id = require_tenant_id(current_user)
     # Verify customer
     customer = db.query(Customer).filter(Customer.id == exchange_in.customer_id, Customer.store_id == store_id).first()
     if not customer:
@@ -28,13 +28,16 @@ def create_exchange(
 
     # Verify stock items (only for items that came from inventory, not manual entries)
     stock_ids = [item.stock_item_id for item in exchange_in.new_items if item.stock_item_id is not None]
-    stock_items = db.query(StockItem).filter(StockItem.id.in_(stock_ids), StockItem.store_id == store_id).all() if stock_ids else []
+    stock_items = db.query(StockItem).filter(StockItem.id.in_(stock_ids), StockItem.store_id == store_id).with_for_update().all() if stock_ids else []
     if len(stock_items) != len(stock_ids):
         raise HTTPException(status_code=400, detail="One or more stock items not found")
         
     for item in stock_items:
         if item.status.lower() == 'sold':
             raise HTTPException(status_code=400, detail=f"Stock item {item.item_code} is already sold")
+
+    import secrets
+    v_token = secrets.token_hex(6).upper()
 
     # Create Exchange
     exchange = Exchange(
@@ -44,7 +47,14 @@ def create_exchange(
         total_new_value=exchange_in.total_new_value,
         gst_amount=exchange_in.gst_amount,
         grand_total=exchange_in.grand_total,
-        difference_amount=exchange_in.difference_amount
+        difference_amount=exchange_in.difference_amount,
+        amount_paid=float(getattr(exchange_in, 'amount_paid', 0.0) or 0.0),
+        balance_amount=float(getattr(exchange_in, 'balance_amount', 0.0) or 0.0),
+        settlement_type=getattr(exchange_in, 'settlement_type', 'Cash') or "Cash",
+        gold_balance_metal_weight=float(getattr(exchange_in, 'gold_balance_metal_weight', 0.0) or 0.0),
+        silver_balance_metal_weight=float(getattr(exchange_in, 'silver_balance_metal_weight', 0.0) or 0.0),
+        status="Completed",
+        verification_token=v_token
     )
     db.add(exchange)
     db.flush() # get ID
@@ -196,7 +206,7 @@ def list_exchanges(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    store_id = current_user.tenant_id or 1
+    store_id = require_tenant_id(current_user)
     query = db.query(Exchange).filter(Exchange.store_id == store_id)
     total = query.count()
     items = query.order_by(Exchange.id.desc()).offset(skip).limit(limit).all()
@@ -227,7 +237,7 @@ def get_exchange_pdf_data(
     current_user: User = Depends(get_current_user)
 ):
     """Get exchange data formatted for PDF generation."""
-    store_id = current_user.tenant_id or 1
+    store_id = require_tenant_id(current_user)
     exchange = db.query(Exchange).filter(Exchange.id == id, Exchange.store_id == store_id).first()
     if not exchange:
         raise HTTPException(status_code=404, detail="Exchange not found")
@@ -244,7 +254,7 @@ def get_exchange(
     current_user: User = Depends(get_current_user)
 ):
     """Get a single exchange formatted for the Invoice View Modal."""
-    store_id = current_user.tenant_id or 1
+    store_id = require_tenant_id(current_user)
     exchange = db.query(Exchange).filter(Exchange.id == id, Exchange.store_id == store_id).first()
     if not exchange:
         raise HTTPException(status_code=404, detail="Exchange not found")
@@ -286,12 +296,78 @@ def delete_exchange(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Delete an exchange."""
-    store_id = current_user.tenant_id or 1
+    """Cancel exchange with reversal of inventory, customer balances, and ledger."""
+    store_id = require_tenant_id(current_user)
     exchange = db.query(Exchange).filter(Exchange.id == id, Exchange.store_id == store_id).first()
     if not exchange:
         raise HTTPException(status_code=404, detail="Exchange not found")
         
-    db.delete(exchange)
-    db.commit()
-    return {"message": "Exchange cancelled successfully"}
+    if getattr(exchange, 'status', None) == "Cancelled":
+        raise HTTPException(status_code=400, detail="Exchange is already cancelled")
+
+    try:
+        from app.models.stock_item import StockItem
+        from app.models.customer import Customer
+        from app.models.customer_ledger import CustomerLedger
+
+        # 1. Restore Stock Items to Available
+        for new_item in exchange.new_items:
+            if new_item.stock_item_id:
+                stock = db.query(StockItem).filter(
+                    StockItem.id == new_item.stock_item_id,
+                    StockItem.store_id == store_id
+                ).first()
+                if stock and stock.status == "Sold":
+                    stock.status = "Available"
+
+        # 2. Reverse Customer Ledger and Balance
+        if exchange.customer_id:
+            customer = db.query(Customer).filter(
+                Customer.id == exchange.customer_id,
+                Customer.store_id == store_id
+            ).first()
+            if customer:
+                orig_ledger = db.query(CustomerLedger).filter(
+                    CustomerLedger.customer_id == customer.id,
+                    CustomerLedger.voucher_number == f"EXC-{exchange.id}"
+                ).order_by(CustomerLedger.id.desc()).first()
+
+                if orig_ledger:
+                    net_cash = float(orig_ledger.debit or 0.0) - float(orig_ledger.credit or 0.0)
+                    net_gold = float(orig_ledger.gold_debit or 0.0) - float(orig_ledger.gold_credit or 0.0)
+                    net_silver = float(orig_ledger.silver_debit or 0.0) - float(orig_ledger.silver_credit or 0.0)
+                else:
+                    net_cash = float(exchange.difference_amount or exchange.balance_amount or 0.0)
+                    net_gold = float(exchange.gold_balance_metal_weight or 0.0)
+                    net_silver = float(exchange.silver_balance_metal_weight or 0.0)
+
+                customer.outstanding_balance = float(customer.outstanding_balance or 0.0) - net_cash
+                customer.fine_gold_balance = float(customer.fine_gold_balance or 0.0) - net_gold
+                customer.fine_silver_balance = float(customer.fine_silver_balance or 0.0) - net_silver
+
+                reversal = CustomerLedger(
+                    customer_id=customer.id,
+                    voucher_type="Cancellation",
+                    voucher_number=f"REV-EXC-{exchange.id}",
+                    description=f"Cancellation reversal of Exchange EXC-{exchange.id}",
+                    debit=float(orig_ledger.credit or 0.0) if orig_ledger else 0.0,
+                    credit=float(orig_ledger.debit or 0.0) if orig_ledger else net_cash,
+                    balance=customer.outstanding_balance,
+                    gold_debit=float(orig_ledger.gold_credit or 0.0) if orig_ledger else 0.0,
+                    gold_credit=float(orig_ledger.gold_debit or 0.0) if orig_ledger else net_gold,
+                    gold_balance=customer.fine_gold_balance,
+                    silver_debit=float(orig_ledger.silver_credit or 0.0) if orig_ledger else 0.0,
+                    silver_credit=float(orig_ledger.silver_debit or 0.0) if orig_ledger else net_silver,
+                    silver_balance=customer.fine_silver_balance
+                )
+                db.add(reversal)
+
+        exchange.status = "Cancelled"
+        db.commit()
+        return {"message": "Exchange cancelled and reversed successfully"}
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to cancel exchange")

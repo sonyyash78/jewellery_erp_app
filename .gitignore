@@ -50,3 +50,7 @@ backend/**/__pycache__/
 backend/*.db
 backend/.env
 backend/app/backups/*.zip
+backend/app/backups/*.sql
+backend/app/backups/*.xlsx
+*.sql
+backend/static/qrcodes/
