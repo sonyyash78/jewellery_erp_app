@@ -54,6 +54,12 @@ backend/app/backups/*.sql
 backend/app/backups/*.xlsx
 *.sql
 backend/static/qrcodes/
+backend/build/
+backend/*.spec
+backend/test_ping*
+desktop/bin/
+*.db-shm
+*.db-wal
 
 # Frontend & Desktop App
 frontend/node_modules/

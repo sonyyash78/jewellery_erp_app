@@ -118,8 +118,7 @@ def init_admin():
                 hashed_password=get_password_hash(initial_password),
                 role_id=admin_role.id if admin_role else 1,
                 tenant_id=1,
-                is_active=True,
-                token_version=1
+                is_active=True
             )
             db.add(admin_user)
             db.commit()

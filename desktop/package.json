@@ -31,6 +31,10 @@
     ],
     "extraResources": [
       {
+        "from": "bin/jewellery-backend",
+        "to": "bin/jewellery-backend"
+      },
+      {
         "from": "../backend",
         "to": "backend",
         "filter": [
