@@ -109,7 +109,16 @@ def _ensure_schema():
                 conn.execute(text("ALTER TABLE exchanges ADD COLUMN verification_token VARCHAR(64) NULL"))
             if "status" not in cols:
                 conn.execute(text("ALTER TABLE exchanges ADD COLUMN status VARCHAR(50) DEFAULT 'Completed'"))
-                
+
+    # 5. Ensure users table has token_version and permissions
+    if "users" in tables:
+        cols = {c["name"] for c in insp.get_columns("users")}
+        with engine.begin() as conn:
+            if "token_version" not in cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN token_version INTEGER DEFAULT 1"))
+            if "permissions" not in cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN permissions VARCHAR(500) NULL"))
+
     Base.metadata.create_all(bind=engine)
 
 _ensure_schema()
@@ -180,6 +189,15 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 @app.get("/ping")
 def ping():
     return {"status": "ok"}
+
+@app.post("/api/v1/checkpoint")
+def checkpoint_db():
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("PRAGMA wal_checkpoint(TRUNCATE)"))
+        return {"status": "checkpointed"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 # Serve static frontend SPA build for offline desktop usage
 frontend_dist = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist"))

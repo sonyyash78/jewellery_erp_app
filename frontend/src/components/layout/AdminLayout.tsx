@@ -268,21 +268,19 @@ export default function AdminLayout() {
                 onClick={handleStorageSyncClick}
                 disabled={syncingStorage}
                 title={
-                  storageStatus?.isUsbLive
-                    ? `🟢 USB Pendrive (${storageStatus?.usbLetter || 'USB'}) Real-Time Save ACTIVE\nAll data is writing directly to your Pendrive!\nClick to create an instant snapshot.`
-                    : storageStatus?.usbConnected
-                    ? `🟢 USB Pendrive (${storageStatus?.usbLetter || 'USB'}) Connected\nAuto-mirrored. Click to sync immediately.`
-                    : `💻 Running on Local PC Storage.\nInsert USB Pendrive anytime for 100% crash-proof portability.`
+                  storageStatus?.usbConnected
+                    ? `🟢 USB Pendrive (${storageStatus?.usbLetter || 'USB'}) Connected & Synced!\nAll PC data automatically copies to your pendrive every 10s.\nClick for an instant snapshot backup.`
+                    : `💻 Running on Local PC Storage.\nAll invoices & customer data save directly to your PC.\nInsert a USB Pendrive anytime to auto-mirror your data for crash protection.`
                 }
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition border shadow-sm ${
-                  storageStatus?.isUsbLive || storageStatus?.usbConnected
+                  storageStatus?.usbConnected
                     ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25'
                     : 'bg-amber-500/15 text-amber-400 border-amber-500/30 hover:bg-amber-500/25'
                 }`}
               >
                 <span
                   className={`w-2 h-2 rounded-full ${
-                    storageStatus?.isUsbLive || storageStatus?.usbConnected
+                    storageStatus?.usbConnected
                       ? 'bg-emerald-400 animate-pulse'
                       : 'bg-amber-400'
                   }`}
@@ -290,14 +288,12 @@ export default function AdminLayout() {
                 <span className="hidden sm:inline">
                   {syncingStorage
                     ? 'Syncing...'
-                    : storageStatus?.isUsbLive
-                    ? `USB (${storageStatus?.usbLetter}) Live`
                     : storageStatus?.usbConnected
-                    ? `USB (${storageStatus?.usbLetter}) Synced`
-                    : 'PC Mode (No USB)'}
+                    ? `USB (${storageStatus?.usbLetter}) Auto-Sync Active`
+                    : 'PC Storage (Insert USB to Sync)'}
                 </span>
                 <span className="sm:hidden">
-                  {storageStatus?.isUsbLive || storageStatus?.usbConnected ? 'USB' : 'PC'}
+                  {storageStatus?.usbConnected ? 'USB Sync' : 'PC Mode'}
                 </span>
               </button>
             )}

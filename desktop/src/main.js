@@ -4,7 +4,7 @@ const fs = require('fs');
 const http = require('http');
 const { spawn, exec, execSync } = require('child_process');
 
-// 1. Strict Single-Instance Lock — prevents multiple windows spawning
+// 1. Strict Single-Instance Lock — prevents infinite windows!
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   console.log('[Desktop] Another instance is already running. Quitting.');
@@ -19,7 +19,7 @@ let isStartingWindow = false;
 const BACKEND_PORT = 8000;
 const BACKEND_URL = `http://127.0.0.1:${BACKEND_PORT}`;
 
-// 2. Prepare Storage Paths
+// 2. Storage Paths
 // PC Primary Storage: C:\Users\<Username>\JewelleryERP_Data
 const pcDir = path.join(app.getPath('home'), 'JewelleryERP_Data');
 try {
@@ -31,6 +31,7 @@ try {
 }
 const pcDbPath = path.join(pcDir, 'jewellery_erp.db');
 
+// The active database is always pcDbPath for maximum local speed & zero crash risk if USB unplugged
 let activeDbPath = pcDbPath;
 let currentUsb = null;
 let lastSyncTimestamp = null;
@@ -51,14 +52,14 @@ const standaloneBinary = app.isPackaged
   : path.resolve(__dirname, '../bin/jewellery-backend/jewellery-backend.exe');
 
 /**
- * Scan Windows for connected USB / Removable Drives using standard .NET DriveInfo
+ * Scan Windows for connected USB / Removable Drives using .NET DriveInfo
  */
 function getUsbDrives() {
   const drives = [];
   try {
     if (process.platform === 'win32') {
       const psCmd = `powershell -NoProfile -Command "[System.IO.DriveInfo]::GetDrives() | Where-Object { $_.DriveType -eq 'Removable' -or ($_.DriveType -eq 'Fixed' -and $_.Name -notlike 'C:*') } | ForEach-Object { @{ Letter = $_.Name.TrimEnd('\\'); Label = $_.VolumeLabel; TotalSize = $_.TotalSize; FreeSpace = $_.AvailableFreeSpace; DriveType = $_.DriveType.ToString() } } | ConvertTo-Json"`;
-      const output = execSync(psCmd, { encoding: 'utf8', timeout: 5000 });
+      const output = execSync(psCmd, { encoding: 'utf8', timeout: 4000 });
       if (output && output.trim()) {
         const parsed = JSON.parse(output.trim());
         const list = Array.isArray(parsed) ? parsed : [parsed];
@@ -74,14 +75,55 @@ function getUsbDrives() {
         }
       }
     }
-  } catch (e) {
-    // Non-fatal notice during background poll
-  }
+  } catch (e) {}
   return drives;
 }
 
 /**
- * Safely copy SQLite database along with WAL (-wal) and Shared Memory (-shm) files
+ * Get accurate last modified time for SQLite DB including WAL file
+ */
+function getDbMtime(dbFile) {
+  let maxTime = 0;
+  try {
+    if (fs.existsSync(dbFile)) {
+      maxTime = Math.max(maxTime, fs.statSync(dbFile).mtimeMs);
+    }
+    const wal = `${dbFile}-wal`;
+    if (fs.existsSync(wal)) {
+      maxTime = Math.max(maxTime, fs.statSync(wal).mtimeMs);
+    }
+  } catch (e) {}
+  return maxTime;
+}
+
+/**
+ * Trigger SQLite checkpoint via backend API to commit WAL into main .db
+ */
+function triggerCheckpoint() {
+  return new Promise((resolve) => {
+    const req = http.request(
+      {
+        hostname: '127.0.0.1',
+        port: BACKEND_PORT,
+        path: '/api/v1/checkpoint',
+        method: 'POST',
+        timeout: 2000
+      },
+      (res) => {
+        resolve(res.statusCode === 200);
+      }
+    );
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => {
+      req.abort();
+      resolve(false);
+    });
+    req.end();
+  });
+}
+
+/**
+ * Safely copy SQLite database files (.db, .db-wal, .db-shm)
  */
 function safeCopySqliteDb(srcPath, destPath) {
   if (!fs.existsSync(srcPath)) return false;
@@ -91,10 +133,8 @@ function safeCopySqliteDb(srcPath, destPath) {
   }
 
   try {
-    // 1. Copy main database
     fs.copyFileSync(srcPath, destPath);
 
-    // 2. Copy -wal if exists
     const srcWal = `${srcPath}-wal`;
     const destWal = `${destPath}-wal`;
     if (fs.existsSync(srcWal)) {
@@ -103,7 +143,6 @@ function safeCopySqliteDb(srcPath, destPath) {
       try { fs.unlinkSync(destWal); } catch (e) {}
     }
 
-    // 3. Copy -shm if exists
     const srcShm = `${srcPath}-shm`;
     const destShm = `${destPath}-shm`;
     if (fs.existsSync(srcShm)) {
@@ -119,12 +158,31 @@ function safeCopySqliteDb(srcPath, destPath) {
 }
 
 /**
- * Startup Database Resolution:
- * If a USB Pendrive is connected:
- * 1. Synchronize USB and PC (whichever has the newer database updates the older one).
- * 2. Set ACTIVE DB directly on the Pendrive (all SQL writes commit to USB in real-time!).
- * If no USB is connected:
- * Active DB is PC, and background detector will auto-mirror when USB is inserted.
+ * Sync PC database to USB pendrive
+ */
+async function syncPcToUsb(usbLetter) {
+  try {
+    const usbDir = path.join(usbLetter, 'JewelleryERP_Data');
+    if (!fs.existsSync(usbDir)) fs.mkdirSync(usbDir, { recursive: true });
+    const usbDbPath = path.join(usbDir, 'jewellery_erp.db');
+
+    // Flush WAL into .db file first
+    await triggerCheckpoint();
+
+    if (fs.existsSync(pcDbPath)) {
+      safeCopySqliteDb(pcDbPath, usbDbPath);
+      lastSyncTimestamp = new Date().toISOString();
+      return true;
+    }
+  } catch (e) {
+    console.error('[Storage] syncPcToUsb error:', e.message);
+  }
+  return false;
+}
+
+/**
+ * Startup synchronization between PC and Pendrive:
+ * Whichever has newer transactions updates the other!
  */
 function resolveDatabaseAtStartup() {
   const usbDrives = getUsbDrives();
@@ -140,49 +198,43 @@ function resolveDatabaseAtStartup() {
     const usbExists = fs.existsSync(usbDbPath);
 
     if (usbExists && pcExists) {
-      try {
-        const usbMtime = fs.statSync(usbDbPath).mtimeMs;
-        const pcMtime = fs.statSync(pcDbPath).mtimeMs;
-        if (usbMtime >= pcMtime) {
-          console.log('[Storage] USB database is newer. Mirroring USB -> PC...');
-          safeCopySqliteDb(usbDbPath, pcDbPath);
-        } else {
-          console.log('[Storage] PC database is newer. Mirroring PC -> USB...');
-          safeCopySqliteDb(pcDbPath, usbDbPath);
-        }
-      } catch (e) {
-        console.error('[Storage] Timestamp check notice:', e.message);
+      const usbTime = getDbMtime(usbDbPath);
+      const pcTime = getDbMtime(pcDbPath);
+      if (usbTime > pcTime + 1000) {
+        console.log('[Storage] USB database is newer from another PC. Syncing USB -> PC...');
+        safeCopySqliteDb(usbDbPath, pcDbPath);
+      } else {
+        console.log('[Storage] PC database is newer or equal. Syncing PC -> USB...');
+        safeCopySqliteDb(pcDbPath, usbDbPath);
       }
     } else if (usbExists && !pcExists) {
-      console.log('[Storage] USB DB found. Mirroring to PC...');
+      console.log('[Storage] USB found. Initializing PC from USB...');
       safeCopySqliteDb(usbDbPath, pcDbPath);
     } else if (pcExists && !usbExists) {
-      console.log('[Storage] Initializing USB database from PC...');
+      console.log('[Storage] Initializing USB from PC...');
       safeCopySqliteDb(pcDbPath, usbDbPath);
     }
 
-    // Set ACTIVE DB to USB!
-    activeDbPath = usbDbPath;
     lastSyncTimestamp = new Date().toISOString();
-    console.log(`[Storage] PRIMARY LIVE DATABASE ACTIVATED ON USB: ${activeDbPath}`);
-  } else {
-    activeDbPath = pcDbPath;
-    console.log(`[Storage] PRIMARY LIVE DATABASE ACTIVATED ON PC: ${activeDbPath}`);
+    console.log(`[Storage] Synchronized with USB Pendrive: ${currentUsb.name}`);
   }
+
+  // Active DB is always pcDbPath for maximum local performance and stability
+  activeDbPath = pcDbPath;
+  console.log(`[Storage] Live Database: ${activeDbPath}`);
 }
 
 /**
- * Returns storage state for frontend UI
+ * Get current storage status for Frontend UI
  */
 function getStorageStatus() {
   const drives = getUsbDrives();
   const usbConnected = drives.length > 0;
   const usb = usbConnected ? drives[0] : null;
-  const isUsbLive = Boolean(usb && activeDbPath.startsWith(usb.letter));
 
   return {
-    isUsbLive,
     usbConnected,
+    isUsbLive: usbConnected,
     usbLetter: usb ? usb.letter : null,
     usbName: usb ? usb.name : null,
     activePath: activeDbPath,
@@ -199,40 +251,28 @@ function notifyStorageStatusChanged() {
 }
 
 /**
- * Start real-time background mirroring and USB insertion watcher
+ * Background Storage Engine:
+ * - Syncs PC -> USB every 10 seconds if USB is plugged in
+ * - Detects USB insertion within 3 seconds and syncs immediately
  */
 function startStorageEngine() {
-  // 1. Periodic Mirror Interval (Every 20 seconds)
-  mirrorInterval = setInterval(() => {
+  // 1. Periodic auto-sync every 10 seconds
+  mirrorInterval = setInterval(async () => {
     try {
       const drives = getUsbDrives();
       if (drives.length > 0) {
-        const usb = drives[0];
-        const usbDir = path.join(usb.letter, 'JewelleryERP_Data');
-        const usbDbPath = path.join(usbDir, 'jewellery_erp.db');
-
-        if (activeDbPath.startsWith(usb.letter)) {
-          // Live on USB -> Mirror to PC
-          if (fs.existsSync(activeDbPath)) {
-            safeCopySqliteDb(activeDbPath, pcDbPath);
-            lastSyncTimestamp = new Date().toISOString();
-          }
-        } else {
-          // Live on PC -> Mirror to USB
-          if (fs.existsSync(pcDbPath)) {
-            if (!fs.existsSync(usbDir)) fs.mkdirSync(usbDir, { recursive: true });
-            safeCopySqliteDb(pcDbPath, usbDbPath);
-            lastSyncTimestamp = new Date().toISOString();
-          }
-        }
+        currentUsb = drives[0];
+        await syncPcToUsb(currentUsb.letter);
+      } else {
+        currentUsb = null;
       }
     } catch (err) {
-      console.error('[Storage Engine] Mirror error:', err.message);
+      console.error('[Storage Engine] Auto-sync notice:', err.message);
     }
-  }, 20000);
+  }, 10000);
 
-  // 2. USB Insertion / Removal Watcher (Every 4 seconds)
-  usbDetectionInterval = setInterval(() => {
+  // 2. USB insertion / removal detector every 3 seconds
+  usbDetectionInterval = setInterval(async () => {
     try {
       const drives = getUsbDrives();
       const detected = drives.length > 0 ? drives[0] : null;
@@ -243,43 +283,31 @@ function startStorageEngine() {
         console.log(`[Storage] USB drive change: ${prevLetter} -> ${newLetter}`);
         currentUsb = detected;
 
-        if (currentUsb && !activeDbPath.startsWith(currentUsb.letter) && fs.existsSync(pcDbPath)) {
-          // USB was inserted while running on PC — auto-mirror to USB immediately!
-          const usbDir = path.join(currentUsb.letter, 'JewelleryERP_Data');
-          if (!fs.existsSync(usbDir)) fs.mkdirSync(usbDir, { recursive: true });
-          const usbDbPath = path.join(usbDir, 'jewellery_erp.db');
-          safeCopySqliteDb(pcDbPath, usbDbPath);
-          lastSyncTimestamp = new Date().toISOString();
-          console.log(`[Storage] Auto-mirrored to newly connected USB: ${usbDbPath}`);
+        if (currentUsb && fs.existsSync(pcDbPath)) {
+          console.log(`[Storage] USB inserted! Immediately syncing PC -> ${currentUsb.letter}...`);
+          await syncPcToUsb(currentUsb.letter);
         }
         notifyStorageStatusChanged();
       }
     } catch (e) {}
-  }, 4000);
+  }, 3000);
 }
 
 /**
- * Flush and mirror before exiting
+ * Flush and mirror before quitting
  */
-function flushStorageSync() {
+async function flushStorageSync() {
   try {
+    await triggerCheckpoint();
     const drives = getUsbDrives();
-    if (drives.length > 0) {
-      const usb = drives[0];
-      const usbDir = path.join(usb.letter, 'JewelleryERP_Data');
-      const usbDbPath = path.join(usbDir, 'jewellery_erp.db');
-
-      if (activeDbPath.startsWith(usb.letter) && fs.existsSync(activeDbPath)) {
-        safeCopySqliteDb(activeDbPath, pcDbPath);
-        console.log('[Storage] On-exit mirror USB -> PC complete.');
-      } else if (fs.existsSync(pcDbPath)) {
-        if (!fs.existsSync(usbDir)) fs.mkdirSync(usbDir, { recursive: true });
-        safeCopySqliteDb(pcDbPath, usbDbPath);
-        console.log('[Storage] On-exit mirror PC -> USB complete.');
-      }
+    if (drives.length > 0 && fs.existsSync(pcDbPath)) {
+      const usbDir = path.join(drives[0].letter, 'JewelleryERP_Data');
+      if (!fs.existsSync(usbDir)) fs.mkdirSync(usbDir, { recursive: true });
+      safeCopySqliteDb(pcDbPath, path.join(usbDir, 'jewellery_erp.db'));
+      console.log('[Storage] On-exit mirror to USB complete.');
     }
   } catch (err) {
-    console.error('[Storage] On-exit flush error:', err.message);
+    console.error('[Storage] On-exit flush notice:', err.message);
   }
 }
 
@@ -329,6 +357,9 @@ async function backupToUsb(parentWin) {
     if (!fs.existsSync(liveDir)) fs.mkdirSync(liveDir, { recursive: true });
     if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
 
+    // Flush WAL checkpoint first
+    await triggerCheckpoint();
+
     const now = new Date();
     const pad = (n) => String(n).padStart(2, '0');
     const timestamp = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
@@ -336,9 +367,8 @@ async function backupToUsb(parentWin) {
     const liveUsbDb = path.join(liveDir, 'jewellery_erp.db');
     const snapshotDb = path.join(backupDir, `jewellery_erp_backup_${timestamp}.db`);
 
-    const src = fs.existsSync(activeDbPath) ? activeDbPath : pcDbPath;
-    safeCopySqliteDb(src, liveUsbDb);
-    safeCopySqliteDb(src, snapshotDb);
+    safeCopySqliteDb(pcDbPath, liveUsbDb);
+    safeCopySqliteDb(pcDbPath, snapshotDb);
     lastSyncTimestamp = new Date().toISOString();
     notifyStorageStatusChanged();
 
@@ -346,7 +376,7 @@ async function backupToUsb(parentWin) {
       await dialog.showMessageBox(parentWin, {
         type: 'info',
         title: 'USB Pendrive Backup Successful',
-        message: `All store data safely saved to Pendrive!\n\nDrive / Folder: ${targetName}\nLive File: ${liveUsbDb}\nSnapshot File: ${snapshotDb}\n\nYour data is 100% safe and portable.`
+        message: `All store data safely saved to Pendrive!\n\nDestination: ${targetName}\nLive DB: ${liveUsbDb}\nSnapshot Backup: ${snapshotDb}\n\nYour data is 100% crash-proof and portable.`
       });
     }
 
@@ -386,10 +416,9 @@ async function restoreDatabase(parentWin) {
     });
 
     if (confirm.response === 0) {
-      if (fs.existsSync(activeDbPath)) {
-        safeCopySqliteDb(activeDbPath, `${activeDbPath}.bak_${Date.now()}`);
+      if (fs.existsSync(pcDbPath)) {
+        safeCopySqliteDb(pcDbPath, `${pcDbPath}.bak_${Date.now()}`);
       }
-      safeCopySqliteDb(selectedFile, activeDbPath);
       safeCopySqliteDb(selectedFile, pcDbPath);
 
       dialog.showMessageBoxSync(parentWin, {
@@ -408,8 +437,7 @@ async function restoreDatabase(parentWin) {
  * Start Backend Process
  */
 function startBackend() {
-  // Convert Windows path to SQLAlchemy SQLite format (sqlite:///E:/JewelleryERP_Data/jewellery_erp.db)
-  const sqliteUrl = `sqlite:///${activeDbPath.replace(/\\/g, '/')}`;
+  const sqliteUrl = `sqlite:///${pcDbPath.replace(/\\/g, '/')}`;
 
   const env = {
     ...process.env,
@@ -518,8 +546,9 @@ function createMenu() {
               defaultPath: `jewellery_erp_backup_${new Date().toISOString().slice(0, 10)}.db`,
               filters: [{ name: 'SQLite Database', extensions: ['db', 'sqlite'] }]
             });
-            if (filePath && fs.existsSync(activeDbPath)) {
-              safeCopySqliteDb(activeDbPath, filePath);
+            if (filePath && fs.existsSync(pcDbPath)) {
+              await triggerCheckpoint();
+              safeCopySqliteDb(pcDbPath, filePath);
               dialog.showMessageBox(mainWindow, {
                 type: 'info',
                 title: 'Backup Successful',
@@ -535,12 +564,6 @@ function createMenu() {
           }
         },
         { type: 'separator' },
-        {
-          label: '📂 Open Active Database Folder',
-          click: () => {
-            shell.openPath(path.dirname(activeDbPath));
-          }
-        },
         {
           label: '📂 Open PC Storage Folder',
           click: () => {
@@ -586,7 +609,7 @@ function createMenu() {
             dialog.showMessageBox(mainWindow, {
               type: 'info',
               title: 'Jewellery ERP Desktop',
-              message: 'Jewellery ERP - Offline Edition v1.0\nSaideep Jewellers\n\n100% Offline Standalone PC Application\nEmbedded SQLite Database with Real-time USB Pendrive Storage Engine.'
+              message: 'Jewellery ERP - Offline Edition v1.0\nSaideep Jewellers\n\n100% Offline Standalone PC Application\nEmbedded SQLite Database with Continuous USB Pendrive Auto-Sync.'
             });
           }
         }
@@ -672,7 +695,7 @@ ipcMain.handle('get-database-path', () => activeDbPath);
 ipcMain.handle('get-storage-status', () => getStorageStatus());
 
 ipcMain.handle('open-database-folder', () => {
-  shell.openPath(path.dirname(activeDbPath));
+  shell.openPath(pcDir);
   return true;
 });
 
@@ -688,8 +711,9 @@ ipcMain.handle('backup-database', async () => {
     defaultPath: `jewellery_erp_backup_${new Date().toISOString().slice(0, 10)}.db`,
     filters: [{ name: 'SQLite Database', extensions: ['db', 'sqlite'] }]
   });
-  if (filePath && fs.existsSync(activeDbPath)) {
-    safeCopySqliteDb(activeDbPath, filePath);
+  if (filePath && fs.existsSync(pcDbPath)) {
+    await triggerCheckpoint();
+    safeCopySqliteDb(pcDbPath, filePath);
     return { success: true, path: filePath };
   }
   return { success: false };
@@ -711,16 +735,16 @@ ipcMain.handle('open-external', (_, url) => {
 
 // App Lifecycle
 app.whenReady().then(() => {
-  // 1. Resolve startup storage: Pendrive if connected, else PC
+  // 1. Resolve startup storage: syncs PC <-> Pendrive if USB connected
   resolveDatabaseAtStartup();
 
-  // 2. Start Standalone Backend
+  // 2. Start Backend
   startBackend();
 
-  // 3. Start Real-time Mirroring & USB Watcher
+  // 3. Start Storage Engine: 10s auto-mirror + 3s USB insertion detection
   startStorageEngine();
 
-  // 4. Wait for backend readiness then show window
+  // 4. Wait for backend readiness then open single window
   waitForBackend((err) => {
     if (err) {
       console.warn('[Desktop] Backend initialization warning:', err.message);
