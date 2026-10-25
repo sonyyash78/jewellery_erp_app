@@ -17,7 +17,8 @@ import {
   Receipt,
   Repeat,
   Wallet,
-  Truck
+  Truck,
+  Key
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
@@ -78,6 +79,46 @@ export default function AIAssistant() {
   }, [isOpen]);
 
   const [isGeminiActive, setIsGeminiActive] = useState(false);
+  const [showKeyModal, setShowKeyModal] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [keyMasked, setKeyMasked] = useState('');
+  const [isSavingKey, setIsSavingKey] = useState(false);
+  const [keyStatusMsg, setKeyStatusMsg] = useState('');
+
+  useEffect(() => {
+    if (isOpen) {
+      axiosClient.get('/ai/status')
+        .then(res => {
+          if (res.data?.gemini_active) {
+            setIsGeminiActive(true);
+            setKeyMasked(res.data.masked_key || 'Configured');
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isOpen]);
+
+  const handleSaveApiKey = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!apiKeyInput.trim()) return;
+    setIsSavingKey(true);
+    setKeyStatusMsg('');
+    try {
+      const res = await axiosClient.post('/ai/configure-key', { api_key: apiKeyInput.trim() });
+      if (res.data?.gemini_active) {
+        setIsGeminiActive(true);
+        const trimmed = apiKeyInput.trim();
+        setKeyMasked(trimmed.slice(0, 6) + '...' + trimmed.slice(-4));
+        setKeyStatusMsg('✓ Gemini API Key successfully saved and active!');
+        setApiKeyInput('');
+        setTimeout(() => setShowKeyModal(false), 1600);
+      }
+    } catch {
+      setKeyStatusMsg('Error saving key. Please try again.');
+    } finally {
+      setIsSavingKey(false);
+    }
+  };
 
   const handleSend = async (textToSend?: string) => {
     const queryText = (textToSend !== undefined ? textToSend : input).trim();
@@ -202,6 +243,15 @@ export default function AIAssistant() {
 
             <div className="flex items-center gap-1 text-zinc-400">
               <button
+                onClick={() => setShowKeyModal(!showKeyModal)}
+                className={`p-1.5 rounded-lg transition-colors ${
+                  isGeminiActive ? 'text-purple-400 hover:bg-purple-950/40' : 'hover:text-amber-400 hover:bg-zinc-800/80'
+                }`}
+                title={isGeminiActive ? 'Gemini AI Active (Click to view/change key)' : 'Configure Google Gemini API Key'}
+              >
+                <Key className="w-4 h-4" />
+              </button>
+              <button
                 onClick={handleResetChat}
                 className="p-1.5 hover:text-amber-400 hover:bg-zinc-800/80 rounded-lg transition-colors"
                 title="Clear conversation"
@@ -224,6 +274,52 @@ export default function AIAssistant() {
               </button>
             </div>
           </div>
+
+          {/* Gemini API Key Configuration Drawer */}
+          {showKeyModal && (
+            <div className="p-3.5 bg-zinc-900 border-b border-zinc-800 text-xs text-zinc-300 space-y-2.5">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-1.5 font-semibold text-amber-400">
+                  <Key className="w-3.5 h-3.5" />
+                  <span>Google Gemini API Configuration</span>
+                </div>
+                <button
+                  onClick={() => setShowKeyModal(false)}
+                  className="text-zinc-400 hover:text-zinc-200"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <p className="text-[11px] text-zinc-400 leading-normal">
+                Gemini API Key se AI Assistant Google Gemini ke advanced models se baatcheet karta hai. Agar key nahi hai ya offline hain, tab bhi instant local offline engine kaam karega.
+              </p>
+              {keyMasked && (
+                <div className="flex items-center gap-2 p-2 bg-zinc-950 rounded-lg border border-purple-500/30 text-purple-300">
+                  <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Active Key: <code className="font-mono text-amber-300">{keyMasked}</code></span>
+                </div>
+              )}
+              <form onSubmit={handleSaveApiKey} className="flex gap-2">
+                <input
+                  type="password"
+                  value={apiKeyInput}
+                  onChange={(e) => setApiKeyInput(e.target.value)}
+                  placeholder="Paste AIzaSy... key here"
+                  className="flex-1 bg-zinc-950 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-amber-400"
+                />
+                <button
+                  type="submit"
+                  disabled={!apiKeyInput.trim() || isSavingKey}
+                  className="bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-black px-3 py-1.5 rounded-lg font-semibold transition-all"
+                >
+                  {isSavingKey ? 'Saving...' : 'Save'}
+                </button>
+              </form>
+              {keyStatusMsg && (
+                <p className="text-emerald-400 text-[11px] font-medium">{keyStatusMsg}</p>
+              )}
+            </div>
+          )}
 
           {/* Messages Area */}
           <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-zinc-950/70">
