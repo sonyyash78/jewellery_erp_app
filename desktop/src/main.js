@@ -294,11 +294,10 @@ function startStorageEngine() {
 }
 
 /**
- * Flush and mirror before quitting
+ * Flush and mirror before quitting (fully synchronous to guarantee completion)
  */
-async function flushStorageSync() {
+function flushStorageSync() {
   try {
-    await triggerCheckpoint();
     const drives = getUsbDrives();
     if (drives.length > 0 && fs.existsSync(pcDbPath)) {
       const usbDir = path.join(drives[0].letter, 'JewelleryERP_Data');
@@ -434,9 +433,32 @@ async function restoreDatabase(parentWin) {
 }
 
 /**
+ * Ensure port 8000 is clean before starting backend
+ */
+function killOrphanedPortProcess(port) {
+  try {
+    if (process.platform === 'win32') {
+      const out = execSync(`netstat -ano | findstr :${port}`, { encoding: 'utf8' });
+      for (const line of out.split('\n')) {
+        const parts = line.trim().split(/\s+/);
+        if (parts.length >= 5 && parts[1].endsWith(`:${port}`) && parts[3] === 'LISTENING') {
+          const pid = parts[4];
+          if (pid && pid !== '0' && pid !== String(process.pid)) {
+            console.log(`[Desktop] Reclaiming port ${port} from PID ${pid}...`);
+            try { execSync(`taskkill /pid ${pid} /T /F`); } catch (e) {}
+          }
+        }
+      }
+    }
+  } catch (e) {}
+}
+
+/**
  * Start Backend Process
  */
 function startBackend() {
+  killOrphanedPortProcess(BACKEND_PORT);
+
   const sqliteUrl = `sqlite:///${pcDbPath.replace(/\\/g, '/')}`;
 
   const env = {
@@ -639,6 +661,7 @@ function createWindow() {
     height: 900,
     minWidth: 1024,
     minHeight: 700,
+    show: true,
     title: 'Jewellery ERP - Saideep Jewellers (Offline Edition)',
     icon: path.join(__dirname, 'assets/icon.png'),
     backgroundColor: '#0f172a',
@@ -648,6 +671,11 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: false
     }
+  });
+
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+    mainWindow.focus();
   });
 
   mainWindow.on('page-title-updated', (e) => e.preventDefault());
@@ -744,19 +772,17 @@ app.whenReady().then(() => {
   // 3. Start Storage Engine: 10s auto-mirror + 3s USB insertion detection
   startStorageEngine();
 
-  // 4. Wait for backend readiness then open single window
-  waitForBackend((err) => {
-    if (err) {
-      console.warn('[Desktop] Backend initialization warning:', err.message);
-    }
-    createWindow();
-  });
+  // 4. Open Single Desktop Window Immediately
+  createWindow();
 });
 
 app.on('second-instance', () => {
   if (mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore();
+    if (!mainWindow.isVisible()) mainWindow.show();
     mainWindow.focus();
+  } else {
+    createWindow();
   }
 });
 
