@@ -94,8 +94,19 @@ export default function AdminLayout() {
   }, [location.pathname]);
 
   const backendBase = BACKEND_BASE_URL;
+  const DEFAULT_LOGO = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f59e0b' stroke-width='2'%3E%3Cpath d='M6 3h12l4 6-10 13L2 9z'/%3E%3Cpath d='M11 3 8 9l4 13 4-13-3-6'/%3E%3Cpath d='M2 9h20'/%3E%3C/svg%3E";
   const logoPath = user?.logo_url || `/static/logo_store_${user?.tenant_id || 1}.png`;
   const logoSrc = logoPath.startsWith('http') ? logoPath : `${backendBase}${logoPath.startsWith('/') ? '' : '/'}${logoPath}`;
+
+  const handleLogoError = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const target = e.currentTarget;
+    if (!target.dataset.triedFallback) {
+      target.dataset.triedFallback = 'true';
+      target.src = `${backendBase}/static/logo.png`;
+    } else {
+      target.src = DEFAULT_LOGO;
+    }
+  };
 
   const allNavItems = [
     { key: 'dashboard', name: 'Dashboard', path: '/', icon: <LayoutDashboard size={20} /> },
@@ -143,10 +154,7 @@ export default function AdminLayout() {
                     src={logoSrc}
                     alt="Logo"
                     className="w-full h-full object-contain"
-                    onError={(e) => {
-                      e.currentTarget.onerror = null;
-                      e.currentTarget.src = `${backendBase}/static/logo.png`;
-                    }}
+                    onError={handleLogoError}
                   />
                 </div>
                 <span className="text-sm font-bold text-primary truncate">{user?.store_name || 'Jewellery ERP'}</span>
@@ -198,10 +206,7 @@ export default function AdminLayout() {
               src={logoSrc}
               alt="Logo"
               className="w-full h-full object-contain"
-              onError={(e) => {
-                e.currentTarget.onerror = null;
-                e.currentTarget.src = `${backendBase}/static/logo.png`;
-              }}
+              onError={handleLogoError}
             />
           </div>
           <div className="flex flex-col min-w-0 flex-1">
