@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { axiosClient } from '../../api/axiosClient';
 import { useAuthStore } from '../../store/authStore';
-import { Save, Upload, Download, ShieldCheck, Database, Building2, KeyRound, Users } from 'lucide-react';
+import { Save, Upload, Download, ShieldCheck, Database, Building2, KeyRound, Users, FolderOpen } from 'lucide-react';
 import { getErrorMessage } from '../../utils/errorUtils';
 import { BACKEND_BASE_URL } from '../../config/api';
 import toast from 'react-hot-toast';
@@ -33,6 +33,50 @@ export default function SettingsModule() {
   const [credPassword, setCredPassword] = useState('');
   const [credConfirmPassword, setCredConfirmPassword] = useState('');
   const [credLoading, setCredLoading] = useState(false);
+
+  const isDesktop = Boolean((window as any).electronAPI);
+  const [desktopStorage, setDesktopStorage] = useState<any>(null);
+  const [savingDesktopUsb, setSavingDesktopUsb] = useState(false);
+
+  useEffect(() => {
+    const electronAPI = (window as any).electronAPI;
+    if (electronAPI) {
+      electronAPI.getStorageStatus?.().then((res: any) => {
+        if (res) setDesktopStorage(res);
+      }).catch(() => {});
+
+      const unsubscribe = electronAPI.onStorageStatusChange?.((status: any) => {
+        setDesktopStorage(status);
+      });
+
+      return () => {
+        if (typeof unsubscribe === 'function') unsubscribe();
+      };
+    }
+  }, []);
+
+  const handleUsbBackupNow = async () => {
+    const electronAPI = (window as any).electronAPI;
+    if (!electronAPI) return;
+    try {
+      setSavingDesktopUsb(true);
+      toast.loading('Saving database to USB Pendrive...', { id: 'usb-save-now' });
+      const res = await electronAPI.backupToUsb();
+      if (res?.success) {
+        toast.success(res.usbName ? `Database saved to ${res.usbName}!` : 'Saved to Pendrive successfully!', { id: 'usb-save-now' });
+        const updated = await electronAPI.getStorageStatus();
+        setDesktopStorage(updated);
+      } else if (res?.cancelled) {
+        toast.dismiss('usb-save-now');
+      } else {
+        toast.error(res?.error || 'Backup failed', { id: 'usb-save-now' });
+      }
+    } catch (e: any) {
+      toast.error(e?.message || 'USB backup error', { id: 'usb-save-now' });
+    } finally {
+      setSavingDesktopUsb(false);
+    }
+  };
 
   useEffect(() => {
     if (user) {
@@ -650,6 +694,55 @@ export default function SettingsModule() {
 
             {/* Backup Cards Grid */}
             <div className="space-y-4">
+              {/* Option 0 (Desktop Only): USB Pendrive Real-Time Auto-Save Card */}
+              {isDesktop && (
+                <div className="p-5 border-2 border-emerald-500/50 rounded-xl bg-emerald-950/20 hover:border-emerald-500/70 transition-all space-y-3 shadow-lg">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="space-y-1 max-w-lg">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-base font-bold text-white flex items-center gap-2">
+                          USB Pendrive Real-Time Auto-Save Engine
+                        </h3>
+                        {desktopStorage?.isUsbLive ? (
+                          <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 animate-pulse">
+                            🟢 Pendrive Live Active ({desktopStorage?.usbLetter})
+                          </span>
+                        ) : desktopStorage?.usbConnected ? (
+                          <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                            🟢 USB Connected ({desktopStorage?.usbLetter})
+                          </span>
+                        ) : (
+                          <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                            💻 Local PC Mode (Insert USB for Auto-Save)
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-300 leading-relaxed">
+                        When a USB Pendrive is inserted, the application commits 100% of live invoices, customer records, and ledger changes directly to your pendrive. Even if this PC shuts down unexpectedly or the motherboard crashes, your data remains safely intact on the pendrive.
+                      </p>
+                      <div className="pt-1 text-[11px] font-mono text-gray-400 truncate">
+                        Active Database: <span className="text-emerald-400">{desktopStorage?.activePath || 'Local PC Storage'}</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap md:flex-col gap-2 shrink-0">
+                      <button
+                        onClick={handleUsbBackupNow}
+                        disabled={savingDesktopUsb}
+                        className="bg-emerald-500 hover:bg-emerald-400 text-black px-4 py-2 rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-md disabled:opacity-50"
+                      >
+                        <Save size={15} /> {savingDesktopUsb ? 'Saving...' : 'Save to Pendrive Now'}
+                      </button>
+                      <button
+                        onClick={() => (window as any).electronAPI?.openDatabaseFolder?.()}
+                        className="bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 px-4 py-2 rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-2"
+                      >
+                        <FolderOpen size={15} /> Open DB Folder
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Option 1: Master Excel */}
               <div className="p-5 border border-emerald-500/30 rounded-xl bg-black/30 hover:border-emerald-500/50 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="space-y-1 max-w-lg">

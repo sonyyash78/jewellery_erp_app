@@ -5,6 +5,7 @@ import { axiosClient } from '../../api/axiosClient';
 import { LayoutDashboard, Users, ArrowLeftRight, LogOut, Package, Settings, Receipt, FileText, ShoppingBag, BarChart2, Menu, X, Database, ShieldAlert } from 'lucide-react';
 import AIAssistant from '../ai/AIAssistant';
 import { BACKEND_BASE_URL } from '../../config/api';
+import toast from 'react-hot-toast';
 
 export default function AdminLayout() {
   const logout = useAuthStore(state => state.logout);
@@ -13,6 +14,62 @@ export default function AdminLayout() {
   const token = useAuthStore(state => state.token);
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [storageStatus, setStorageStatus] = useState<any>(null);
+  const [syncingStorage, setSyncingStorage] = useState(false);
+
+  const isElectron = Boolean((window as any).electronAPI);
+
+  useEffect(() => {
+    const electronAPI = (window as any).electronAPI;
+    if (electronAPI) {
+      electronAPI.getStorageStatus?.().then((res: any) => {
+        if (res) setStorageStatus(res);
+      }).catch(() => {});
+
+      const unsubscribe = electronAPI.onStorageStatusChange?.((status: any) => {
+        setStorageStatus(status);
+      });
+
+      const pollInterval = setInterval(() => {
+        electronAPI.getStorageStatus?.().then((res: any) => {
+          if (res) setStorageStatus(res);
+        }).catch(() => {});
+      }, 4000);
+
+      return () => {
+        if (typeof unsubscribe === 'function') unsubscribe();
+        clearInterval(pollInterval);
+      };
+    }
+  }, []);
+
+  const handleStorageSyncClick = async () => {
+    const electronAPI = (window as any).electronAPI;
+    if (!electronAPI) return;
+    try {
+      setSyncingStorage(true);
+      toast.loading('Saving all data to Pendrive...', { id: 'usb-sync' });
+      const res = await electronAPI.backupToUsb();
+      if (res?.success) {
+        toast.success(
+          res.usbName
+            ? `Data safely saved to ${res.usbName}!`
+            : 'Database safely saved to Pendrive!',
+          { id: 'usb-sync' }
+        );
+        const updated = await electronAPI.getStorageStatus();
+        setStorageStatus(updated);
+      } else if (res?.cancelled) {
+        toast.dismiss('usb-sync');
+      } else {
+        toast.error(res?.error || 'Backup cancelled or failed', { id: 'usb-sync' });
+      }
+    } catch (err: any) {
+      toast.error('Storage sync error: ' + (err?.message || 'Unknown'), { id: 'usb-sync' });
+    } finally {
+      setSyncingStorage(false);
+    }
+  };
 
   const syncStoreDetails = () => {
     if (token) {
@@ -205,6 +262,46 @@ export default function AdminLayout() {
                 </span>
               )}
             </div>
+            {/* Live USB Pendrive Storage Auto-Save Badge */}
+            {isElectron && (
+              <button
+                onClick={handleStorageSyncClick}
+                disabled={syncingStorage}
+                title={
+                  storageStatus?.isUsbLive
+                    ? `🟢 USB Pendrive (${storageStatus?.usbLetter || 'USB'}) Real-Time Save ACTIVE\nAll data is writing directly to your Pendrive!\nClick to create an instant snapshot.`
+                    : storageStatus?.usbConnected
+                    ? `🟢 USB Pendrive (${storageStatus?.usbLetter || 'USB'}) Connected\nAuto-mirrored. Click to sync immediately.`
+                    : `💻 Running on Local PC Storage.\nInsert USB Pendrive anytime for 100% crash-proof portability.`
+                }
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition border shadow-sm ${
+                  storageStatus?.isUsbLive || storageStatus?.usbConnected
+                    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25'
+                    : 'bg-amber-500/15 text-amber-400 border-amber-500/30 hover:bg-amber-500/25'
+                }`}
+              >
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    storageStatus?.isUsbLive || storageStatus?.usbConnected
+                      ? 'bg-emerald-400 animate-pulse'
+                      : 'bg-amber-400'
+                  }`}
+                />
+                <span className="hidden sm:inline">
+                  {syncingStorage
+                    ? 'Syncing...'
+                    : storageStatus?.isUsbLive
+                    ? `USB (${storageStatus?.usbLetter}) Live`
+                    : storageStatus?.usbConnected
+                    ? `USB (${storageStatus?.usbLetter}) Synced`
+                    : 'PC Mode (No USB)'}
+                </span>
+                <span className="sm:hidden">
+                  {storageStatus?.isUsbLive || storageStatus?.usbConnected ? 'USB' : 'PC'}
+                </span>
+              </button>
+            )}
+
             {allowedModules.includes('settings') && (
               <Link
                 to="/settings?tab=database"

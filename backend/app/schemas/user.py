@@ -21,6 +21,10 @@ class UserBase(BaseModel):
     role_id: Optional[int] = None
     tenant_id: Optional[int] = None
     store_name: Optional[str] = None
+    logo_url: Optional[str] = None
+    role_name: Optional[str] = None
+    is_owner: Optional[bool] = True
+    allowed_modules: Optional[List[str]] = None
 
 class UserCreate(UserBase):
     password: str
@@ -34,7 +38,7 @@ class UserUpdate(BaseModel):
 
 class UserResponse(UserBase):
     id: int
-    created_at: datetime
+    created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
 

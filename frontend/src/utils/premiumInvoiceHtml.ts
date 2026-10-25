@@ -99,7 +99,7 @@ export const getCommonStyles = () => `
 `;
 
 export const getPageWrapperStart = (company?: any) => {
-  const name = company?.name || 'Jewellers';
+  const name = String(company?.name || 'Jewellers');
   const initials = name.split(' ').map((w: string) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || 'J';
   return `
 <div class="invoice-wrapper">
@@ -125,7 +125,7 @@ export const getPageWrapperEnd = (company: any, pageNum: any, totalPages: any) =
     <div style="position: absolute; bottom: 4mm; left: 5mm; right: 5mm; height: 36px; border-radius: 6px; background: #0B132B; display: flex; align-items: center; padding: 0 95px 0 20px; justify-content: space-between; color: white; font-size: 9px; box-shadow: 0 2px 6px rgba(0,0,0,0.12);">
       <div style="display: flex; align-items: center; gap: 6px;">
         <svg viewBox="0 0 24 24" style="width: 12px; height: 12px; fill: var(--gold); flex-shrink: 0;"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
-        <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px;">${(company?.address || '').split(',')[0] || ''}, ${(company?.address || '').split(',')[1] || ''}</span>
+        <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px;">${(String(company?.address || '')).split(',')[0] || ''}, ${(String(company?.address || '')).split(',')[1] || ''}</span>
       </div>
       <div style="display: flex; flex-direction: column; gap: 1px;">
         <div style="display: flex; align-items: center; gap: 6px;">
@@ -139,7 +139,7 @@ export const getPageWrapperEnd = (company: any, pageNum: any, totalPages: any) =
       </div>
       <div style="display: flex; align-items: center; gap: 6px;">
         <svg viewBox="0 0 24 24" style="width: 12px; height: 12px; fill: var(--gold); flex-shrink: 0;"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
-        <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px;">${company?.website || (company?.email && company.email.includes('@') ? 'www.' + company.email.split('@')[1] : '')}</span>
+        <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px;">${company?.website || (company?.email && String(company.email).includes('@') ? 'www.' + String(company.email).split('@')[1] : '')}</span>
       </div>
     </div>
   </div>
@@ -153,7 +153,7 @@ export const renderHeader = (company: any, invoice: any, logoDataUrl?: string) =
       return new Date(dateString).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }).toUpperCase();
     } catch { return dateString; }
   };
-  const storeName = company?.name || 'Jewellers';
+  const storeName = String(company?.name || 'Jewellers');
   const initials = storeName.split(' ').map((w: string) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || 'J';
   return `
     <div class="header" style="margin-bottom: 2px;">
@@ -172,7 +172,7 @@ export const renderHeader = (company: any, invoice: any, logoDataUrl?: string) =
         <table class="meta-table" style="margin-left: auto;">
           <tr><td>INVOICE NO.</td><td>:</td><td style="color: var(--navy);">${invoice.invoice_number}</td></tr>
           <tr><td>DATE</td><td>:</td><td style="color: var(--navy);">${formatDate(invoice.invoice_date)}</td></tr>
-          <tr><td>PLACE</td><td>:</td><td style="color: var(--navy);">${company.address.split(',')[0] || '-'}</td></tr>
+          <tr><td>PLACE</td><td>:</td><td style="color: var(--navy);">${(String(company?.address || '')).split(',')[0] || '-'}</td></tr>
           <tr><td>GSTIN</td><td>:</td><td style="color: var(--navy);">${company.gstin || '-'}</td></tr>
         </table>
       </div>

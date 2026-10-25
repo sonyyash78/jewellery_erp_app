@@ -26,6 +26,8 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     role_id = Column(Integer, ForeignKey("roles.id"))
     tenant_id = Column(Integer, ForeignKey("stores.id", ondelete="SET NULL"), nullable=True)
+    token_version = Column(Integer, default=1, nullable=False, server_default="1")
+    permissions = Column(String(500), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -35,7 +37,59 @@ class User(Base):
     inventory_transactions = relationship("InventoryTransaction", back_populates="user")
     reports = relationship("GeneratedReport", back_populates="generator")
 
+    ALL_MODULES = [
+        "dashboard",
+        "customers",
+        "inventory",
+        "billing",
+        "invoices",
+        "exchange",
+        "purchases",
+        "reports",
+        "settings",
+    ]
+
+    ROLE_DEFAULT_MODULES = {
+        "Admin": ALL_MODULES,
+        "Shop Owner": ALL_MODULES,
+        "Store Manager": ["dashboard", "customers", "inventory", "billing", "invoices", "exchange", "purchases", "reports"],
+        "Sales Staff": ["billing", "invoices", "exchange", "customers", "inventory"],
+        "Inventory Staff": ["inventory", "purchases"],
+    }
+
     @property
     def store_name(self) -> str:
-        return self.store.name if self.store else "Jeweller App"
+        return self.store.name if self.store else "Jewellery ERP"
+
+    @property
+    def logo_url(self) -> str:
+        if self.store and self.store.logo_url:
+            return self.store.logo_url
+        return f"/static/logo_store_{self.tenant_id or 1}.png"
+
+    @property
+    def role_name(self) -> str:
+        if self.role and self.role.name:
+            return self.role.name
+        return "Shop Owner"
+
+    @property
+    def is_owner(self) -> bool:
+        if self.id == 1:
+            return True
+        if self.store and self.store.owner_id == self.id:
+            return True
+        if self.role and self.role.name in ("Admin", "Shop Owner"):
+            return True
+        if not self.role and not self.permissions:
+            return True
+        return False
+
+    @property
+    def allowed_modules(self) -> list[str]:
+        if self.is_owner:
+            return list(self.ALL_MODULES)
+        if self.permissions is not None and self.permissions.strip() != "":
+            return [m.strip() for m in self.permissions.split(",") if m.strip()]
+        return list(self.ROLE_DEFAULT_MODULES.get(self.role_name, ["billing", "invoices", "exchange", "customers", "inventory"]))
 
