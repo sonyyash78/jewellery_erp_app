@@ -144,6 +144,7 @@ export default function AdminLayout() {
                     alt="Logo"
                     className="w-full h-full object-contain"
                     onError={(e) => {
+                      e.currentTarget.onerror = null;
                       e.currentTarget.src = `${backendBase}/static/logo.png`;
                     }}
                   />
@@ -198,6 +199,7 @@ export default function AdminLayout() {
               alt="Logo"
               className="w-full h-full object-contain"
               onError={(e) => {
+                e.currentTarget.onerror = null;
                 e.currentTarget.src = `${backendBase}/static/logo.png`;
               }}
             />

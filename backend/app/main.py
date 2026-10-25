@@ -182,7 +182,19 @@ app.include_router(backup_router, prefix="/api/v1/backup", tags=["Backup"])
 app.include_router(verification_router, prefix="/api/v1/verification", tags=["Verification"])
 app.include_router(staff_router, prefix="/api/v1/staff", tags=["Staff Management"])
 
-static_dir = os.path.join(os.path.dirname(__file__), "..", "static")
+import sys
+
+# Resolve static directory (works in dev, standalone pyinstaller binary, and packaged app)
+static_candidates = [
+    os.path.join(os.getcwd(), "static"),
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "static"),
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "static"),
+    os.path.join(os.path.dirname(sys.executable), "static") if getattr(sys, "frozen", False) else None,
+    os.path.join(os.path.dirname(sys.executable), "..", "backend", "static") if getattr(sys, "frozen", False) else None,
+]
+static_dir = next((c for c in static_candidates if c and os.path.isdir(c)), None)
+if not static_dir:
+    static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "static")
 os.makedirs(static_dir, exist_ok=True)
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
