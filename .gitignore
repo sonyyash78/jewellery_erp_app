@@ -54,3 +54,13 @@ backend/app/backups/*.sql
 backend/app/backups/*.xlsx
 *.sql
 backend/static/qrcodes/
+
+# Frontend & Desktop App
+frontend/node_modules/
+frontend/.tmp/
+desktop/node_modules/
+desktop/dist-electron/
+dist-electron/
+*.lnk
+database/
+*.db

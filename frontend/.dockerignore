@@ -1,0 +1,12 @@
+node_modules
+npm-debug.log
+dist/
+dist-ssr/
+*.local
+.env
+.env.*
+.DS_Store
+.git
+tests-results/
+playwright-report/
+blob-report/

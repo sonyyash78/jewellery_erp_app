@@ -113,8 +113,16 @@ def _ensure_schema():
 
 _ensure_schema()
 
+# Initialize default roles, store, metal rates, and admin user
+try:
+    from app.init_admin import init_admin
+    init_admin()
+except Exception as e:
+    print(f'[WARN] init_admin failed on startup: {e}')
+
 from app.core.config import settings
 from fastapi import Request
+from fastapi.responses import FileResponse
 
 app = FastAPI(
     title="Jewellery ERP API",
@@ -167,6 +175,24 @@ static_dir = os.path.join(os.path.dirname(__file__), "..", "static")
 os.makedirs(static_dir, exist_ok=True)
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
-@app.get("/")
-def root():
-    return {"message": "Welcome to Jewellery ERP API. Visit /docs for the Swagger UI."}
+@app.get("/ping")
+def ping():
+    return {"status": "ok"}
+
+# Serve static frontend SPA build for offline desktop usage
+frontend_dist = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist"))
+if os.path.exists(frontend_dist):
+    app.mount("/assets", StaticFiles(directory=os.path.join(frontend_dist, "assets")), name="frontend_assets")
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        file_path = os.path.join(frontend_dist, full_path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        index_file = os.path.join(frontend_dist, "index.html")
+        if os.path.exists(index_file):
+            return FileResponse(index_file)
+        return {"message": "Frontend build not found"}
+else:
+    @app.get("/")
+    def root():
+        return {"message": "Welcome to Jewellery ERP API. Visit /docs for the Swagger UI."}

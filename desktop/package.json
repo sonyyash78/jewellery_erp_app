@@ -1,0 +1,59 @@
+{
+  "name": "jewellery-erp-desktop",
+  "version": "1.0.0",
+  "description": "Jewellery ERP - Offline PC Desktop Application",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:frontend": "npm run --prefix ../frontend build",
+    "pack": "electron-builder --dir"
+  },
+  "keywords": [
+    "jewellery",
+    "erp",
+    "desktop",
+    "offline"
+  ],
+  "author": "Saideep Jewellers",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^34.5.8",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.saideep.jewelleryerp",
+    "productName": "Jewellery ERP Desktop",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "src/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../backend",
+        "to": "backend",
+        "filter": [
+          "**/*",
+          "!venv/**",
+          "!**/venv/**",
+          "!**/.git/**",
+          "!**/__pycache__/**",
+          "!**/*.pyc",
+          "!**/.env*",
+          "!backups/**",
+          "!*.db"
+        ]
+      },
+      {
+        "from": "../frontend/dist",
+        "to": "frontend/dist"
+      }
+    ],
+    "win": {
+      "signAndEditExecutable": false,
+      "target": "dir",
+      "icon": "src/assets/icon.ico"
+    }
+  }
+}
