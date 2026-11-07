@@ -384,6 +384,42 @@ export const generateInvoiceHtml = async (data: InvoicePDFData): Promise<string>
   }
 };
 
+export const savePdfToVault = async (
+  category: string,
+  folderName: string,
+  fileName: string,
+  base64Data: string
+) => {
+  try {
+    // A. Desktop Electron Direct Disk Write (PC & USB)
+    // @ts-ignore
+    if (window.electronAPI?.saveVaultPdf) {
+      // @ts-ignore
+      await window.electronAPI.saveVaultPdf({
+        category,
+        folderName,
+        fileName,
+        base64Data
+      });
+    }
+
+    // B. Backend API Route (Guarantees multi-layer synchronization)
+    try {
+      const { axiosClient } = await import('../api/axiosClient');
+      await axiosClient.post('/backup/save-vault-pdf', {
+        category,
+        folder_name: folderName,
+        file_name: fileName,
+        pdf_base64: base64Data
+      });
+    } catch (e) {
+      console.warn('Backend vault sync warning:', e);
+    }
+  } catch (err) {
+    console.error('savePdfToVault error:', err);
+  }
+};
+
 export const generateInvoicePDF = async (data: InvoicePDFData) => {
   try {
     // @ts-ignore
@@ -429,7 +465,33 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
       jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
     };
 
-    await html2pdf().set(opt).from(targetElement).save();
+    const worker = html2pdf().set(opt).from(targetElement);
+    // 1. Download directly to user device / browser Downloads
+    await worker.save();
+
+    // 2. Auto-save EXACT identical binary PDF into Vault folders & USB
+    try {
+      const pdfDataUri: string = await worker.output('datauristring');
+      if (pdfDataUri && pdfDataUri.includes(',')) {
+        const base64Data = pdfDataUri.split(',')[1];
+        const inv = data.invoice || {};
+        const cust = data.customer || {};
+        const isPur = data.type === 'purchase' || (inv.invoice_number || '').startsWith('PUR-');
+
+        const category = isPur ? 'Purchases' : 'Sales';
+        let rawName = cust.name || (cust.first_name ? `${cust.first_name} ${cust.last_name || ''}`.trim() : (isPur ? 'Supplier' : 'Walkin'));
+        let phone = cust.phone || cust.phone_number || cust.mobile || '';
+
+        const cleanName = rawName.replace(/[\\/*?:"<>|\s]/g, '_');
+        const cleanPhone = phone ? phone.replace(/[\\/*?:"<>|\s]/g, '_') : '';
+        const folderName = cleanPhone ? `${cleanName}_${cleanPhone}` : cleanName;
+        const fileName = `${inv.invoice_number || 'INVOICE'}.pdf`;
+
+        await savePdfToVault(category, folderName, fileName, base64Data);
+      }
+    } catch (vErr) {
+      console.warn('Auto-save to vault failed:', vErr);
+    }
 
     // Cleanup
     document.body.removeChild(renderContainer);
@@ -746,7 +808,26 @@ export const generatePaymentReceiptPDF = async (row: any, entity: any) => {
       jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
     };
 
-    await html2pdf().set(opt).from(targetElement || renderContainer).save();
+    const receiptWorker = html2pdf().set(opt).from(targetElement || renderContainer);
+    await receiptWorker.save();
+
+    try {
+      const pdfDataUri: string = await receiptWorker.output('datauristring');
+      if (pdfDataUri && pdfDataUri.includes(',')) {
+        const base64Data = pdfDataUri.split(',')[1];
+        const isSupplier = entity?.supplier_id != null || entity?.is_supplier || false;
+        const category = isSupplier ? 'Purchases' : 'Sales';
+        const cleanName = partyName.replace(/[\\/*?:"<>|\s]/g, '_');
+        const cleanPhone = partyPhone ? partyPhone.replace(/[\\/*?:"<>|\s]/g, '_') : '';
+        const folderName = cleanPhone ? `${cleanName}_${cleanPhone}` : cleanName;
+        const fileName = `Receipt_${voucherNo}.pdf`;
+
+        await savePdfToVault(category, folderName, fileName, base64Data);
+      }
+    } catch (vErr) {
+      console.warn('Auto-save receipt to vault failed:', vErr);
+    }
+
     document.body.removeChild(renderContainer);
   } catch (err) {
     console.error('Failed to generate receipt PDF:', err);
