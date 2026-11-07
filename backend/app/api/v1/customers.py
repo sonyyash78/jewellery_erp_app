@@ -186,6 +186,8 @@ def add_customer_ledger_entry(
     db.add(ledger)
     db.commit()
     db.refresh(ledger)
+    from app.services.pdf_archive_service import dispatch_async_archive, archive_single_customer_statement
+    dispatch_async_archive(archive_single_customer_statement, id)
     return {"ledger": ledger, "new_balance": customer.outstanding_balance, "gold_balance": customer.fine_gold_balance, "silver_balance": customer.fine_silver_balance}
 
 @router.get("/{id}/bills")

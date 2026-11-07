@@ -905,3 +905,283 @@ def archive_all_store_documents(db: Session, store_id: int, base_dir: Path, forc
         "counts": counts,
         "archive_dir": str(archive_root)
     }
+
+
+import threading
+import shutil
+import string
+
+def get_all_archive_roots() -> List[Path]:
+    """Return all target roots for archiving (PC local storage + any connected pendrive)."""
+    from app.core.config import DATA_DIR
+    roots = [DATA_DIR]
+    seen = {str(DATA_DIR).lower()}
+    
+    for letter in string.ascii_uppercase:
+        p = Path(f"{letter}:/JewelleryERP_Data")
+        if p.exists() and str(p).lower() not in seen:
+            roots.append(p)
+            seen.add(str(p).lower())
+    return roots
+
+
+def _save_pdf_to_roots(source_pdf: Path, relative_dest_path: Path):
+    """Mirror a generated PDF to all archive roots (PC and USB)."""
+    roots = get_all_archive_roots()
+    for root in roots:
+        dest = root / "Archived_PDFs" / relative_dest_path
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            if source_pdf.resolve() != dest.resolve():
+                shutil.copy2(source_pdf, dest)
+        except Exception as e:
+            print(f"[Archive Mirror] Error copying to {dest}: {e}")
+
+
+def archive_single_invoice(invoice_id: int, db: Session = None):
+    close_db = False
+    if db is None:
+        from app.db.database import SessionLocal
+        db = SessionLocal()
+        close_db = True
+    try:
+        from app.services.invoice_pdf_service import InvoicePDFService
+        from app.services.luxury_pdf_service import generate_luxury_bill_html, render_html_to_pdf
+        from app.core.config import DATA_DIR
+
+        inv = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+        if not inv:
+            return
+
+        store_info = _get_store_header(db, inv.store_id or 1)
+        c_obj = db.query(Customer).filter(Customer.id == inv.customer_id).first() if inv.customer_id else None
+        if c_obj:
+            c_full = f"{c_obj.first_name} {c_obj.last_name or ''}".strip()
+            folder_name = _sanitize_name(f"{c_full}_{c_obj.phone_number}", default=f"Customer_{inv.customer_id}")
+        else:
+            folder_name = "Walkin_Customers"
+
+        inv_no = _sanitize_name(inv.invoice_number or f"INV-{inv.id}")
+        inv_date = inv.invoice_date.strftime("%Y-%m-%d") if inv.invoice_date else "date"
+        rel_path = Path("Sales") / folder_name / f"Invoice_{inv_no}_{inv_date}.pdf"
+
+        primary_pdf = DATA_DIR / "Archived_PDFs" / rel_path
+        primary_pdf.parent.mkdir(parents=True, exist_ok=True)
+
+        inv_data = InvoicePDFService.get_invoice_pdf_data(inv.id, db)
+        inv_html = generate_luxury_bill_html(inv_data)
+        if not render_html_to_pdf(inv_html, primary_pdf):
+            generate_invoice_pdf(inv, store_info, primary_pdf)
+
+        _save_pdf_to_roots(primary_pdf, rel_path)
+
+        if inv.customer_id:
+            archive_single_customer_statement(inv.customer_id, db)
+    except Exception as e:
+        print(f"[Archive Single Invoice Error] {e}")
+    finally:
+        if close_db:
+            db.close()
+
+
+def archive_single_exchange(exchange_id: int, db: Session = None):
+    close_db = False
+    if db is None:
+        from app.db.database import SessionLocal
+        db = SessionLocal()
+        close_db = True
+    try:
+        from app.services.invoice_pdf_service import InvoicePDFService
+        from app.services.luxury_pdf_service import generate_luxury_bill_html, render_html_to_pdf
+        from app.core.config import DATA_DIR
+
+        exc = db.query(Exchange).filter(Exchange.id == exchange_id).first()
+        if not exc:
+            return
+
+        store_info = _get_store_header(db, exc.store_id or 1)
+        c_obj = db.query(Customer).filter(Customer.id == exc.customer_id).first() if exc.customer_id else None
+        if c_obj:
+            c_full = f"{c_obj.first_name} {c_obj.last_name or ''}".strip()
+            folder_name = _sanitize_name(f"{c_full}_{c_obj.phone_number}", default=f"Customer_{exc.customer_id}")
+        else:
+            folder_name = "Walkin_Customers"
+
+        exc_no = _sanitize_name(f"EXC-{exc.id}")
+        exc_date = exc.exchange_date.strftime("%Y-%m-%d") if exc.exchange_date else "date"
+        rel_path = Path("Sales") / folder_name / f"Exchange_{exc_no}_{exc_date}.pdf"
+
+        primary_pdf = DATA_DIR / "Archived_PDFs" / rel_path
+        primary_pdf.parent.mkdir(parents=True, exist_ok=True)
+
+        exc_data = InvoicePDFService.get_exchange_pdf_data(exc.id, db)
+        exc_html = generate_luxury_bill_html(exc_data)
+        if not render_html_to_pdf(exc_html, primary_pdf):
+            generate_exchange_pdf(exc, store_info, primary_pdf)
+
+        _save_pdf_to_roots(primary_pdf, rel_path)
+
+        if exc.customer_id:
+            archive_single_customer_statement(exc.customer_id, db)
+    except Exception as e:
+        print(f"[Archive Single Exchange Error] {e}")
+    finally:
+        if close_db:
+            db.close()
+
+
+def archive_single_purchase(purchase_id: int, db: Session = None):
+    close_db = False
+    if db is None:
+        from app.db.database import SessionLocal
+        db = SessionLocal()
+        close_db = True
+    try:
+        from app.services.invoice_pdf_service import InvoicePDFService
+        from app.services.luxury_pdf_service import generate_luxury_bill_html, render_html_to_pdf
+        from app.core.config import DATA_DIR
+
+        pur = db.query(Purchase).filter(Purchase.id == purchase_id).first()
+        if not pur:
+            return
+
+        store_info = _get_store_header(db, pur.store_id or 1)
+        s = pur.seller
+        if s:
+            folder_name = _sanitize_name(f"{s.name}_{s.mobile}", default=f"Supplier_{s.id}")
+        else:
+            folder_name = "Unknown_Suppliers"
+
+        pur_no = _sanitize_name(pur.purchase_number or f"PUR-{pur.id}")
+        pur_date = pur.created_at.strftime("%Y-%m-%d") if pur.created_at else "date"
+        rel_path = Path("Purchases") / folder_name / f"Purchase_{pur_no}_{pur_date}.pdf"
+
+        primary_pdf = DATA_DIR / "Archived_PDFs" / rel_path
+        primary_pdf.parent.mkdir(parents=True, exist_ok=True)
+
+        pur_data = InvoicePDFService.get_purchase_pdf_data(pur.id, db)
+        pur_html = generate_luxury_bill_html(pur_data)
+        if not render_html_to_pdf(pur_html, primary_pdf):
+            generate_purchase_pdf(pur, store_info, primary_pdf)
+
+        _save_pdf_to_roots(primary_pdf, rel_path)
+
+        if pur.seller_id:
+            archive_single_supplier_statement(pur.seller_id, db)
+    except Exception as e:
+        print(f"[Archive Single Purchase Error] {e}")
+    finally:
+        if close_db:
+            db.close()
+
+
+def archive_single_customer_statement(customer_id: int, db: Session = None):
+    close_db = False
+    if db is None:
+        from app.db.database import SessionLocal
+        db = SessionLocal()
+        close_db = True
+    try:
+        from app.services.luxury_pdf_service import generate_luxury_statement_html, render_html_to_pdf
+        from app.core.config import DATA_DIR
+
+        c = db.query(Customer).filter(Customer.id == customer_id).first()
+        if not c:
+            return
+
+        store_info = _get_store_header(db, c.store_id or 1)
+        c_full = f"{c.first_name} {c.last_name or ''}".strip()
+        folder_name = _sanitize_name(f"{c_full}_{c.phone_number}", default=f"Customer_{c.id}")
+        rel_path = Path("Sales") / folder_name / f"Statement_{_sanitize_name(c_full)}.pdf"
+
+        primary_pdf = DATA_DIR / "Archived_PDFs" / rel_path
+        primary_pdf.parent.mkdir(parents=True, exist_ok=True)
+
+        entries = []
+        ledgers = db.query(CustomerLedger).filter(CustomerLedger.customer_id == c.id).order_by(CustomerLedger.date.asc()).all()
+        for l in ledgers:
+            entries.append({
+                "date": (l.date.strftime("%d-%b-%Y") if getattr(l, "date", None) else ""),
+                "type": l.voucher_type or "Ledger",
+                "number": l.voucher_number or "-",
+                "description": l.description or "-",
+                "debit": float(l.debit or 0.0),
+                "credit": float(l.credit or 0.0),
+                "balance": float(l.balance or 0.0),
+                "gold_debit": float(l.gold_debit or 0.0),
+                "gold_credit": float(l.gold_credit or 0.0),
+            })
+        c_html = generate_luxury_statement_html(
+            c_full, c.phone_number or "", "Customer", entries, store_info,
+            float(c.outstanding_balance or 0.0), float(c.fine_gold_balance or 0.0), float(c.fine_silver_balance or 0.0)
+        )
+        if not render_html_to_pdf(c_html, primary_pdf):
+            generate_customer_statement_pdf(c, db, store_info, primary_pdf)
+
+        _save_pdf_to_roots(primary_pdf, rel_path)
+    except Exception as e:
+        print(f"[Archive Customer Statement Error] {e}")
+    finally:
+        if close_db:
+            db.close()
+
+
+def archive_single_supplier_statement(seller_id: int, db: Session = None):
+    close_db = False
+    if db is None:
+        from app.db.database import SessionLocal
+        db = SessionLocal()
+        close_db = True
+    try:
+        from app.services.luxury_pdf_service import generate_luxury_statement_html, render_html_to_pdf
+        from app.core.config import DATA_DIR
+
+        s = db.query(Seller).filter(Seller.id == seller_id).first()
+        if not s:
+            return
+
+        store_info = _get_store_header(db, s.store_id or 1)
+        folder_name = _sanitize_name(f"{s.name}_{s.mobile}", default=f"Supplier_{s.id}")
+        rel_path = Path("Purchases") / folder_name / f"Statement_{_sanitize_name(s.name)}.pdf"
+
+        primary_pdf = DATA_DIR / "Archived_PDFs" / rel_path
+        primary_pdf.parent.mkdir(parents=True, exist_ok=True)
+
+        entries = []
+        ledgers = db.query(SupplierLedger).filter(SupplierLedger.seller_id == s.id).order_by(SupplierLedger.date.asc()).all()
+        for l in ledgers:
+            entries.append({
+                "date": (l.date.strftime("%d-%b-%Y") if getattr(l, "date", None) else ""),
+                "type": l.voucher_type or "Ledger",
+                "number": l.voucher_number or "-",
+                "description": l.description or "-",
+                "debit": float(l.debit or 0.0),
+                "credit": float(l.credit or 0.0),
+                "balance": float(l.balance or 0.0),
+                "gold_debit": float(l.gold_debit or 0.0),
+                "gold_credit": float(l.gold_credit or 0.0),
+            })
+        s_html = generate_luxury_statement_html(
+            s.name, s.mobile or "", "Supplier", entries, store_info,
+            float(s.outstanding_balance or 0.0), float(s.fine_gold_balance or 0.0), float(s.fine_silver_balance or 0.0)
+        )
+        if not render_html_to_pdf(s_html, primary_pdf):
+            generate_supplier_statement_pdf(s, db, store_info, primary_pdf)
+
+        _save_pdf_to_roots(primary_pdf, rel_path)
+    except Exception as e:
+        print(f"[Archive Supplier Statement Error] {e}")
+    finally:
+        if close_db:
+            db.close()
+
+
+def dispatch_async_archive(fn, *args):
+    """Run an archive function in a background worker thread."""
+    def worker():
+        try:
+            fn(*args)
+        except Exception as e:
+            print(f"[Async Archive Worker Error] {e}")
+    threading.Thread(target=worker, daemon=True).start()
+

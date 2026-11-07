@@ -233,6 +233,8 @@ def create_exchange(
 
     db.commit()
     db.refresh(exchange)
+    from app.services.pdf_archive_service import dispatch_async_archive, archive_single_exchange
+    dispatch_async_archive(archive_single_exchange, exchange.id)
     return exchange
 
 @router.get("/", response_model=Dict[str, Any])
@@ -400,6 +402,9 @@ def delete_exchange(
 
         exchange.status = "Cancelled"
         db.commit()
+        if exchange.customer_id:
+            from app.services.pdf_archive_service import dispatch_async_archive, archive_single_customer_statement
+            dispatch_async_archive(archive_single_customer_statement, exchange.customer_id)
         return {"message": "Exchange cancelled and reversed successfully"}
     except HTTPException:
         db.rollback()

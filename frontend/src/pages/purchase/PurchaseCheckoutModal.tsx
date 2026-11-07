@@ -324,26 +324,27 @@ export default function PurchaseCheckoutModal({ payload, grandTotal, onClose, on
       const res = await axiosClient.post('/purchases/', finalPayload);
       toast.success(`Purchase ${res.data.purchase_number || res.data.id} recorded!`);
 
-      if (shouldPrint) {
-        try {
-          const pdfRes = await axiosClient.get(`/purchases/${res.data.id}/pdf-data`);
-          const pdfData = pdfRes.data;
-          pdfData.invoice.amount_paid    = Number(cashPaid) || 0;
-          pdfData.invoice.cash_paid      = Number(cashPaid) || 0;
-          pdfData.invoice.balance_due    = finalBalanceAmount;
-          pdfData.invoice.balance_amount = finalBalanceAmount;
-          pdfData.invoice.payment_method = paymentMethod;
-          pdfData.invoice.transaction_id = paymentMethod === 'UPI' ? upiId : paymentMethod === 'Cheque' ? `${chequeNo} | ${bankName} | ${chequeDate}` : '-';
-          pdfData.invoice.bill_type = backendBillType;
-          pdfData.invoice.settlement_type = backendSettlementType;
-          pdfData.invoice.settlement_metal_type = cashBalanceAction === 'metal_gold' ? 'Gold' : cashBalanceAction === 'metal_silver' ? 'Silver' : cashBalanceAction === 'metal_both' ? 'Both' : null;
-          pdfData.invoice.gold_balance_metal_weight = goldBalMetal;
-          pdfData.invoice.silver_balance_metal_weight = silverBalMetal;
-          const { generateInvoicePDF } = await import('../../utils/invoicePdfUtils');
-          await generateInvoicePDF(pdfData);
-        } catch (pdfErr) {
-          console.warn('Purchase PDF generation error:', pdfErr);
+      try {
+        const pdfRes = await axiosClient.get(`/purchases/${res.data.id}/pdf-data`);
+        const pdfData = pdfRes.data;
+        pdfData.invoice.amount_paid    = Number(cashPaid) || 0;
+        pdfData.invoice.cash_paid      = Number(cashPaid) || 0;
+        pdfData.invoice.balance_due    = finalBalanceAmount;
+        pdfData.invoice.balance_amount = finalBalanceAmount;
+        pdfData.invoice.payment_method = paymentMethod;
+        pdfData.invoice.transaction_id = paymentMethod === 'UPI' ? upiId : paymentMethod === 'Cheque' ? `${chequeNo} | ${bankName} | ${chequeDate}` : '-';
+        pdfData.invoice.bill_type = backendBillType;
+        pdfData.invoice.settlement_type = backendSettlementType;
+        pdfData.invoice.settlement_metal_type = cashBalanceAction === 'metal_gold' ? 'Gold' : cashBalanceAction === 'metal_silver' ? 'Silver' : cashBalanceAction === 'metal_both' ? 'Both' : null;
+        pdfData.invoice.gold_balance_metal_weight = goldBalMetal;
+        pdfData.invoice.silver_balance_metal_weight = silverBalMetal;
+        const { generateInvoicePDF, printInvoiceDirect } = await import('../../utils/invoicePdfUtils');
+        await generateInvoicePDF(pdfData);
+        if (shouldPrint) {
+          await printInvoiceDirect(pdfData);
         }
+      } catch (pdfErr) {
+        console.warn('Purchase PDF generation error:', pdfErr);
       }
 
       onSuccess(res.data.id);

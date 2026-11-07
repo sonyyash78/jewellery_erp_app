@@ -364,23 +364,24 @@ export default function ExchangeCheckoutModal({ payload, differenceAmount: _diff
       const res = await axiosClient.post('/exchanges/', finalPayload);
       toast.success(`Exchange ${res.data.exchange_number || res.data.id} generated!`);
       
-      if (shouldPrint) {
-        try {
-          const pdfRes = await axiosClient.get(`/exchanges/${res.data.id}/pdf-data`);
-          const pdfData = pdfRes.data;
-          pdfData.invoice.amount_paid    = Number(cashReceived) || 0;
-          pdfData.invoice.balance_due    = finalBalanceAmount;
-          pdfData.invoice.payment_method = paymentMethod;
-          pdfData.invoice.transaction_id = paymentMethod === 'UPI' ? upiId : paymentMethod === 'Cheque' ? `${chequeNo} | ${bankName} | ${chequeDate}` : '-';
-          pdfData.invoice.bill_type = 'Exchange';
-          pdfData.invoice.settlement_type = backendSettlementType;
-          pdfData.invoice.settlement_metal_type = cashBalanceAction === 'metal_gold' ? 'Gold' : cashBalanceAction === 'metal_silver' ? 'Silver' : cashBalanceAction === 'metal_both' ? 'Both' : null;
-          pdfData.invoice.gold_balance_metal_weight = goldBalMetal;
-          pdfData.invoice.silver_balance_metal_weight = silverBalMetal;
-          const { generateInvoicePDF } = await import('../../utils/invoicePdfUtils');
-          await generateInvoicePDF(pdfData);
-        } catch (pdfErr) { console.error('Auto PDF generation failed', pdfErr); }
-      }
+      try {
+        const pdfRes = await axiosClient.get(`/exchanges/${res.data.id}/pdf-data`);
+        const pdfData = pdfRes.data;
+        pdfData.invoice.amount_paid    = Number(cashReceived) || 0;
+        pdfData.invoice.balance_due    = finalBalanceAmount;
+        pdfData.invoice.payment_method = paymentMethod;
+        pdfData.invoice.transaction_id = paymentMethod === 'UPI' ? upiId : paymentMethod === 'Cheque' ? `${chequeNo} | ${bankName} | ${chequeDate}` : '-';
+        pdfData.invoice.bill_type = 'Exchange';
+        pdfData.invoice.settlement_type = backendSettlementType;
+        pdfData.invoice.settlement_metal_type = cashBalanceAction === 'metal_gold' ? 'Gold' : cashBalanceAction === 'metal_silver' ? 'Silver' : cashBalanceAction === 'metal_both' ? 'Both' : null;
+        pdfData.invoice.gold_balance_metal_weight = goldBalMetal;
+        pdfData.invoice.silver_balance_metal_weight = silverBalMetal;
+        const { generateInvoicePDF, printInvoiceDirect } = await import('../../utils/invoicePdfUtils');
+        await generateInvoicePDF(pdfData);
+        if (shouldPrint) {
+          await printInvoiceDirect(pdfData);
+        }
+      } catch (pdfErr) { console.error('Auto PDF generation failed', pdfErr); }
       
       onSuccess(res.data.id);
     } catch (e: any) {

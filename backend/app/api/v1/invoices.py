@@ -325,6 +325,8 @@ def create_invoice(
         # Commit everything atomically in a single transaction
         db.commit()
         db.refresh(db_invoice)
+        from app.services.pdf_archive_service import dispatch_async_archive, archive_single_invoice
+        dispatch_async_archive(archive_single_invoice, db_invoice.id)
         return db_invoice
         
     except HTTPException:
@@ -476,6 +478,9 @@ def delete_invoice(
         # 3. Mark status as Cancelled
         invoice.status = InvoiceStatus.CANCELLED
         db.commit()
+        if invoice.customer_id:
+            from app.services.pdf_archive_service import dispatch_async_archive, archive_single_customer_statement
+            dispatch_async_archive(archive_single_customer_statement, invoice.customer_id)
         return {"message": "Invoice cancelled and reversed successfully"}
     except HTTPException:
         db.rollback()

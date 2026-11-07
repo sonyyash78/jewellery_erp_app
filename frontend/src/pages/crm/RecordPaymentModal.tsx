@@ -33,12 +33,37 @@ export default function RecordPaymentModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      let res;
       if (isSupplier) {
-        await axiosClient.post(`/sellers/${entityId}/ledger`, formData);
+        res = await axiosClient.post(`/sellers/${entityId}/ledger`, formData);
       } else {
-        await axiosClient.post(`/customers/${entityId}/ledger`, formData);
+        res = await axiosClient.post(`/customers/${entityId}/ledger`, formData);
       }
       toast.success('Ledger updated successfully!');
+      
+      try {
+        const { generatePaymentReceiptPDF } = await import('../../utils/invoicePdfUtils');
+        const entityRes = await axiosClient.get(isSupplier ? `/sellers/${entityId}` : `/customers/${entityId}`);
+        const entity = entityRes.data;
+        const row = {
+          id: res.data?.ledger?.id || Date.now(),
+          bill_no: formData.voucher_number || `REC-${Date.now().toString().slice(-6)}`,
+          date: new Date().toISOString(),
+          type: formData.voucher_type,
+          summary: formData.description,
+          debit: formData.debit,
+          credit: formData.credit,
+          gold_change: (formData.gold_debit || 0) - (formData.gold_credit || 0),
+          silver_change: (formData.silver_debit || 0) - (formData.silver_credit || 0),
+          balance: res.data?.new_balance,
+          gold_balance: res.data?.gold_balance,
+          silver_balance: res.data?.silver_balance
+        };
+        await generatePaymentReceiptPDF(row, entity);
+      } catch (pdfErr) {
+        console.warn('Auto voucher receipt PDF failed:', pdfErr);
+      }
+
       onSuccess();
       onClose();
     } catch (error) {

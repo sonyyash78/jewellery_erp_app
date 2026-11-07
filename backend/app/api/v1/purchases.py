@@ -176,6 +176,8 @@ def create_unified_purchase(
     
     db.commit()
     db.refresh(db_purchase)
+    from app.services.pdf_archive_service import dispatch_async_archive, archive_single_purchase
+    dispatch_async_archive(archive_single_purchase, db_purchase.id)
     
     return {"message": "Purchase saved", "id": db_purchase.id, "purchase_number": db_purchase.purchase_number}
 
@@ -426,6 +428,9 @@ def delete_unified_purchase(
 
         purchase.status = PurchaseStatus.CANCELLED
         db.commit()
+        if purchase.seller_id:
+            from app.services.pdf_archive_service import dispatch_async_archive, archive_single_supplier_statement
+            dispatch_async_archive(archive_single_supplier_statement, purchase.seller_id)
         return {"message": "Purchase cancelled and reversed successfully"}
     except HTTPException:
         db.rollback()

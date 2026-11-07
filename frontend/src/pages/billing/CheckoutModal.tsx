@@ -320,6 +320,14 @@ export default function CheckoutModal({ payload, grandTotal, onClose, onSuccess 
       });
       toast.success(`Invoice ${res.data.invoice_number} generated!`);
       
+      try {
+        const pdfRes = await axiosClient.get(`/invoices/${res.data.id}/pdf-data`);
+        const { generateInvoicePDF } = await import('../../utils/invoicePdfUtils');
+        await generateInvoicePDF(pdfRes.data);
+      } catch (pdfErr) {
+        console.warn('Auto invoice PDF download failed', pdfErr);
+      }
+
       onSuccess(res.data.id, shouldPrint);
     } catch (e: any) {
       toast.error(getErrorMessage(e, 'Failed to generate invoice'));

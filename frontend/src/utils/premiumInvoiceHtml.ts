@@ -155,6 +155,30 @@ export const renderHeader = (company: any, invoice: any, logoDataUrl?: string) =
   };
   const storeName = String(company?.name || 'Jewellers');
   const initials = storeName.split(' ').map((w: string) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || 'J';
+  const invNo = String(invoice?.invoice_number || '');
+  const billType = String(invoice?.bill_type || '');
+  const isExchange = billType === 'Exchange' || invNo.startsWith('EXC-');
+  const isPurchase = billType === 'Purchase' || invNo.startsWith('PUR-');
+  const isVoucher = billType === 'Voucher' || invNo.startsWith('REC-') || invNo.startsWith('PAY-');
+
+  let badgeTitle = 'TAX INVOICE';
+  let badgeIcon = '<path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>';
+  let numberLabel = 'INVOICE NO.';
+
+  if (isExchange) {
+    badgeTitle = 'EXCHANGE VOUCHER';
+    badgeIcon = '<path d="M6.99 11L3 15l3.99 4v-3H14v-2H6.99v-3zM21 9l-3.99-4v3H10v2h7.01v3L21 9z"/>';
+    numberLabel = 'VOUCHER NO.';
+  } else if (isPurchase) {
+    badgeTitle = 'PURCHASE VOUCHER';
+    badgeIcon = '<path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>';
+    numberLabel = 'PURCHASE NO.';
+  } else if (isVoucher) {
+    badgeTitle = 'SETTLEMENT VOUCHER';
+    badgeIcon = '<path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>';
+    numberLabel = 'VOUCHER NO.';
+  }
+
   return `
     <div class="header" style="margin-bottom: 2px;">
       <div class="logo-section">
@@ -166,11 +190,11 @@ export const renderHeader = (company: any, invoice: any, logoDataUrl?: string) =
       </div>
       <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end;">
         <div class="tax-invoice-badge">
-          <svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
-          TAX INVOICE
+          <svg viewBox="0 0 24 24">${badgeIcon}</svg>
+          ${badgeTitle}
         </div>
         <table class="meta-table" style="margin-left: auto;">
-          <tr><td>INVOICE NO.</td><td>:</td><td style="color: var(--navy);">${invoice.invoice_number}</td></tr>
+          <tr><td>${numberLabel}</td><td>:</td><td style="color: var(--navy); font-weight: 800;">${invoice.invoice_number}</td></tr>
           <tr><td>DATE</td><td>:</td><td style="color: var(--navy);">${formatDate(invoice.invoice_date)}</td></tr>
           <tr><td>PLACE</td><td>:</td><td style="color: var(--navy);">${(String(company?.address || '')).split(',')[0] || '-'}</td></tr>
           <tr><td>GSTIN</td><td>:</td><td style="color: var(--navy);">${company.gstin || '-'}</td></tr>
@@ -218,7 +242,7 @@ export const renderCardsRow = (customer: any, qrDataUrl: string, settings?: any,
       <div class="info-card">
         <div class="card-header">
           <div class="card-icon"><svg viewBox="0 0 24 24" style="width: 16px; height: 16px; fill: currentColor;"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg></div>
-          <div class="card-title">BILL TO</div>
+          <div class="card-title">${(invoice?.bill_type === 'Purchase' || (invoice?.invoice_number || '').startsWith('PUR-')) ? 'SUPPLIER DETAILS' : ((invoice?.bill_type === 'Exchange' || (invoice?.invoice_number || '').startsWith('EXC-')) ? 'EXCHANGED WITH' : 'BILL TO')}</div>
         </div>
         <h3>${customer.name}</h3>
         <div class="info-line"><svg viewBox="0 0 24 24" style="width: 14px; height: 14px; fill: currentColor; flex-shrink: 0;"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg><span>${customer.phone || '-'}</span></div>

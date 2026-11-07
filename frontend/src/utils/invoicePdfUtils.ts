@@ -47,6 +47,11 @@ export const generateInvoiceHtml = async (data: InvoicePDFData): Promise<string>
     };
     const customer = data.customer || { name: 'Cash Customer', phone: '', address: '', email: '', gstin: '', pan: '' };
     const invoice = data.invoice || { invoice_number: 'INV-001', invoice_date: new Date().toISOString(), status: 'paid', subtotal: 0, tax_amount: 0, discount_amount: 0, grand_total: 0, amount_paid: 0, balance_due: 0 };
+    if (data.type === 'exchange' || (invoice.invoice_number || '').startsWith('EXC-')) {
+      if (!invoice.bill_type) invoice.bill_type = 'Exchange';
+    } else if (data.type === 'purchase' || (invoice.invoice_number || '').startsWith('PUR-')) {
+      if (!invoice.bill_type) invoice.bill_type = 'Purchase';
+    }
     const allItems = data.items || [];
     const isOldOrDeposit = (item: any) => {
       const name = (item.item_name || '').toLowerCase();
