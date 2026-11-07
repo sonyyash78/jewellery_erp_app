@@ -1664,7 +1664,7 @@ ipcMain.handle('open-pdf-vault-folder', async (_, target) => {
 
 
 
-ipcMain.handle('delete-vault-pdf', async (_, { category, folderName, docNumber }) => {
+ipcMain.handle('delete-vault-pdf', async (_, { category, folderName, docNumber, docDate }) => {
   try {
     const roots = [path.join(pcDir, 'Archived_PDFs')];
     const drives = getUsbDrives();
@@ -1672,6 +1672,7 @@ ipcMain.handle('delete-vault-pdf', async (_, { category, folderName, docNumber }
       roots.push(path.join(drives[0].letter, 'JewelleryERP_Data', 'Archived_PDFs'));
     }
     const cleanDoc = (docNumber || '').toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+    const cleanDate = (docDate || '').toLowerCase().replace(/[^a-z0-9_-]/g, '-');
     for (const r of roots) {
       const catDir = path.join(r, category || 'Sales');
       if (!fs.existsSync(catDir)) continue;
@@ -1688,7 +1689,9 @@ ipcMain.handle('delete-vault-pdf', async (_, { category, folderName, docNumber }
         const files = fs.readdirSync(d);
         for (const f of files) {
           const fLower = f.toLowerCase();
-          if (cleanDoc && fLower.includes(cleanDoc) && fLower.endsWith('.pdf')) {
+          const matchesDoc = cleanDoc && fLower.includes(cleanDoc) && fLower.endsWith('.pdf');
+          const matchesDate = cleanDate && (fLower === ${cleanDate}.pdf || fLower.includes(cleanDate));
+          if (matchesDoc || matchesDate) {
             try { fs.unlinkSync(path.join(d, f)); } catch (e) {}
           }
         }
@@ -1698,6 +1701,39 @@ ipcMain.handle('delete-vault-pdf', async (_, { category, folderName, docNumber }
             try { fs.unlinkSync(path.join(d, f)); } catch (e) {}
           }
           try { fs.rmdirSync(d); } catch (e) {}
+        }
+      }
+    }
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('delete-party-folder', async (_, { category, folderName }) => {
+  try {
+    if (!folderName) return { success: false, error: 'No folderName provided' };
+    const roots = [path.join(pcDir, 'Archived_PDFs')];
+    const drives = getUsbDrives();
+    if (drives.length > 0) {
+      roots.push(path.join(drives[0].letter, 'JewelleryERP_Data', 'Archived_PDFs'));
+    }
+    const cleanTarget = folderName.toLowerCase();
+    for (const r of roots) {
+      const catDir = path.join(r, category || 'Sales');
+      if (!fs.existsSync(catDir)) continue;
+
+      const entries = fs.readdirSync(catDir);
+      for (const e of entries) {
+        const full = path.join(catDir, e);
+        if (!fs.existsSync(full) || !fs.statSync(full).isDirectory()) continue;
+        if (e.toLowerCase() === cleanTarget || e.toLowerCase().includes(cleanTarget)) {
+          try {
+            fs.rmSync(full, { recursive: true, force: true });
+            console.log([Desktop Delete Party] Removed folder );
+          } catch (delErr) {
+            console.error([Desktop Delete Party Error] );
+          }
         }
       }
     }

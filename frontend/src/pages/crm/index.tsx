@@ -117,6 +117,16 @@ export default function CRM() {
 
   const deleteCustomer = async (id: number) => {
     try {
+      const cust = customers.find(c => c.id === id);
+      if (cust) {
+        const cFull = `${cust.first_name || ''} ${cust.last_name || ''}`.trim();
+        const fName = `${cFull}_${cust.phone_number || ''}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+        // @ts-ignore
+        if (window.electronAPI?.deletePartyFolder) {
+          // @ts-ignore
+          await window.electronAPI.deletePartyFolder({ category: 'Sales', folderName: fName });
+        }
+      }
       await axiosClient.delete(`/customers/${id}`);
       toast.success('Customer deleted successfully');
       fetchData();
@@ -127,6 +137,15 @@ export default function CRM() {
 
   const deleteSupplier = async (id: number) => {
     try {
+      const supp = suppliers.find(s => s.id === id);
+      if (supp) {
+        const fName = `${supp.name || ''}_${supp.mobile || ''}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+        // @ts-ignore
+        if (window.electronAPI?.deletePartyFolder) {
+          // @ts-ignore
+          await window.electronAPI.deletePartyFolder({ category: 'Purchases', folderName: fName });
+        }
+      }
       await axiosClient.delete(`/sellers/${id}`);
       toast.success('Supplier deleted successfully');
       fetchData();

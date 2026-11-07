@@ -64,7 +64,7 @@ def _sanitize_name(name: Optional[str], default: str = "Unknown") -> str:
 
     return clean[:60]
 
-def remove_archived_document(category: str, folder_name: Optional[str], doc_number: str) -> bool:
+def remove_archived_document(category: str, folder_name: Optional[str], doc_number: str, doc_date: Optional[str] = None) -> bool:
     """
     Deletes the archived PDF file of a deleted or cancelled document from both
     local PC storage and all connected USB drives, and prunes empty folders.
@@ -76,6 +76,7 @@ def remove_archived_document(category: str, folder_name: Optional[str], doc_numb
         return False
 
     clean_doc = _sanitize_name(doc_number).lower()
+    clean_date = _sanitize_name(doc_date).lower() if doc_date else ""
     success = False
 
     roots = [DATA_DIR / "Archived_PDFs"]
@@ -104,7 +105,10 @@ def remove_archived_document(category: str, folder_name: Optional[str], doc_numb
         for d in search_dirs:
             for f in list(d.glob("*.pdf")):
                 f_lower = f.name.lower()
-                if clean_doc in f_lower or f_lower == f"{clean_doc}.pdf":
+                matches = (clean_doc in f_lower or f_lower == f"{clean_doc}.pdf")
+                if clean_date:
+                    matches = matches or (clean_date in f_lower or f_lower == f"{clean_date}.pdf")
+                if matches:
                     try:
                         f.unlink()
                         print(f"[Archive Delete] Removed {f}")
@@ -1466,7 +1470,8 @@ def archive_all_store_documents(db: Session, store_id: int, base_dir: Path, forc
 
         p_date = pur.created_at.strftime("%Y-%m-%d") if pur.created_at else "date"
 
-        pur_pdf = target_dir / f"{p_no}.pdf"
+        p_d_str = pur.purchase_date.strftime("%d-%m-%Y") if getattr(pur, "purchase_date", None) else (pur.created_at.strftime("%d-%m-%Y") if getattr(pur, "created_at", None) else datetime.now().strftime("%d-%m-%Y"))
+        pur_pdf = target_dir / f"{p_d_str}.pdf"
 
         if force_refresh or not pur_pdf.exists():
 
@@ -1609,7 +1614,8 @@ def archive_all_store_documents(db: Session, store_id: int, base_dir: Path, forc
 
         inv_date = inv.invoice_date.strftime("%Y-%m-%d") if inv.invoice_date else "date"
 
-        inv_pdf = target_dir / f"{inv_no}.pdf"
+        inv_d_str = inv.invoice_date.strftime("%d-%m-%Y") if inv.invoice_date else datetime.now().strftime("%d-%m-%Y")
+        inv_pdf = target_dir / f"{inv_d_str}.pdf"
         # Also clean up any legacy Invoice_INV-... file if it exists
         legacy_inv = target_dir / f"Invoice_{inv_no}_{inv_date}.pdf"
         if legacy_inv.exists():
@@ -1677,7 +1683,8 @@ def archive_all_store_documents(db: Session, store_id: int, base_dir: Path, forc
 
         exc_date = exc.exchange_date.strftime("%Y-%m-%d") if exc.exchange_date else "date"
 
-        exc_pdf = target_dir / f"{exc_no}.pdf"
+        exc_d_str = exc.exchange_date.strftime("%d-%m-%Y") if exc.exchange_date else datetime.now().strftime("%d-%m-%Y")
+        exc_pdf = target_dir / f"{exc_d_str}.pdf"
         legacy_exc = target_dir / f"Exchange_{exc_no}_{exc_date}.pdf"
         if legacy_exc.exists():
             try: legacy_exc.unlink()
@@ -1717,43 +1724,55 @@ def archive_all_store_documents(db: Session, store_id: int, base_dir: Path, forc
 
             counts["exchanges"] += 1
 
-    # Clean up orphan customer & supplier directories
-
+    # Clean up orphan customer & supplier directories across PC AND USB
     valid_sales = {_sanitize_name(f"{(c.first_name + ' ' + (c.last_name or '')).strip()}_{c.phone_number}", default=f"Customer_{c.id}") for c in customers}
-
     valid_sales.add("Walkin_Customers")
 
-    if sales_root.exists():
-
-        for d in sales_root.iterdir():
-
-            if d.is_dir() and d.name not in valid_sales:
-
-                try:
-
-                    shutil.rmtree(d, ignore_errors=True)
-
-                except Exception:
-
-                    pass
-
     valid_purchases = {_sanitize_name(f"{s.name}_{s.mobile}", default=f"Supplier_{s.id}") for s in sellers}
-
     valid_purchases.add("Unknown_Suppliers")
 
-    if purchases_root.exists():
+    all_roots = get_all_archive_roots()
+    for rt in all_roots:
+        r_sales = rt / "Archived_PDFs" / "Sales"
+        if r_sales.exists():
+            for d in list(r_sales.iterdir()):
+                if d.is_dir() and d.name not in valid_sales:
+                    try:
+                        shutil.rmtree(d, ignore_errors=True)
+                        print(f"[Archive Prune] Removed orphan sales directory {d}")
+                    except Exception:
+                        pass
+                elif d.is_dir():
+                    # Purge non-date PDFs in valid directories
+                    for f in list(d.glob("*.pdf")):
+                        stem = f.stem
+                        is_date_only = len(stem) == 10 and stem[2] == '-' and stem[5] == '-'
+                        if not is_date_only and not f.name.startswith("Statement_"):
+                            try:
+                                f.unlink()
+                                print(f"[Archive Purge Legacy] Removed old layout {f}")
+                            except Exception:
+                                pass
 
-        for d in purchases_root.iterdir():
-
-            if d.is_dir() and d.name not in valid_purchases:
-
-                try:
-
-                    shutil.rmtree(d, ignore_errors=True)
-
-                except Exception:
-
-                    pass
+        r_pur = rt / "Archived_PDFs" / "Purchases"
+        if r_pur.exists():
+            for d in list(r_pur.iterdir()):
+                if d.is_dir() and d.name not in valid_purchases:
+                    try:
+                        shutil.rmtree(d, ignore_errors=True)
+                        print(f"[Archive Prune] Removed orphan purchases directory {d}")
+                    except Exception:
+                        pass
+                elif d.is_dir():
+                    for f in list(d.glob("*.pdf")):
+                        stem = f.stem
+                        is_date_only = len(stem) == 10 and stem[2] == '-' and stem[5] == '-'
+                        if not is_date_only and not f.name.startswith("Statement_"):
+                            try:
+                                f.unlink()
+                                print(f"[Archive Purge Legacy] Removed old layout {f}")
+                            except Exception:
+                                pass
 
     return {
 
@@ -1818,235 +1837,147 @@ def _save_pdf_to_roots(source_pdf: Path, relative_dest_path: Path):
             print(f"[Archive Mirror] Error copying to {dest}: {e}")
 
 def archive_single_invoice(invoice_id: int, db: Session = None):
-
     close_db = False
-
     if db is None:
-
         from app.db.database import SessionLocal
-
         db = SessionLocal()
-
         close_db = True
-
     try:
-
         from app.services.invoice_pdf_service import InvoicePDFService
-
         from app.services.luxury_pdf_service import generate_luxury_bill_html, render_html_to_pdf
-
         from app.core.config import DATA_DIR
-
         inv = db.query(Invoice).filter(Invoice.id == invoice_id).first()
-
         if not inv:
-
             return
-
         store_info = _get_store_header(db, inv.store_id or 1)
-
         c_obj = db.query(Customer).filter(Customer.id == inv.customer_id).first() if inv.customer_id else None
-
         if c_obj:
-
             c_full = f"{c_obj.first_name} {c_obj.last_name or ''}".strip()
-
             folder_name = _sanitize_name(f"{c_full}_{c_obj.phone_number}", default=f"Customer_{inv.customer_id}")
-
         else:
-
             folder_name = "Walkin_Customers"
 
-        inv_no = _sanitize_name(inv.invoice_number or f"INV-{inv.id}")
-
-        rel_path = Path("Sales") / folder_name / f"{inv_no}.pdf"
-
+        inv_d_str = inv.invoice_date.strftime("%d-%m-%Y") if inv.invoice_date else datetime.now().strftime("%d-%m-%Y")
+        rel_path = Path("Sales") / folder_name / f"{inv_d_str}.pdf"
         primary_pdf = DATA_DIR / "Archived_PDFs" / rel_path
-
         primary_pdf.parent.mkdir(parents=True, exist_ok=True)
 
-        if primary_pdf.exists() and primary_pdf.stat().st_size > 50000:
+        inv_data = InvoicePDFService.get_invoice_pdf_data(inv.id, db)
+        inv_html = generate_luxury_bill_html(inv_data)
+        render_html_to_pdf(inv_html, primary_pdf)
+        _save_pdf_to_roots(primary_pdf, rel_path)
 
-            # Already saved by frontend with luxury layout! Don't overwrite it.
-
-            _save_pdf_to_roots(primary_pdf, rel_path)
-
-        else:
-
-            inv_data = InvoicePDFService.get_invoice_pdf_data(inv.id, db)
-
-            inv_html = generate_luxury_bill_html(inv_data)
-
-            if not render_html_to_pdf(inv_html, primary_pdf):
-
-                generate_invoice_pdf(inv, store_info, primary_pdf)
-
-            _save_pdf_to_roots(primary_pdf, rel_path)
+        # Purge any old name variants in that folder across all roots
+        for rt in get_all_archive_roots():
+            target_f = rt / "Archived_PDFs" / "Sales" / folder_name
+            if target_f.exists():
+                for old_f in target_f.glob("*.pdf"):
+                    stem = old_f.stem
+                    is_date_only = len(stem) == 10 and stem[2] == '-' and stem[5] == '-'
+                    if not is_date_only and not old_f.name.startswith("Statement_"):
+                        try: old_f.unlink()
+                        except Exception: pass
 
         if inv.customer_id:
-
             archive_single_customer_statement(inv.customer_id, db)
-
     except Exception as e:
-
         print(f"[Archive Single Invoice Error] {e}")
-
     finally:
-
         if close_db:
-
             db.close()
 
 def archive_single_exchange(exchange_id: int, db: Session = None):
-
     close_db = False
-
     if db is None:
-
         from app.db.database import SessionLocal
-
         db = SessionLocal()
-
         close_db = True
-
     try:
-
         from app.services.invoice_pdf_service import InvoicePDFService
-
         from app.services.luxury_pdf_service import generate_luxury_bill_html, render_html_to_pdf
-
         from app.core.config import DATA_DIR
-
         exc = db.query(Exchange).filter(Exchange.id == exchange_id).first()
-
         if not exc:
-
             return
-
         store_info = _get_store_header(db, exc.store_id or 1)
-
         c_obj = db.query(Customer).filter(Customer.id == exc.customer_id).first() if exc.customer_id else None
-
         if c_obj:
-
             c_full = f"{c_obj.first_name} {c_obj.last_name or ''}".strip()
-
             folder_name = _sanitize_name(f"{c_full}_{c_obj.phone_number}", default=f"Customer_{exc.customer_id}")
-
         else:
-
             folder_name = "Walkin_Customers"
 
-        exc_no = _sanitize_name(f"EXC-{exc.id}")
-
-        rel_path = Path("Sales") / folder_name / f"{exc_no}.pdf"
-
+        exc_d_str = exc.date.strftime("%d-%m-%Y") if getattr(exc, 'date', None) else datetime.now().strftime("%d-%m-%Y")
+        rel_path = Path("Sales") / folder_name / f"{exc_d_str}.pdf"
         primary_pdf = DATA_DIR / "Archived_PDFs" / rel_path
-
         primary_pdf.parent.mkdir(parents=True, exist_ok=True)
 
-        if primary_pdf.exists() and primary_pdf.stat().st_size > 50000:
+        exc_data = InvoicePDFService.get_exchange_pdf_data(exc.id, db)
+        exc_html = generate_luxury_bill_html(exc_data)
+        render_html_to_pdf(exc_html, primary_pdf)
+        _save_pdf_to_roots(primary_pdf, rel_path)
 
-            # Already saved by frontend with luxury layout! Don't overwrite it.
-
-            _save_pdf_to_roots(primary_pdf, rel_path)
-
-        else:
-
-            exc_data = InvoicePDFService.get_exchange_pdf_data(exc.id, db)
-
-            exc_html = generate_luxury_bill_html(exc_data)
-
-            if not render_html_to_pdf(exc_html, primary_pdf):
-
-                generate_exchange_pdf(exc, store_info, primary_pdf)
-
-            _save_pdf_to_roots(primary_pdf, rel_path)
+        for rt in get_all_archive_roots():
+            target_f = rt / "Archived_PDFs" / "Sales" / folder_name
+            if target_f.exists():
+                for old_f in target_f.glob("*.pdf"):
+                    stem = old_f.stem
+                    is_date_only = len(stem) == 10 and stem[2] == '-' and stem[5] == '-'
+                    if not is_date_only and not old_f.name.startswith("Statement_"):
+                        try: old_f.unlink()
+                        except Exception: pass
 
         if exc.customer_id:
-
             archive_single_customer_statement(exc.customer_id, db)
-
     except Exception as e:
-
         print(f"[Archive Single Exchange Error] {e}")
-
     finally:
-
         if close_db:
-
             db.close()
 
 def archive_single_purchase(purchase_id: int, db: Session = None):
-
     close_db = False
-
     if db is None:
-
         from app.db.database import SessionLocal
-
         db = SessionLocal()
-
         close_db = True
-
     try:
-
         from app.services.invoice_pdf_service import InvoicePDFService
-
         from app.services.luxury_pdf_service import generate_luxury_bill_html, render_html_to_pdf
-
         from app.core.config import DATA_DIR
-
         pur = db.query(Purchase).filter(Purchase.id == purchase_id).first()
-
         if not pur:
-
             return
-
         store_info = _get_store_header(db, pur.store_id or 1)
+        s_obj = db.query(Seller).filter(Seller.id == pur.seller_id).first() if pur.seller_id else None
+        folder_name = _sanitize_name(f"{s_obj.name}_{s_obj.mobile}", default=f"Supplier_{pur.seller_id}") if s_obj else "Unassigned_Suppliers"
 
-        s = pur.seller
-
-        if s:
-
-            folder_name = _sanitize_name(f"{s.name}_{s.mobile}", default=f"Supplier_{s.id}")
-
-        else:
-
-            folder_name = "Unknown_Suppliers"
-
-        pur_no = _sanitize_name(pur.purchase_number or f"PUR-{pur.id}")
-
-        pur_date = pur.created_at.strftime("%Y-%m-%d") if pur.created_at else "date"
-
-        rel_path = Path("Purchases") / folder_name / f"{pur_no}.pdf"
-
+        pur_d_str = pur.purchase_date.strftime("%d-%m-%Y") if getattr(pur, "purchase_date", None) else (pur.created_at.strftime("%d-%m-%Y") if getattr(pur, "created_at", None) else datetime.now().strftime("%d-%m-%Y"))
+        rel_path = Path("Purchases") / folder_name / f"{pur_d_str}.pdf"
         primary_pdf = DATA_DIR / "Archived_PDFs" / rel_path
-
         primary_pdf.parent.mkdir(parents=True, exist_ok=True)
 
         pur_data = InvoicePDFService.get_purchase_pdf_data(pur.id, db)
-
         pur_html = generate_luxury_bill_html(pur_data)
-
-        if not render_html_to_pdf(pur_html, primary_pdf):
-
-            generate_purchase_pdf(pur, store_info, primary_pdf)
-
+        render_html_to_pdf(pur_html, primary_pdf)
         _save_pdf_to_roots(primary_pdf, rel_path)
 
+        for rt in get_all_archive_roots():
+            target_f = rt / "Archived_PDFs" / "Purchases" / folder_name
+            if target_f.exists():
+                for old_f in target_f.glob("*.pdf"):
+                    stem = old_f.stem
+                    is_date_only = len(stem) == 10 and stem[2] == '-' and stem[5] == '-'
+                    if not is_date_only and not old_f.name.startswith("Statement_"):
+                        try: old_f.unlink()
+                        except Exception: pass
+
         if pur.seller_id:
-
             archive_single_supplier_statement(pur.seller_id, db)
-
     except Exception as e:
-
         print(f"[Archive Single Purchase Error] {e}")
-
     finally:
-
         if close_db:
-
             db.close()
 
 def archive_single_customer_statement(customer_id: int, db: Session = None):

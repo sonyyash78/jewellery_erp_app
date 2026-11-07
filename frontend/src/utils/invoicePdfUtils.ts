@@ -12,6 +12,28 @@ export interface InvoicePDFData {
   totals: any;
 }
 
+export const getFormatDateOnly = (dateVal?: any): string => {
+  if (!dateVal) {
+    const d = new Date();
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    return `${day}-${month}-${d.getFullYear()}`;
+  }
+  try {
+    const d = new Date(dateVal);
+    if (isNaN(d.getTime())) {
+      const parts = String(dateVal).split('T')[0].split('-');
+      if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}`;
+      return String(dateVal).split('T')[0];
+    }
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    return `${day}-${month}-${d.getFullYear()}`;
+  } catch {
+    return '01-01-2026';
+  }
+};
+
 export const normalizeMetal = (metalType: string | undefined): string => {
   if (!metalType) return '';
   const m = metalType.toLowerCase();
@@ -457,9 +479,13 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
       }
     }
     
+    const rawDate = data.invoice?.invoice_date || data.invoice?.date || data.invoice?.created_at;
+    const dateFormatted = getFormatDateOnly(rawDate);
+    const pdfFilename = `${dateFormatted}.pdf`;
+
     const opt: any = {
       margin:       0,
-      filename:     `${data.invoice?.invoice_number || 'INVOICE'}.pdf`,
+      filename:     pdfFilename,
       image:        { type: 'jpeg', quality: 1.0 },
       html2canvas:  { scale: 3, useCORS: true, letterRendering: true, windowWidth: 794 }, // Explicit window width ensures correct scaling
       jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
@@ -485,7 +511,7 @@ export const generateInvoicePDF = async (data: InvoicePDFData) => {
         const cleanName = rawName.replace(/[\\/*?:"<>|\s]/g, '_');
         const cleanPhone = phone ? phone.replace(/[\\/*?:"<>|\s]/g, '_') : '';
         const folderName = cleanPhone ? `${cleanName}_${cleanPhone}` : cleanName;
-        const fileName = `${inv.invoice_number || 'INVOICE'}.pdf`;
+        const fileName = `${dateFormatted}.pdf`;
 
         await savePdfToVault(category, folderName, fileName, base64Data);
       }
