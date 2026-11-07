@@ -5,6 +5,7 @@ import { Calculator, Trash2, Edit2, RotateCcw, Edit, Receipt } from 'lucide-reac
 import toast from 'react-hot-toast';
 import CheckoutModal from './CheckoutModal';
 import LiveRatesModal from './LiveRatesModal';
+import InvoicePreviewModal from '../../components/invoices/InvoicePreviewModal';
 
 export default function LiveBillSummary() {
   const {
@@ -23,6 +24,8 @@ export default function LiveBillSummary() {
   const [showCheckout, setShowCheckout] = useState(false);
   const [showRatesModal, setShowRatesModal] = useState(false);
   const [checkoutPayload, setCheckoutPayload] = useState<any>(null);
+  const [previewInvoiceId, setPreviewInvoiceId] = useState<number | null>(null);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
 
   // ── Totals & Calculations ──
   const baseTaxableAmount = cart.reduce((sum, item) => sum + (item.taxableAmount || 0), 0);
@@ -489,11 +492,28 @@ export default function LiveBillSummary() {
           payload={checkoutPayload}
           grandTotal={grandTotal}
           onClose={() => setShowCheckout(false)}
-          onSuccess={() => {
+          onSuccess={(newId?: number) => {
             setShowCheckout(false);
             setCheckoutPayload(null);
             clearCart();
             useBillingStore.getState().setSelectedCustomerId(null);
+            if (newId) {
+              setPreviewInvoiceId(newId);
+              setShowPreviewModal(true);
+            }
+          }}
+        />
+      )}
+
+      {/* Bill Print & PDF Preview Modal */}
+      {showPreviewModal && previewInvoiceId && (
+        <InvoicePreviewModal
+          isOpen={showPreviewModal}
+          invoiceId={previewInvoiceId}
+          type="invoice"
+          onClose={() => {
+            setShowPreviewModal(false);
+            setPreviewInvoiceId(null);
           }}
         />
       )}

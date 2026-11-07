@@ -9,7 +9,7 @@ interface CheckoutModalProps {
   payload: any;
   grandTotal: number;
   onClose: () => void;
-  onSuccess: (invoiceId: number) => void;
+  onSuccess: (invoiceId: number, shouldPrint?: boolean) => void;
 }
 
 export default function CheckoutModal({ payload, grandTotal, onClose, onSuccess }: CheckoutModalProps) {
@@ -320,25 +320,7 @@ export default function CheckoutModal({ payload, grandTotal, onClose, onSuccess 
       });
       toast.success(`Invoice ${res.data.invoice_number} generated!`);
       
-      if (shouldPrint) {
-        try {
-          const pdfRes = await axiosClient.get(`/invoices/${res.data.id}/pdf-data`);
-          const pdfData = pdfRes.data;
-          pdfData.invoice.amount_paid    = cashReceived;
-          pdfData.invoice.balance_due    = finalBalanceAmount;
-          pdfData.invoice.payment_method = paymentMethod;
-          pdfData.invoice.transaction_id = paymentMethod === 'UPI' ? upiId : paymentMethod === 'Card' ? cardRef : paymentMethod === 'Cheque' ? `${chequeNo} | ${bankName} | ${chequeDate}` : '-';
-          pdfData.invoice.bill_type = backendBillType;
-          pdfData.invoice.settlement_type = backendSettlementType;
-          pdfData.invoice.settlement_metal_type = cashBalanceAction === 'metal_gold' ? 'Gold' : cashBalanceAction === 'metal_silver' ? 'Silver' : cashBalanceAction === 'metal_both' ? 'Both' : null;
-          pdfData.invoice.gold_balance_metal_weight = goldBalMetal;
-          pdfData.invoice.silver_balance_metal_weight = silverBalMetal;
-          const { printInvoiceDirect } = await import('../../utils/invoicePdfUtils');
-          await printInvoiceDirect(pdfData);
-        } catch (pdfErr) { console.error('Auto print generation failed', pdfErr); }
-      }
-      
-      onSuccess(res.data.id);
+      onSuccess(res.data.id, shouldPrint);
     } catch (e: any) {
       toast.error(getErrorMessage(e, 'Failed to generate invoice'));
     } finally { setLoading(false); }

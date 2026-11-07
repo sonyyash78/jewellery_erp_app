@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDatabasePath: () => ipcRenderer.invoke('get-database-path'),
   getStorageStatus: () => ipcRenderer.invoke('get-storage-status'),
   openDatabaseFolder: () => ipcRenderer.invoke('open-database-folder'),
+  openPdfVaultFolder: (target) => ipcRenderer.invoke('open-pdf-vault-folder', target),
+  archivePdfsNow: () => ipcRenderer.invoke('archive-pdfs-now'),
   backupDatabase: () => ipcRenderer.invoke('backup-database'),
   backupToUsb: () => ipcRenderer.invoke('backup-to-usb'),
   syncNow: () => ipcRenderer.invoke('sync-now'),

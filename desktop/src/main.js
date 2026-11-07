@@ -5,6 +5,9 @@ const http = require('http');
 const { spawn, exec, execSync } = require('child_process');
 
 // 1. Strict Single-Instance Lock — prevents infinite windows!
+// Enable Chromium Print Preview
+app.commandLine.appendSwitch('enable-print-preview');
+
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   console.log('[Desktop] Another instance is already running. Quitting.');
@@ -125,6 +128,69 @@ function triggerCheckpoint() {
 /**
  * Safely copy SQLite database files (.db, .db-wal, .db-shm)
  */
+
+/**
+ * Trigger backend to archive all latest bills, exchanges, purchases, and statements to PDF
+ */
+function triggerPdfArchive() {
+  return new Promise((resolve) => {
+    const req = http.request(
+      {
+        hostname: '127.0.0.1',
+        port: BACKEND_PORT,
+        path: '/api/v1/archive-pdfs',
+        method: 'POST',
+        timeout: 10000
+      },
+      (res) => {
+        resolve(res.statusCode === 200);
+      }
+    );
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => {
+      req.abort();
+      resolve(false);
+    });
+    req.end();
+  });
+}
+
+/**
+ * Recursively sync a directory, copying new and modified files
+ */
+function syncDirectory(srcDir, destDir) {
+  if (!fs.existsSync(srcDir)) return;
+  if (!fs.existsSync(destDir)) {
+    try { fs.mkdirSync(destDir, { recursive: true }); } catch (e) {}
+  }
+  try {
+    const entries = fs.readdirSync(srcDir, { withFileTypes: true });
+    for (const entry of entries) {
+      const srcPath = path.join(srcDir, entry.name);
+      const destPath = path.join(destDir, entry.name);
+      if (entry.isDirectory()) {
+        syncDirectory(srcPath, destPath);
+      } else if (entry.isFile()) {
+        let shouldCopy = false;
+        if (!fs.existsSync(destPath)) {
+          shouldCopy = true;
+        } else {
+          const sStat = fs.statSync(srcPath);
+          const dStat = fs.statSync(destPath);
+          if (sStat.mtimeMs > dStat.mtimeMs + 1000 || sStat.size !== dStat.size) {
+            shouldCopy = true;
+          }
+        }
+        if (shouldCopy) {
+          try { fs.copyFileSync(srcPath, destPath); } catch (e) {}
+        }
+      }
+    }
+  } catch (err) {
+    console.error(`[Storage] syncDirectory error: ${err.message}`);
+  }
+}
+
 function safeCopySqliteDb(srcPath, destPath) {
   if (!fs.existsSync(srcPath)) return false;
   const destDir = path.dirname(destPath);
@@ -171,6 +237,15 @@ async function syncPcToUsb(usbLetter) {
 
     if (fs.existsSync(pcDbPath)) {
       safeCopySqliteDb(pcDbPath, usbDbPath);
+
+      // Auto-archive & mirror PDF Vault (Invoices, Purchases, Statements)
+      triggerPdfArchive().catch(() => {});
+      const pcArchiveDir = path.join(pcDir, 'Archived_PDFs');
+      const usbArchiveDir = path.join(usbDir, 'Archived_PDFs');
+      if (fs.existsSync(pcArchiveDir)) {
+        syncDirectory(pcArchiveDir, usbArchiveDir);
+      }
+
       lastSyncTimestamp = new Date().toISOString();
       return true;
     }
@@ -368,6 +443,14 @@ async function backupToUsb(parentWin) {
 
     safeCopySqliteDb(pcDbPath, liveUsbDb);
     safeCopySqliteDb(pcDbPath, snapshotDb);
+
+    // Ensure all customer & supplier PDF folders are generated and mirrored to USB
+    await triggerPdfArchive();
+    const pcArchiveDir = path.join(pcDir, 'Archived_PDFs');
+    const usbArchiveDir = path.join(liveDir, 'Archived_PDFs');
+    if (fs.existsSync(pcArchiveDir)) {
+      syncDirectory(pcArchiveDir, usbArchiveDir);
+    }
     lastSyncTimestamp = new Date().toISOString();
     notifyStorageStatusChanged();
 
@@ -721,6 +804,33 @@ ipcMain.on('get-backend-url', (event) => {
 
 ipcMain.handle('get-database-path', () => activeDbPath);
 ipcMain.handle('get-storage-status', () => getStorageStatus());
+
+
+ipcMain.handle('open-pdf-vault-folder', async (_, target) => {
+  const drives = getUsbDrives();
+  let targetPath = path.join(pcDir, 'Archived_PDFs');
+  if (target === 'usb' && drives.length > 0) {
+    targetPath = path.join(drives[0].letter, 'JewelleryERP_Data', 'Archived_PDFs');
+  }
+  if (!fs.existsSync(targetPath)) {
+    try { fs.mkdirSync(targetPath, { recursive: true }); } catch (e) {}
+  }
+  shell.openPath(targetPath);
+  return { success: true, path: targetPath };
+});
+
+ipcMain.handle('archive-pdfs-now', async () => {
+  const ok = await triggerPdfArchive();
+  const drives = getUsbDrives();
+  if (drives.length > 0) {
+    const pcArchiveDir = path.join(pcDir, 'Archived_PDFs');
+    const usbArchiveDir = path.join(drives[0].letter, 'JewelleryERP_Data', 'Archived_PDFs');
+    if (fs.existsSync(pcArchiveDir)) {
+      syncDirectory(pcArchiveDir, usbArchiveDir);
+    }
+  }
+  return { success: ok };
+});
 
 ipcMain.handle('open-database-folder', () => {
   shell.openPath(pcDir);

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { axiosClient } from '../../api/axiosClient';
 import { useAuthStore } from '../../store/authStore';
-import { Save, Upload, Download, ShieldCheck, Database, Building2, KeyRound, Users, FolderOpen } from 'lucide-react';
+import { Save, Upload, Download, ShieldCheck, Database, Building2, KeyRound, Users, FolderOpen, FileText, RefreshCw } from 'lucide-react';
 import { getErrorMessage } from '../../utils/errorUtils';
 import { BACKEND_BASE_URL } from '../../config/api';
 import toast from 'react-hot-toast';
@@ -37,6 +37,40 @@ export default function SettingsModule() {
   const isDesktop = Boolean((window as any).electronAPI);
   const [desktopStorage, setDesktopStorage] = useState<any>(null);
   const [savingDesktopUsb, setSavingDesktopUsb] = useState(false);
+  const [archivingPdfs, setArchivingPdfs] = useState(false);
+  const [pdfArchiveStats, setPdfArchiveStats] = useState<any>(null);
+
+  useEffect(() => {
+    if (activeTab === 'database') {
+      axiosClient.get('/backup/archive-status')
+        .then(res => setPdfArchiveStats(res.data))
+        .catch(() => {});
+    }
+  }, [activeTab]);
+
+  const handleRefreshPdfArchive = async () => {
+    setArchivingPdfs(true);
+    toast.loading('Organizing customer & supplier PDF folders...', { id: 'pdf-vault-sync' });
+    try {
+      if ((window as any).electronAPI?.archivePdfsNow) {
+        await (window as any).electronAPI.archivePdfsNow();
+      } else {
+        await axiosClient.post('/backup/archive-pdfs', { force_refresh: true });
+      }
+      const res = await axiosClient.get('/backup/archive-status');
+      setPdfArchiveStats(res.data);
+      toast.success(
+        res.data?.total_pdf_count 
+          ? `Vault updated! ${res.data.total_pdf_count} document PDFs organized.` 
+          : 'PDF Vault organized successfully!',
+        { id: 'pdf-vault-sync' }
+      );
+    } catch (e: any) {
+      toast.error('Failed to organize PDF vault', { id: 'pdf-vault-sync' });
+    } finally {
+      setArchivingPdfs(false);
+    }
+  };
 
   useEffect(() => {
     const electronAPI = (window as any).electronAPI;
@@ -742,6 +776,53 @@ export default function SettingsModule() {
                   </div>
                 </div>
               )}
+
+              {/* Option: Organized Customer & Supplier PDF Vault */}
+              <div className="p-5 border-2 border-amber-500/40 rounded-xl bg-amber-950/10 hover:border-amber-500/60 transition-all space-y-3 shadow-lg">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="space-y-1 max-w-lg">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-base font-bold text-white flex items-center gap-2">
+                        <FileText className="text-amber-400" size={18} />
+                        Organized PDF Vault (Customer &amp; Supplier Wise)
+                      </h3>
+                      <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        {pdfArchiveStats?.total_pdf_count ? `${pdfArchiveStats.total_pdf_count} PDFs Saved` : 'Auto-Archived'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-300 leading-relaxed">
+                      Every sales bill, exchange receipt, purchase inward, and account statement is automatically organized into separate folders named after each customer and supplier. All documents remain 100% accessible as standard PDFs on your PC and Pendrive without needing database tools.
+                    </p>
+                    <div className="pt-1 text-[11px] font-mono text-gray-400 truncate">
+                      Vault Path: <span className="text-amber-400">{pdfArchiveStats?.archive_dir || 'JewelleryERP_Data/Archived_PDFs'}</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap md:flex-col gap-2 shrink-0">
+                    <button
+                      onClick={handleRefreshPdfArchive}
+                      disabled={archivingPdfs}
+                      className="bg-amber-500 hover:bg-amber-400 text-black px-4 py-2 rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-md disabled:opacity-50"
+                    >
+                      <RefreshCw size={14} className={archivingPdfs ? 'animate-spin' : ''} />
+                      {archivingPdfs ? 'Archiving...' : 'Refresh All PDFs Now'}
+                    </button>
+                    <button
+                      onClick={() => (window as any).electronAPI?.openPdfVaultFolder?.('pc')}
+                      className="bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 px-4 py-2 rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-2"
+                    >
+                      <FolderOpen size={14} /> Open Vault (PC)
+                    </button>
+                    {desktopStorage?.usbConnected && (
+                      <button
+                        onClick={() => (window as any).electronAPI?.openPdfVaultFolder?.('usb')}
+                        className="bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-700/50 px-4 py-2 rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-2"
+                      >
+                        <FolderOpen size={14} /> Open Vault ({desktopStorage?.usbLetter || 'USB'})
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
 
               {/* Option 1: Master Excel */}
               <div className="p-5 border border-emerald-500/30 rounded-xl bg-black/30 hover:border-emerald-500/50 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4">

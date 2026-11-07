@@ -837,3 +837,55 @@ def download_all_tables_single_excel(
         media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         background=BackgroundTask(os.remove, excel_path)
     )
+
+
+# -------------------------------------------------------------------
+# ORGANIZED PDF VAULT ARCHIVE ROUTES (Customer & Supplier folders)
+# -------------------------------------------------------------------
+from pathlib import Path
+from pydantic import BaseModel
+from app.services.pdf_archive_service import archive_all_store_documents
+
+class ArchivePdfsRequest(BaseModel):
+    custom_dir: Optional[str] = None
+    force_refresh: bool = False
+
+@router.post("/archive-pdfs")
+def trigger_pdf_archive(
+    payload: Optional[ArchivePdfsRequest] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
+    store_id = require_tenant_id(current_user)
+    
+    if payload and payload.custom_dir and os.path.exists(payload.custom_dir):
+        base_dir = Path(payload.custom_dir)
+    else:
+        from app.core.config import DATA_DIR
+        base_dir = DATA_DIR
+
+    force = payload.force_refresh if payload else False
+    result = archive_all_store_documents(db, store_id=store_id, base_dir=base_dir, force_refresh=force)
+    return result
+
+@router.get("/archive-status")
+def get_pdf_archive_status(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
+    store_id = require_tenant_id(current_user)
+    from app.core.config import DATA_DIR
+    archive_root = DATA_DIR / "Archived_PDFs"
+    sales_dir = archive_root / "Sales"
+    purchases_dir = archive_root / "Purchases"
+
+    sales_count = len(list(sales_dir.rglob("*.pdf"))) if sales_dir.exists() else 0
+    purchases_count = len(list(purchases_dir.rglob("*.pdf"))) if purchases_dir.exists() else 0
+
+    return {
+        "exists": archive_root.exists(),
+        "archive_dir": str(archive_root),
+        "sales_pdf_count": sales_count,
+        "purchases_pdf_count": purchases_count,
+        "total_pdf_count": sales_count + purchases_count
+    }

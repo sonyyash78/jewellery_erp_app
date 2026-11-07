@@ -211,6 +211,18 @@ def checkpoint_db():
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+@app.post("/api/v1/archive-pdfs")
+def internal_archive_pdfs():
+    try:
+        from app.db.database import SessionLocal
+        from app.services.pdf_archive_service import archive_all_store_documents
+        from app.core.config import DATA_DIR
+        with SessionLocal() as db:
+            result = archive_all_store_documents(db, store_id=1, base_dir=DATA_DIR, force_refresh=False)
+            return result
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 # Serve static frontend SPA build for offline desktop usage
 frontend_dist = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist"))
 if os.path.exists(frontend_dist):

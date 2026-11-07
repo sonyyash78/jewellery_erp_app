@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { axiosClient } from '../../api/axiosClient';
-import { generateInvoicePDF, printInvoiceDirect } from '../../utils/invoicePdfUtils';
+import { generateInvoicePDF } from '../../utils/invoicePdfUtils';
 import {
   Search,
   Filter,
@@ -13,6 +13,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import InvoicePreviewModal from '../../components/invoices/InvoicePreviewModal';
 
 interface Invoice {
   id: number;
@@ -36,6 +37,9 @@ export default function InvoiceHistory() {
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
   const [showViewModal, setShowViewModal] = useState(false);
+  const [previewInvoiceId, setPreviewInvoiceId] = useState<number | null>(null);
+  const [previewType, setPreviewType] = useState<'invoice' | 'exchange' | 'purchase'>('invoice');
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
   const itemsPerPage = 10;
 
   useEffect(() => {
@@ -102,13 +106,12 @@ export default function InvoiceHistory() {
     }
   };
 
-  const handlePrint = async (invoice: Invoice) => {
-    try {
-      const res = await axiosClient.get(getPdfEndpoint(invoice));
-      await printInvoiceDirect(res.data);
-    } catch (error) {
-      toast.error('Failed to print invoice');
-    }
+  const handlePrint = (invoice: Invoice) => {
+    const isEx = invoice.invoice_number.startsWith('EXC-');
+    const isPur = invoice.invoice_number.startsWith('PUR-');
+    setPreviewType(isPur ? 'purchase' : isEx ? 'exchange' : 'invoice');
+    setPreviewInvoiceId(invoice.id);
+    setShowPreviewModal(true);
   };
 
   const handleWhatsApp = async (invoice: Invoice) => {
@@ -422,6 +425,19 @@ export default function InvoiceHistory() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Interactive Bill Print & PDF Preview Modal */}
+      {showPreviewModal && previewInvoiceId && (
+        <InvoicePreviewModal
+          isOpen={showPreviewModal}
+          invoiceId={previewInvoiceId}
+          type={previewType}
+          onClose={() => {
+            setShowPreviewModal(false);
+            setPreviewInvoiceId(null);
+          }}
+        />
       )}
     </div>
   );
