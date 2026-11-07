@@ -1690,7 +1690,7 @@ ipcMain.handle('delete-vault-pdf', async (_, { category, folderName, docNumber, 
         for (const f of files) {
           const fLower = f.toLowerCase();
           const matchesDoc = cleanDoc && fLower.includes(cleanDoc) && fLower.endsWith('.pdf');
-          const matchesDate = cleanDate && (fLower === ${cleanDate}.pdf || fLower.includes(cleanDate));
+          const matchesDate = cleanDate && (fLower === (cleanDate + '.pdf') || fLower.includes(cleanDate));
           if (matchesDoc || matchesDate) {
             try { fs.unlinkSync(path.join(d, f)); } catch (e) {}
           }
@@ -1730,9 +1730,9 @@ ipcMain.handle('delete-party-folder', async (_, { category, folderName }) => {
         if (e.toLowerCase() === cleanTarget || e.toLowerCase().includes(cleanTarget)) {
           try {
             fs.rmSync(full, { recursive: true, force: true });
-            console.log([Desktop Delete Party] Removed folder );
+            console.log('[Desktop Delete Party] Removed folder ' + full);
           } catch (delErr) {
-            console.error([Desktop Delete Party Error] );
+            console.error('[Desktop Delete Party Error] ' + (delErr ? delErr.message : ''));
           }
         }
       }
