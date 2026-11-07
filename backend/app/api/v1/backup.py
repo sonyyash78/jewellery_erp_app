@@ -843,6 +843,7 @@ def download_all_tables_single_excel(
 # ORGANIZED PDF VAULT ARCHIVE ROUTES (Customer & Supplier folders)
 # -------------------------------------------------------------------
 from pathlib import Path
+from typing import Dict, Any, Optional
 from pydantic import BaseModel
 from app.services.pdf_archive_service import archive_all_store_documents
 
