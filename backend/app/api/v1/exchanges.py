@@ -64,17 +64,35 @@ def create_exchange(
 
     # Old items (credit customer)
     for old_item_in in exchange_in.old_items:
+        # Infer touch and fine weight if 0 or missing
+        item_touch = float(old_item_in.touch or 0.0)
+        item_net_wt = float(old_item_in.net_weight or 0.0)
+        if item_touch <= 0:
+            p_str = (old_item_in.purity or '').upper()
+            if '24K' in p_str: item_touch = 99.9
+            elif '22K' in p_str: item_touch = 91.6
+            elif '20K' in p_str: item_touch = 83.3
+            elif '18K' in p_str: item_touch = 75.0
+            elif '14K' in p_str: item_touch = 58.3
+            elif '99.9' in p_str: item_touch = 99.9
+            elif '92.5' in p_str or 'STERLING' in p_str: item_touch = 92.5
+            else: item_touch = 91.6 if (old_item_in.metal or '').lower() == 'gold' else 80.0
+
+        item_fine = float(old_item_in.fine_weight or 0.0)
+        if item_fine <= 0 and item_net_wt > 0:
+            item_fine = round(item_net_wt * (item_touch + float(old_item_in.wastage or 0.0)) / 100.0, 3)
+
         old_item = ExchangeItem(
             exchange_id=exchange.id,
             metal=old_item_in.metal,
             item_name=old_item_in.item_name,
             purity=old_item_in.purity,
-            touch=old_item_in.touch,
+            touch=item_touch,
             gross_weight=old_item_in.gross_weight,
             stone_weight=old_item_in.stone_weight,
             net_weight=old_item_in.net_weight,
             wastage=old_item_in.wastage,
-            fine_weight=old_item_in.fine_weight,
+            fine_weight=item_fine,
             labour_charge=old_item_in.labour_charge,
             testing_melting_charge=old_item_in.testing_melting_charge,
             hallmark_charge=old_item_in.hallmark_charge,
@@ -86,12 +104,20 @@ def create_exchange(
         db.add(old_item)
         if old_item_in.rate_applied == 0:
             if old_item_in.metal.lower() == 'gold':
-                base_gold_change -= float(old_item_in.fine_weight)
+                base_gold_change -= item_fine
             elif old_item_in.metal.lower() == 'silver':
-                base_silver_change -= float(old_item_in.fine_weight)
+                base_silver_change -= item_fine
 
     # New items (debit customer)
     for new_item_in in exchange_in.new_items:
+        item_touch = float(new_item_in.touch_purity or 0.0)
+        item_net_wt = float(new_item_in.net_weight or 0.0)
+        if item_touch <= 0:
+            item_touch = 91.6 if (new_item_in.metal or '').lower() == 'gold' else 99.9
+        item_fine = float(new_item_in.fine_weight or 0.0)
+        if item_fine <= 0 and item_net_wt > 0:
+            item_fine = round(item_net_wt * (item_touch + float(new_item_in.wastage or 0.0)) / 100.0, 3)
+
         new_item = ExchangeNewItem(
             exchange_id=exchange.id,
             metal=new_item_in.metal,
@@ -100,9 +126,9 @@ def create_exchange(
             gross_weight=new_item_in.gross_weight,
             stone_weight=new_item_in.stone_weight,
             net_weight=new_item_in.net_weight,
-            touch_purity=new_item_in.touch_purity,
+            touch_purity=item_touch,
             wastage=new_item_in.wastage,
-            fine_weight=new_item_in.fine_weight,
+            fine_weight=item_fine,
             making_charge_type=new_item_in.making_charge_type,
             making_charge_rate=new_item_in.making_charge_rate,
             making_charges_amount=new_item_in.making_charges_amount,
@@ -119,9 +145,9 @@ def create_exchange(
                 stock.status = "Sold"
         if new_item_in.rate_applied == 0:
             if new_item_in.metal.lower() == 'gold':
-                base_gold_change += float(new_item_in.fine_weight)
+                base_gold_change += item_fine
             elif new_item_in.metal.lower() == 'silver':
-                base_silver_change += float(new_item_in.fine_weight)
+                base_silver_change += item_fine
 
     # Now apply the user's chosen settlement type for the remaining balance
     balance_amt = float(exchange_in.balance_amount)
@@ -135,16 +161,26 @@ def create_exchange(
         else:
             debit_amount += abs(float(exchange_in.amount_paid))
 
+    req_gold_balance = float(getattr(exchange_in, 'gold_balance_metal_weight', 0.0) or 0.0)
+    req_silver_balance = float(getattr(exchange_in, 'silver_balance_metal_weight', 0.0) or 0.0)
+
     if exchange_in.settlement_type == 'Metal' or exchange_in.settlement_type == 'Hybrid':
-        # Apply the metal conversion to the ledger
-        base_gold_change += float(exchange_in.gold_balance_metal_weight)
-        base_silver_change += float(exchange_in.silver_balance_metal_weight)
+        # If user explicitly specified the net metal balance to post, use that directly to avoid double counting!
+        if abs(req_gold_balance) > 0.0001:
+            total_gold_change = req_gold_balance
+        else:
+            total_gold_change = base_gold_change
+
+        if abs(req_silver_balance) > 0.0001:
+            total_silver_change = req_silver_balance
+        else:
+            total_silver_change = base_silver_change
             
         # The cash ledger is impacted by the remaining balance_amount (hybrid cash portion)
         new_balance = float(customer.outstanding_balance or 0) + balance_amt
         
-        customer.fine_gold_balance = float(customer.fine_gold_balance or 0) + base_gold_change
-        customer.fine_silver_balance = float(customer.fine_silver_balance or 0) + base_silver_change
+        customer.fine_gold_balance = float(customer.fine_gold_balance or 0) + total_gold_change
+        customer.fine_silver_balance = float(customer.fine_silver_balance or 0) + total_silver_change
         customer.outstanding_balance = new_balance
         
         ledger_entry = CustomerLedger(
@@ -156,22 +192,24 @@ def create_exchange(
             credit=debit_amount if balance_amt == 0 else (debit_amount - balance_amt),
             balance=new_balance,
             
-            gold_debit=base_gold_change if base_gold_change > 0 else 0.0,
-            gold_credit=abs(base_gold_change) if base_gold_change < 0 else 0.0,
+            gold_debit=total_gold_change if total_gold_change > 0 else 0.0,
+            gold_credit=abs(total_gold_change) if total_gold_change < 0 else 0.0,
             gold_balance=customer.fine_gold_balance,
             
-            silver_debit=base_silver_change if base_silver_change > 0 else 0.0,
-            silver_credit=abs(base_silver_change) if base_silver_change < 0 else 0.0,
+            silver_debit=total_silver_change if total_silver_change > 0 else 0.0,
+            silver_credit=abs(total_silver_change) if total_silver_change < 0 else 0.0,
             silver_balance=customer.fine_silver_balance
         )
         db.add(ledger_entry)
 
     else:
         # Settlement in Cash
+        total_gold_change = req_gold_balance
+        total_silver_change = req_silver_balance
         new_balance = float(customer.outstanding_balance or 0) + balance_amt
         
-        customer.fine_gold_balance = float(customer.fine_gold_balance or 0) + base_gold_change
-        customer.fine_silver_balance = float(customer.fine_silver_balance or 0) + base_silver_change
+        customer.fine_gold_balance = float(customer.fine_gold_balance or 0) + total_gold_change
+        customer.fine_silver_balance = float(customer.fine_silver_balance or 0) + total_silver_change
         customer.outstanding_balance = new_balance
         
         ledger_entry = CustomerLedger(
@@ -182,12 +220,10 @@ def create_exchange(
             debit=debit_amount,
             credit=credit_amount,
             balance=new_balance,
-            
-            gold_debit=base_gold_change if base_gold_change > 0 else 0.0,
-            gold_credit=abs(base_gold_change) if base_gold_change < 0 else 0.0,
+            gold_debit=total_gold_change if total_gold_change > 0 else 0.0,
+            gold_credit=abs(total_gold_change) if total_gold_change < 0 else 0.0,
             gold_balance=customer.fine_gold_balance,
-            
-            silver_debit=base_silver_change if base_silver_change > 0 else 0.0,
+            silver_debit=total_silver_change if total_silver_change > 0 else 0.0,
             silver_credit=abs(base_silver_change) if base_silver_change < 0 else 0.0,
             silver_balance=customer.fine_silver_balance
         )

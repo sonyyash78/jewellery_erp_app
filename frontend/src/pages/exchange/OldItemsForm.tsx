@@ -8,7 +8,8 @@ export default function OldItemsForm() {
   const { addOldItem, editingOldItem, updateOldItem, setEditingOldItem } = useExchangeStore();
   const { liveRates } = useBillingStore();
   
-  const handlePuritySelect = (touchVal: number, rateVal: number) => {
+  const handlePuritySelect = (purityLabel: string, touchVal: number, rateVal: number) => {
+    setPurity(purityLabel);
     setTouch(touchVal);
     if (rateVal > 0) setRateApplied(rateVal);
   };
@@ -157,7 +158,7 @@ export default function OldItemsForm() {
                 <button 
                   type="button"
                   key={p.label}
-                  onClick={() => handlePuritySelect(p.touch, p.rate)}
+                  onClick={() => handlePuritySelect(p.label, p.touch, p.rate)}
                   className={`px-3 py-1 text-[11px] font-medium rounded border transition-colors ${touch === p.touch ? 'bg-primary/20 border-primary text-primary' : 'bg-[#1A1A20] border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200'}`}
                 >
                   {p.label}
@@ -172,7 +173,7 @@ export default function OldItemsForm() {
                 <button 
                   type="button"
                   key={p.label}
-                  onClick={() => handlePuritySelect(p.touch, 0)}
+                  onClick={() => handlePuritySelect(p.label, p.touch, 0)}
                   className={`px-3 py-1 text-[11px] font-medium rounded border transition-colors ${touch === p.touch ? 'bg-gray-700/50 border-gray-300 text-gray-200' : 'bg-[#1A1A20] border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200'}`}
                 >
                   {p.label}

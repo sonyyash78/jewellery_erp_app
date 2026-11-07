@@ -326,6 +326,33 @@ def generate_exchange_pdf(exchange: Exchange, store_info: Dict[str, str], output
     elements.append(info_table)
     elements.append(Spacer(1, 10))
 
+    if getattr(exchange, 'new_items', None) and len(exchange.new_items) > 0:
+        elements.append(Paragraph("<b>New Jewellery Purchased / Selected:</b>", styles['Heading4']))
+        elements.append(Spacer(1, 4))
+        new_rows = [['Description', 'Metal', 'Gross Wt', 'Net Wt', 'Purity', 'Rate/g', 'Total (Rs)']]
+        for ni in exchange.new_items:
+            new_rows.append([
+                ni.item_name or "New Ornament",
+                ni.metal or "Gold",
+                _format_weight(ni.gross_weight),
+                _format_weight(ni.net_weight),
+                f"{float(ni.touch_purity or 91.6):.1f}%",
+                f"{float(ni.rate_applied or 0):,.0f}",
+                _format_curr(ni.final_price)
+            ])
+        t_new = Table(new_rows, colWidths=[155, 55, 60, 60, 60, 65, 80])
+        t_new.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#0F172A')),
+            ('TEXTCOLOR', (0,0), (-1,0), colors.HexColor('#D4AF37')),
+            ('FONTSIZE', (0,0), (-1,-1), 8),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#CBD5E1')),
+            ('ALIGN', (2,0), (-1,-1), 'RIGHT'),
+            ('TOPPADDING', (0,0), (-1,-1), 4),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ]))
+        elements.append(t_new)
+        elements.append(Spacer(1, 10))
+
     elements.append(Paragraph("<b>Old Jewellery Received (Return / Scrap):</b>", styles['Heading4']))
     elements.append(Spacer(1, 4))
     old_rows = [['Description', 'Metal', 'Gross Wt', 'Net Wt', 'Melt Touch', 'Rate/g', 'Credit Value (Rs)']]
@@ -686,6 +713,13 @@ def archive_all_store_documents(db: Session, store_id: int, base_dir: Path, forc
         "total_files": 0
     }
 
+    from app.services.invoice_pdf_service import InvoicePDFService
+    from app.services.luxury_pdf_service import (
+        generate_luxury_bill_html,
+        generate_luxury_statement_html,
+        render_html_to_pdf
+    )
+
     # 1. PROCESS PURCHASES & SUPPLIER STATEMENTS
     sellers = db.query(Seller).filter(Seller.store_id == store_id).all()
     seller_map = {s.id: s for s in sellers}
@@ -697,11 +731,35 @@ def archive_all_store_documents(db: Session, store_id: int, base_dir: Path, forc
 
         stmt_pdf = s_dir / f"Statement_{_sanitize_name(s.name)}.pdf"
         try:
-            generate_supplier_statement_pdf(s, db, store_info, stmt_pdf)
+            entries = []
+            ledgers = db.query(SupplierLedger).filter(SupplierLedger.seller_id == s.id).order_by(SupplierLedger.date.asc()).all()
+            for l in ledgers:
+                entries.append({
+                    "date": (l.date.strftime("%d-%b-%Y") if getattr(l, "date", None) else ""),
+                    "type": l.voucher_type or "Ledger",
+                    "number": l.voucher_number or "-",
+                    "description": l.description or "-",
+                    "debit": float(l.debit or 0.0),
+                    "credit": float(l.credit or 0.0),
+                    "balance": float(l.balance or 0.0),
+                    "gold_debit": float(getattr(l, "gold_debit", 0.0) or 0.0),
+                    "gold_credit": float(getattr(l, "gold_credit", 0.0) or 0.0),
+                })
+            s_html = generate_luxury_statement_html(
+                s.name, s.mobile or "", "Supplier", entries, store_info,
+                float(s.current_balance or 0.0), float(getattr(s, "fine_gold_balance", 0.0) or 0.0), float(getattr(s, "fine_silver_balance", 0.0) or 0.0)
+            )
+            if not render_html_to_pdf(s_html, stmt_pdf):
+                generate_supplier_statement_pdf(s, db, store_info, stmt_pdf)
             counts["supplier_statements"] += 1
             counts["total_files"] += 1
         except Exception as e:
-            print(f"[Archive] Error generating supplier statement for {s.name}: {e}")
+            try:
+                generate_supplier_statement_pdf(s, db, store_info, stmt_pdf)
+                counts["supplier_statements"] += 1
+                counts["total_files"] += 1
+            except Exception as e2:
+                print(f"[Archive] Error generating supplier statement for {s.name}: {e2}")
 
     all_purchases = db.query(Purchase).filter(Purchase.store_id == store_id).all()
     for pur in all_purchases:
@@ -716,11 +774,19 @@ def archive_all_store_documents(db: Session, store_id: int, base_dir: Path, forc
 
         if force_refresh or not pur_pdf.exists():
             try:
-                generate_purchase_pdf(pur, store_info, pur_pdf)
+                p_data = InvoicePDFService.get_purchase_pdf_data(pur.id, db)
+                p_html = generate_luxury_bill_html(p_data)
+                if not render_html_to_pdf(p_html, pur_pdf):
+                    generate_purchase_pdf(pur, store_info, pur_pdf)
                 counts["purchases"] += 1
                 counts["total_files"] += 1
             except Exception as e:
-                print(f"[Archive] Error generating purchase PDF {p_no}: {e}")
+                try:
+                    generate_purchase_pdf(pur, store_info, pur_pdf)
+                    counts["purchases"] += 1
+                    counts["total_files"] += 1
+                except Exception as e2:
+                    print(f"[Archive] Error generating purchase PDF {p_no}: {e2}")
         else:
             counts["purchases"] += 1
 
@@ -736,11 +802,35 @@ def archive_all_store_documents(db: Session, store_id: int, base_dir: Path, forc
 
         stmt_pdf = c_dir / f"Statement_{_sanitize_name(c_full)}.pdf"
         try:
-            generate_customer_statement_pdf(c, db, store_info, stmt_pdf)
+            entries = []
+            ledgers = db.query(CustomerLedger).filter(CustomerLedger.customer_id == c.id).order_by(CustomerLedger.date.asc()).all()
+            for l in ledgers:
+                entries.append({
+                    "date": (l.date.strftime("%d-%b-%Y") if getattr(l, "date", None) else ""),
+                    "type": l.voucher_type or "Ledger",
+                    "number": l.voucher_number or "-",
+                    "description": l.description or "-",
+                    "debit": float(l.debit or 0.0),
+                    "credit": float(l.credit or 0.0),
+                    "balance": float(l.balance or 0.0),
+                    "gold_debit": float(l.gold_debit or 0.0),
+                    "gold_credit": float(l.gold_credit or 0.0),
+                })
+            c_html = generate_luxury_statement_html(
+                c_full, c.phone_number or "", "Customer", entries, store_info,
+                float(c.outstanding_balance or 0.0), float(c.fine_gold_balance or 0.0), float(c.fine_silver_balance or 0.0)
+            )
+            if not render_html_to_pdf(c_html, stmt_pdf):
+                generate_customer_statement_pdf(c, db, store_info, stmt_pdf)
             counts["customer_statements"] += 1
             counts["total_files"] += 1
         except Exception as e:
-            print(f"[Archive] Error generating customer statement for {c_full}: {e}")
+            try:
+                generate_customer_statement_pdf(c, db, store_info, stmt_pdf)
+                counts["customer_statements"] += 1
+                counts["total_files"] += 1
+            except Exception as e2:
+                print(f"[Archive] Error generating customer statement for {c_full}: {e2}")
 
     all_invoices = db.query(Invoice).filter(Invoice.store_id == store_id).all()
     for inv in all_invoices:
@@ -760,11 +850,19 @@ def archive_all_store_documents(db: Session, store_id: int, base_dir: Path, forc
 
         if force_refresh or not inv_pdf.exists():
             try:
-                generate_invoice_pdf(inv, store_info, inv_pdf)
+                inv_data = InvoicePDFService.get_invoice_pdf_data(inv.id, db)
+                inv_html = generate_luxury_bill_html(inv_data)
+                if not render_html_to_pdf(inv_html, inv_pdf):
+                    generate_invoice_pdf(inv, store_info, inv_pdf)
                 counts["sales_invoices"] += 1
                 counts["total_files"] += 1
             except Exception as e:
-                print(f"[Archive] Error generating invoice PDF {inv_no}: {e}")
+                try:
+                    generate_invoice_pdf(inv, store_info, inv_pdf)
+                    counts["sales_invoices"] += 1
+                    counts["total_files"] += 1
+                except Exception as e2:
+                    print(f"[Archive] Error generating invoice PDF {inv_no}: {e2}")
         else:
             counts["sales_invoices"] += 1
 
@@ -786,11 +884,19 @@ def archive_all_store_documents(db: Session, store_id: int, base_dir: Path, forc
 
         if force_refresh or not exc_pdf.exists():
             try:
-                generate_exchange_pdf(exc, store_info, exc_pdf)
+                exc_data = InvoicePDFService.get_exchange_pdf_data(exc.id, db)
+                exc_html = generate_luxury_bill_html(exc_data)
+                if not render_html_to_pdf(exc_html, exc_pdf):
+                    generate_exchange_pdf(exc, store_info, exc_pdf)
                 counts["exchanges"] += 1
                 counts["total_files"] += 1
             except Exception as e:
-                print(f"[Archive] Error generating exchange PDF {exc_no}: {e}")
+                try:
+                    generate_exchange_pdf(exc, store_info, exc_pdf)
+                    counts["exchanges"] += 1
+                    counts["total_files"] += 1
+                except Exception as e2:
+                    print(f"[Archive] Error generating exchange PDF {exc_no}: {e2}")
         else:
             counts["exchanges"] += 1
 
