@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openDatabaseFolder: () => ipcRenderer.invoke('open-database-folder'),
   openPdfVaultFolder: (target) => ipcRenderer.invoke('open-pdf-vault-folder', target),
   saveVaultPdf: (params) => ipcRenderer.invoke('save-vault-pdf', params),
+  deleteVaultPdf: (params) => ipcRenderer.invoke('delete-vault-pdf', params),
   archivePdfsNow: () => ipcRenderer.invoke('archive-pdfs-now'),
   backupDatabase: () => ipcRenderer.invoke('backup-database'),
   backupToUsb: () => ipcRenderer.invoke('backup-to-usb'),
