@@ -5,9 +5,10 @@ from pathlib import Path
 
 DATA_DIR = Path(os.environ.get("USERPROFILE", os.path.expanduser("~"))) / "JewelleryERP_Data"
 DATA_ENV = DATA_DIR / ".env"
+DEFAULT_SQLITE_URL = f"sqlite:///{DATA_DIR.as_posix()}/jewellery_erp.db"
 
 class Settings(BaseSettings):
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./jewellery_erp.db")
+    DATABASE_URL: str = os.getenv("DATABASE_URL") or DEFAULT_SQLITE_URL
     SECRET_KEY: str = os.getenv("SECRET_KEY", "jewellery-erp-desktop-offline-secret-key-2026")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 14400
     ALGORITHM: str = "HS256"

@@ -900,6 +900,27 @@ def archive_all_store_documents(db: Session, store_id: int, base_dir: Path, forc
         else:
             counts["exchanges"] += 1
 
+    # Clean up orphan customer & supplier directories
+    valid_sales = {_sanitize_name(f"{c.first_name}_{c.last_name or ''}_{c.phone_number}", default=f"Customer_{c.id}") for c in customers}
+    valid_sales.add("Walkin_Customers")
+    if sales_root.exists():
+        for d in sales_root.iterdir():
+            if d.is_dir() and d.name not in valid_sales:
+                try:
+                    shutil.rmtree(d, ignore_errors=True)
+                except Exception:
+                    pass
+
+    valid_purchases = {_sanitize_name(f"{s.name}_{s.mobile}", default=f"Supplier_{s.id}") for s in sellers}
+    valid_purchases.add("Unknown_Suppliers")
+    if purchases_root.exists():
+        for d in purchases_root.iterdir():
+            if d.is_dir() and d.name not in valid_purchases:
+                try:
+                    shutil.rmtree(d, ignore_errors=True)
+                except Exception:
+                    pass
+
     return {
         "status": "success",
         "counts": counts,

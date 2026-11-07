@@ -165,6 +165,18 @@ function syncDirectory(srcDir, destDir) {
   }
   try {
     const entries = fs.readdirSync(srcDir, { withFileTypes: true });
+    const srcNames = new Set(entries.map(e => e.name));
+
+    // Remove obsolete files/folders in mirror that do not exist in source
+    try {
+      const destEntries = fs.readdirSync(destDir, { withFileTypes: true });
+      for (const dEntry of destEntries) {
+        if (!srcNames.has(dEntry.name)) {
+          const obsoletePath = path.join(destDir, dEntry.name);
+          fs.rmSync(obsoletePath, { recursive: true, force: true });
+        }
+      }
+    } catch (e) {}
     for (const entry of entries) {
       const srcPath = path.join(srcDir, entry.name);
       const destPath = path.join(destDir, entry.name);
