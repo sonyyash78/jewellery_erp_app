@@ -431,6 +431,7 @@ class InvoicePDFService:
                 'fine_weight': float(item.fine_weight),
                 'touch_purity': float(item.touch_purity),
                 'tanch_percentage': float(item.touch_purity),
+                'wastage': float(item.wastage or 0),
                 'making_charges': float(item.labour_charge + item.testing_melting_charge + item.hallmark_charge + item.other_charges),
                 'metal_value': float(item.metal_value),
                 'applied_rate': float(item.metal_rate),

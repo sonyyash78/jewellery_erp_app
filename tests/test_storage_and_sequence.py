@@ -120,6 +120,9 @@ class TestCompanyProfitReports:
     def test_sequence_zero_pad_and_rollback(self):
         from app.services.sequence_service import SequenceService
         from app.models.company import CompanyNumberSequence
+        from app.models.invoice import Invoice
+        self.db.query(Invoice).filter(Invoice.invoice_number == 'SJ/S/01/26-27').delete()
+        self.db.commit()
         seq = self.db.query(CompanyNumberSequence).filter(
             CompanyNumberSequence.company_id == 2,
             CompanyNumberSequence.doc_type == "INVOICE"

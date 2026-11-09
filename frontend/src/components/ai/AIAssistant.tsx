@@ -45,6 +45,7 @@ interface QuickPrompt {
 }
 
 const QUICK_PROMPTS: QuickPrompt[] = [
+  { id: 'wastage_profit', label: 'Wastage Profit', query: 'Gold aur silver ka wastage profit kitna hua?', icon: TrendingUp, color: 'text-amber-300 bg-amber-500/20 border-amber-500/40' },
   { id: 'sales', label: 'Aaj Ki Sale', query: 'Aaj ki sale kitni hui?', icon: TrendingUp, color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
   { id: 'stock', label: 'Gold & Silver Stock', query: 'Gold aur silver stock kitna hai?', icon: Scale, color: 'text-amber-400 bg-amber-500/10 border-amber-500/20' },
   { id: 'udhari', label: 'Udhari (Dues)', query: 'Kiske paise baaki hain? Top udhari dikhao', icon: Users, color: 'text-rose-400 bg-rose-500/10 border-rose-500/20' },
@@ -188,7 +189,7 @@ export default function AIAssistant() {
   };
 
   return (
-    <div className="fixed bottom-3 right-3 sm:bottom-6 sm:right-6 z-50 font-sans">
+    <div className="fixed bottom-3 right-3 sm:bottom-6 sm:right-6 z-[9999] font-sans">
       {/* Floating Action Trigger Button */}
       {!isOpen && (
         <button

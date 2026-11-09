@@ -429,7 +429,25 @@ def create_invoice(
 
 
 
-        customer = db.query(Customer).filter(Customer.id == invoice_in.customer_id, Customer.store_id == store_id).first()
+        customer = db.query(Customer).filter(Customer.id == invoice_in.customer_id).first()
+        if not customer and getattr(invoice_in, 'buyer_phone', None):
+            customer = db.query(Customer).filter(Customer.phone_number == invoice_in.buyer_phone).first()
+        if not customer:
+            b_name = getattr(invoice_in, 'buyer_name', None) or 'Walk-in Customer'
+            b_phone = getattr(invoice_in, 'buyer_phone', None) or '0000000000'
+            try:
+                customer = Customer(
+                    store_id=store_id,
+                    first_name=b_name,
+                    phone_number=b_phone,
+                    address=getattr(invoice_in, 'buyer_address', '') or '',
+                    city=getattr(invoice_in, 'buyer_city', '') or '',
+                    is_active=True
+                )
+                db.add(customer)
+                db.flush()
+            except Exception:
+                pass
 
 
 

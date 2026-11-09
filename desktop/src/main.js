@@ -1552,6 +1552,22 @@ function createWindow() {
 
   mainWindow.on('page-title-updated', (e) => e.preventDefault());
 
+  // Intercept all downloads to silently save PDFs directly into Archived_PDFs without showing the "Save As" location popup
+  mainWindow.webContents.session.on('will-download', (event, item, webContents) => {
+    try {
+      const fileName = item.getFilename();
+      const saveDir = path.join(pcDir, 'Archived_PDFs', 'Downloads');
+      if (!fs.existsSync(saveDir)) {
+        fs.mkdirSync(saveDir, { recursive: true });
+      }
+      const finalSavePath = path.join(saveDir, fileName);
+      item.setSavePath(finalSavePath);
+      console.log(`[Silent-Save] Download saved to ${finalSavePath}`);
+    } catch (e) {
+      console.error(`[Silent-Save Error] ${e ? e.message : ''}`);
+    }
+  });
+
   // Allow F1 through F12 function keys and Arrow keys to pass cleanly to web contents
   mainWindow.webContents.on('before-input-event', (event, input) => {
     // If user presses F1..F12, ensure Chromium does not hijack (e.g. F1 Windows Help)

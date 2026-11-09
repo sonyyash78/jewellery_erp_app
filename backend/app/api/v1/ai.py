@@ -371,9 +371,9 @@ def call_gemini_api(
     if not key or not key.strip() or key.strip().startswith("your-gemini"):
         return None
 
-    model_name = model or settings.GEMINI_MODEL or "gemini-2.5-flash"
+    model_name = model or settings.GEMINI_MODEL or "gemini-1.5-flash"
     candidate_models = [model_name]
-    for m in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-latest", "gemini-2.5-flash-lite"]:
+    for m in ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-flash-latest"]:
         if m not in candidate_models:
             candidate_models.append(m)
 
@@ -429,22 +429,23 @@ def call_gemini_api(
     }
 
     try:
-        with httpx.Client(timeout=15.0) as client:
+        with httpx.Client(timeout=6.0) as client:
             for current_model in candidate_models:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{current_model}:generateContent"
-                resp = client.post(url, json=payload, headers=headers)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    candidates = data.get("candidates", [])
-                    if candidates:
-                        parts = candidates[0].get("content", {}).get("parts", [])
-                        if parts and "text" in parts[0]:
-                            return parts[0]["text"].strip()
-                elif resp.status_code == 404:
-                    logger.info(f"Model {current_model} not found, trying next candidate model...")
-                    continue
-                else:
-                    logger.warning(f"Gemini API returned status {resp.status_code} on {current_model}: {resp.text[:200]}")
+                try:
+                    resp = client.post(url, json=payload, headers=headers)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        candidates = data.get("candidates", [])
+                        if candidates:
+                            parts = candidates[0].get("content", {}).get("parts", [])
+                            if parts and "text" in parts[0]:
+                                return parts[0]["text"].strip()
+                    elif resp.status_code == 404:
+                        continue
+                    else:
+                        break
+                except (httpx.ConnectError, httpx.TimeoutException, httpx.NetworkError):
                     break
     except Exception as e:
         logger.warning(f"Gemini API request failed: {str(e)}")
@@ -902,7 +903,40 @@ def _local_rule_fallback(prompt: str, store_id: int, db: Session) -> Dict[str, A
             "source": "local"
         }
 
-    # 12. Fallback
+    # 12. Wastage & Profit Analytics
+    if any(k in prompt for k in ["profit", "wastage", "munafa", "fayda", "kamai", "loss", "margin"]):
+        from app.services.report_service import ReportService
+        try:
+            wastage_rep = ReportService.get_company_wastage_analysis(db, company_id=1)
+            g_sold = wastage_rep.get("gold", {}).get("sold_wastage_g", 0.0)
+            g_pur = wastage_rep.get("gold", {}).get("purchased_wastage_g", 0.0)
+            g_net = wastage_rep.get("gold", {}).get("net_wastage_profit_g", 0.0)
+            
+            s_sold = wastage_rep.get("silver", {}).get("sold_wastage_g", 0.0)
+            s_pur = wastage_rep.get("silver", {}).get("purchased_wastage_g", 0.0)
+            s_net = wastage_rep.get("silver", {}).get("net_wastage_profit_g", 0.0)
+            
+            making_profit = wastage_rep.get("summary", {}).get("total_making_profit_inr", 0.0)
+            
+            return {
+                "response": (
+                    "📊 **Wastage & Business Profit Report (Saideep Jewellers):**\n\n"
+                    "🪙 **Gold Wastage Analysis:**\n"
+                    f"- Customer Se Liya Wastage (Sell): **{g_sold:.3f} g**\n"
+                    f"- Supplier Ko Diya Wastage (Purchase): **- {g_pur:.3f} g**\n"
+                    f"- ⭐ **Net Gold Wastage Profit:** **{'+' if g_net >= 0 else ''}{g_net:.3f} g**\n\n"
+                    "🥈 **Silver Wastage Analysis:**\n"
+                    f"- Customer Se Liya Wastage (Sell): **{s_sold:.3f} g**\n"
+                    f"- Supplier Ko Diya Wastage (Purchase): **- {s_pur:.3f} g**\n"
+                    f"- ⭐ **Net Silver Wastage Profit:** **{'+' if s_net >= 0 else ''}{s_net:.3f} g**\n\n"
+                    f"💵 **Net Making/Labour Margin:** **{_format_currency(making_profit)}**"
+                ),
+                "source": "local"
+            }
+        except Exception as e:
+            logger.warning(f"Error computing wastage profit for AI: {e}")
+
+    # 13. Fallback
     return {
         "response": (
             "🤖 **Main aapki baat samajh nahi paya.** Kripya ye pooch kar dekhein:\n\n"

@@ -20,6 +20,10 @@ class BillType(str, enum.Enum):
 class SettlementType(str, enum.Enum):
     CASH = "Cash"
     METAL = "Metal"
+    HYBRID = "Hybrid"
+    METAL_DUE = "metal_due"
+    CASH_DUE = "cash_due"
+    BOTH = "Both"
 
 class MetalType(str, enum.Enum):
     GOLD = "Gold"

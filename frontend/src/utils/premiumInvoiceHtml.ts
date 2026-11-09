@@ -311,7 +311,11 @@ export const renderTableRow = (item: any, index: number, isGold: boolean) => {
             <div style="font-size: 11px; color: #7f8c8d; font-weight: 400; margin-top: 2px;">Gross: ${gross}g</div>
           </td>
           <td>${item.metal_type || '-'}</td>
-          <td>${(item.tanch_percentage || item.touch_purity) ? (item.tanch_percentage || item.touch_purity) + '%' : '-'}${item.wastage ? ` + ${item.wastage}%` : ''}</td>
+                    <td>${(() => {
+            const tanch = item.tanch_percentage || item.touch_purity || item.tanch || item.touch;
+            const wst = Number(item.wastage || item.wastage_percent || item.wastage_pct || 0);
+            return `${tanch ? tanch + '%' : '-'}${wst > 0 ? ` + ${wst}%` : ''}`;
+          })()}</td>
           <td>${netWt.toFixed(3)}</td>
           <td>${formatCurrency(displayRate)}<div style="font-size: 9px; color: #7f8c8d; margin-top: 1px;">${!isGold ? 'per kg' : 'per 10g'}</div></td>
           <td>${isZeroPrice ? '-' : formatCurrency(item.making_charges || 0)}</td>

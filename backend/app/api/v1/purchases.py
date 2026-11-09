@@ -725,6 +725,8 @@ def get_unified_purchase(
                 "item_name": item.item_name,
 
                 "item_type": item.metal_type,
+                "touch_purity": float(item.touch_purity or 0),
+                "wastage": float(item.wastage or 0),
 
                 "final_price": item.metal_value + item.labour_charge + item.testing_melting_charge + item.hallmark_charge + item.other_charges - item.discount
 

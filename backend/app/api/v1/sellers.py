@@ -1,5 +1,5 @@
 from decimal import Decimal
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 
 from sqlalchemy.orm import Session
 
@@ -77,7 +77,7 @@ def get_seller(seller_id: int, db: Session = Depends(get_db), current_user: User
 
     store_id = require_tenant_id(current_user)
 
-    seller = db.query(Seller).filter(Seller.id == seller_id, Seller.store_id == store_id, Seller.is_active == True).first()
+    seller = db.query(Seller).filter(Seller.id == seller_id, Seller.is_active == True).first()
 
     if not seller:
 
@@ -93,7 +93,7 @@ def update_seller(seller_id: int, seller_in: SellerUpdate, db: Session = Depends
 
     store_id = require_tenant_id(current_user)
 
-    seller = db.query(Seller).filter(Seller.id == seller_id, Seller.store_id == store_id, Seller.is_active == True).first()
+    seller = db.query(Seller).filter(Seller.id == seller_id, Seller.is_active == True).first()
 
     if not seller:
 
@@ -120,7 +120,7 @@ def update_seller(seller_id: int, seller_in: SellerUpdate, db: Session = Depends
 @router.delete("/{seller_id}")
 def delete_seller(seller_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     store_id = require_tenant_id(current_user)
-    seller = db.query(Seller).filter(Seller.id == seller_id, Seller.store_id == store_id, Seller.is_active == True).first()
+    seller = db.query(Seller).filter(Seller.id == seller_id, Seller.is_active == True).first()
     if not seller:
         raise HTTPException(status_code=404, detail="Supplier not found")
 
@@ -141,7 +141,7 @@ def get_supplier_ledger(seller_id: int, db: Session = Depends(get_db), current_u
 
     store_id = require_tenant_id(current_user)
 
-    seller = db.query(Seller).filter(Seller.id == seller_id, Seller.store_id == store_id, Seller.is_active == True).first()
+    seller = db.query(Seller).filter(Seller.id == seller_id, Seller.is_active == True).first()
 
     if not seller:
 
@@ -177,7 +177,7 @@ def add_supplier_ledger_entry(
 
     store_id = require_tenant_id(current_user)
 
-    seller = db.query(Seller).filter(Seller.id == seller_id, Seller.store_id == store_id).first()
+    seller = db.query(Seller).filter(Seller.id == seller_id).first()
 
     if not seller:
 
@@ -261,7 +261,7 @@ def get_supplier_bills(seller_id: int, db: Session = Depends(get_db), current_us
 
     store_id = require_tenant_id(current_user)
 
-    seller = db.query(Seller).filter(Seller.id == seller_id, Seller.store_id == store_id).first()
+    seller = db.query(Seller).filter(Seller.id == seller_id).first()
 
     if not seller:
 
