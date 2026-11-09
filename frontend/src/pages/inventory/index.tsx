@@ -38,7 +38,7 @@ const InventoryTableRow = ({ item, onDelete, onDownload, onEdit }: { item: Stock
           {item.tanch ? (
             <span className="text-xs text-green-400 font-medium tracking-tight mt-0.5">
               Fine: {((item.net_weight * (item.tanch + (item.wastage || 0))) / 100).toFixed(3)}g 
-              ({item.tanch}%{item.wastage ? ` + ${item.wastage}%` : ''})
+              ({item.tanch}{item.wastage ? ` + ${item.wastage} gm` : ''})
             </span>
           ) : null}
         </div>

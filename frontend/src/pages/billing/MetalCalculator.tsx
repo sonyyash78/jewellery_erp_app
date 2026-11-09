@@ -108,7 +108,7 @@ export default function MetalCalculator() {
   const handleGoldAdd = () => {
     if ((goldForm.grossWeight || 0) <= 0) { toast.error('Gross weight must be > 0'); return; }
     if (gNetWeight <= 0) { toast.error('Net weight must be > 0'); return; }
-    if ((goldForm.touch || 0) + (goldForm.wastage || 0) > 100) { toast.error('Touch % + Wastage % cannot be greater than 100%'); return; }
+    // Touch and wastage validated
     const item: BillItem = {
       id: editingItemId || Math.random().toString(36).substring(7),
       itemType: 'Gold', 
@@ -132,7 +132,7 @@ export default function MetalCalculator() {
   const handleSilverAdd = () => {
     if ((silverForm.grossWeight || 0) <= 0) { toast.error('Gross weight must be > 0'); return; }
     if (sNetWeight <= 0) { toast.error('Net weight must be > 0'); return; }
-    if ((silverForm.tanch || 0) + (silverForm.wastage || 0) > 100) { toast.error('Tanch % + Wastage % cannot be greater than 100%'); return; }
+    // Tanch and wastage validated
     const item: BillItem = {
       id: editingItemId || Math.random().toString(36).substring(7),
       itemType: 'Silver', 
@@ -419,8 +419,8 @@ export default function MetalCalculator() {
             </div>
 
             <div className="grid grid-cols-3 gap-3">
-              <div><InputLabel label="Touch %" /><input type="number" step="0.1" value={goldForm.touch ? goldForm.touch : ''} onChange={e => updateGoldForm('touch', e.target.value === '' ? 0 : Number(e.target.value))} placeholder="91.6" className="w-full bg-[#1A1A20] border border-gray-700 rounded px-2 py-1 text-sm text-primary focus:border-primary outline-none font-mono" /></div>
-              <div><InputLabel label="Wastage %" /><input type="number" step="0.1" value={goldForm.wastage ? goldForm.wastage : ''} onChange={e => updateGoldForm('wastage', e.target.value === '' ? 0 : Number(e.target.value))} placeholder="0.0" className="w-full bg-[#1A1A20] border border-gray-700 rounded px-2 py-1 text-sm text-primary focus:border-primary outline-none font-mono" /></div>
+              <div><InputLabel label="Touch / Tanch" /><input type="number" step="0.1" value={goldForm.touch ? goldForm.touch : ''} onChange={e => updateGoldForm('touch', e.target.value === '' ? 0 : Number(e.target.value))} placeholder="91.6" className="w-full bg-[#1A1A20] border border-gray-700 rounded px-2 py-1 text-sm text-primary focus:border-primary outline-none font-mono" /></div>
+              <div><InputLabel label="Wastage (gm)" /><input type="number" step="0.1" value={goldForm.wastage ? goldForm.wastage : ''} onChange={e => updateGoldForm('wastage', e.target.value === '' ? 0 : Number(e.target.value))} placeholder="0.0" className="w-full bg-[#1A1A20] border border-gray-700 rounded px-2 py-1 text-sm text-primary focus:border-primary outline-none font-mono" /></div>
               <div><InputLabel label="Fine Wt(g)" /><input disabled value={gFineWeight.toFixed(3)} className="w-full bg-gray-900 border border-gray-800 rounded px-2 py-1 text-sm text-primary/70 outline-none font-mono cursor-not-allowed" /></div>
             </div>
 
@@ -525,8 +525,8 @@ export default function MetalCalculator() {
             </div>
 
             <div className="grid grid-cols-3 gap-3">
-              <div><InputLabel label="Tanch %" /><input type="number" step="0.1" value={silverForm.tanch ? silverForm.tanch : ''} onChange={e => updateSilverForm('tanch', e.target.value === '' ? 0 : Number(e.target.value))} placeholder="65.0" className="w-full bg-[#1A1A20] border border-gray-700 rounded px-2 py-1 text-sm text-gray-300 focus:border-gray-500 outline-none font-mono" /></div>
-              <div><InputLabel label="Wastage %" /><input type="number" step="0.1" value={silverForm.wastage ? silverForm.wastage : ''} onChange={e => updateSilverForm('wastage', e.target.value === '' ? 0 : Number(e.target.value))} placeholder="0.0" className="w-full bg-[#1A1A20] border border-gray-700 rounded px-2 py-1 text-sm text-gray-300 focus:border-gray-500 outline-none font-mono" /></div>
+              <div><InputLabel label="Touch / Tanch" /><input type="number" step="0.1" value={silverForm.tanch ? silverForm.tanch : ''} onChange={e => updateSilverForm('tanch', e.target.value === '' ? 0 : Number(e.target.value))} placeholder="65.0" className="w-full bg-[#1A1A20] border border-gray-700 rounded px-2 py-1 text-sm text-gray-300 focus:border-gray-500 outline-none font-mono" /></div>
+              <div><InputLabel label="Wastage (gm)" /><input type="number" step="0.1" value={silverForm.wastage ? silverForm.wastage : ''} onChange={e => updateSilverForm('wastage', e.target.value === '' ? 0 : Number(e.target.value))} placeholder="0.0" className="w-full bg-[#1A1A20] border border-gray-700 rounded px-2 py-1 text-sm text-gray-300 focus:border-gray-500 outline-none font-mono" /></div>
               <div><InputLabel label="Fine Wt(g)" /><input disabled value={sFineWeight.toFixed(3)} className="w-full bg-gray-900 border border-gray-800 rounded px-2 py-1 text-sm text-gray-300/70 outline-none font-mono cursor-not-allowed" /></div>
             </div>
 

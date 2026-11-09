@@ -425,9 +425,10 @@ def generate_luxury_bill_html(data: Dict[str, Any]) -> str:
         other = float(item.get("other_charges") or 0.0) + float(item.get("hallmark_charges") or 0.0)
         final_price = float(item.get("final_price") or item.get("amount") or 0.0)
 
-        tanch_str = f"{tanch:.1f}%" if tanch % 1 else f"{int(tanch)}%"
+        tanch_str = f"{tanch:.2f}".rstrip("0").rstrip(".") if tanch % 1 else f"{int(tanch)}"
         if wastage > 0:
-            tanch_str += f" + {wastage:.1f}%" if wastage % 1 else f" + {int(wastage)}%"
+            wst_str = f"{wastage:.3f}".rstrip("0").rstrip(".")
+            tanch_str += f" + {wst_str} gm"
 
         rate_unit = "per 10g" if is_g else "per kg"
 

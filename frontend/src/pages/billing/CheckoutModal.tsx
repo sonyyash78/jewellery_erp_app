@@ -520,7 +520,7 @@ export default function CheckoutModal({ payload, grandTotal, onClose, onSuccess 
                         <input type="number" min="0" step="0.001" value={goldDeposited === 0 ? '' : goldDeposited} onChange={e => setGoldDeposited(Number(e.target.value))} placeholder="0.000" className="w-full bg-background border border-gray-700 rounded px-1 py-1 text-sm font-mono text-yellow-400 outline-none focus:border-yellow-500" />
                       </div>
                       <div>
-                        <label className="block text-[9px] text-gray-500 uppercase tracking-widest mb-1">Tanch %</label>
+                        <label className="block text-[9px] text-gray-500 uppercase tracking-widest mb-1">Tanch</label>
                         <input type="number" min="0" max="100" step="0.01" value={goldDepositTanch} onChange={e => setGoldDepositTanch(Number(e.target.value))} className="w-full bg-background border border-gray-700 rounded px-1 py-1 text-sm font-mono text-yellow-400 outline-none focus:border-yellow-500" />
                       </div>
                       <div>
@@ -554,7 +554,7 @@ export default function CheckoutModal({ payload, grandTotal, onClose, onSuccess 
                         <input type="number" min="0" step="0.001" value={silverDeposited === 0 ? '' : silverDeposited} onChange={e => setSilverDeposited(Number(e.target.value))} placeholder="0.000" className="w-full bg-background border border-gray-700 rounded px-1 py-1 text-sm font-mono text-gray-300 outline-none focus:border-gray-400" />
                       </div>
                       <div>
-                        <label className="block text-[9px] text-gray-500 uppercase tracking-widest mb-1">Tanch %</label>
+                        <label className="block text-[9px] text-gray-500 uppercase tracking-widest mb-1">Tanch</label>
                         <input type="number" min="0" max="100" step="0.01" value={silverDepositTanch} onChange={e => setSilverDepositTanch(Number(e.target.value))} className="w-full bg-background border border-gray-700 rounded px-1 py-1 text-sm font-mono text-gray-300 outline-none focus:border-gray-400" />
                       </div>
                       <div>

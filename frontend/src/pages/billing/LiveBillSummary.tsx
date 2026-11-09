@@ -311,7 +311,7 @@ export default function LiveBillSummary() {
                   <div className="flex justify-between">
                     <span>{isGold ? 'Touch:' : 'Tanch:'}</span>
                     <span className="font-mono text-gray-300">
-                      {item.touchDisplay}%{item.wastageDisplay > 0 ? ` (+${item.wastageDisplay}%)` : ''}
+                      {item.touchDisplay}{item.wastageDisplay > 0 ? ` (+${item.wastageDisplay} gm)` : ''}
                     </span>
                   </div>
                   <div className="flex justify-between">

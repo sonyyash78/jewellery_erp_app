@@ -152,7 +152,7 @@ export default function BillTable() {
                             </span>
                             <span className="text-[10px] text-gray-500">•</span>
                             <span className="text-[10px] text-gray-400 font-mono">
-                              Touch: {item.touchDisplay}%{item.wastageDisplay ? ` + ${item.wastageDisplay}% Wst` : ''}
+                              Touch: {item.touchDisplay}{item.wastageDisplay ? ` + ${item.wastageDisplay} gm` : ''}
                             </span>
                           </div>
                         </div>
@@ -249,9 +249,9 @@ export default function BillTable() {
                                 <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider block">Metal & Purity</span>
                                 <div className="text-white font-semibold">{item.itemName}</div>
                                 <div className="text-primary font-medium">{item.purityDisplay || 'Standard'} ({item.itemType})</div>
-                                <div className="text-gray-400">Touch: <strong className="text-white font-mono">{item.touchDisplay}%</strong></div>
+                                <div className="text-gray-400">Touch: <strong className="text-white font-mono">{item.touchDisplay}</strong></div>
                                 {item.wastageDisplay > 0 && (
-                                  <div className="text-gray-400">Wastage: <strong className="text-yellow-400 font-mono">+{item.wastageDisplay}%</strong></div>
+                                  <div className="text-gray-400">Wastage: <strong className="text-yellow-400 font-mono">+{item.wastageDisplay} gm</strong></div>
                                 )}
                               </div>
 

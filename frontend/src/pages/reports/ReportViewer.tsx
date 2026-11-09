@@ -306,9 +306,8 @@ function WastageProfitView({ data }: { data: WastageData }) {
                   <th className="py-2 px-3">Item Name</th>
                   <th className="py-2 px-3">Metal</th>
                   <th className="py-2 px-3 text-right">Gross Wt</th>
-                  <th className="py-2 px-3 text-right">Touch %</th>
-                  <th className="py-2 px-3 text-right">Wastage %</th>
-                  <th className="py-2 px-3 text-right text-amber-400">Wastage (g)</th>
+                  <th className="py-2 px-3 text-right">Touch</th>
+                  <th className="py-2 px-3 text-right text-amber-400">Wastage (gm)</th>
                   <th className="py-2 px-3 text-right">Fine Wt (g)</th>
                   <th className="py-2 px-3 text-right">Making (₹)</th>
                   <th className="py-2 px-3 text-right">Total (₹)</th>
@@ -331,9 +330,8 @@ function WastageProfitView({ data }: { data: WastageData }) {
                       </span>
                     </td>
                     <td className="py-2 px-3 text-right">{tx.weight_g.toFixed(3)}</td>
-                    <td className="py-2 px-3 text-right">{tx.touch_pct.toFixed(2)}%</td>
-                    <td className="py-2 px-3 text-right">{tx.wastage_pct.toFixed(2)}%</td>
-                    <td className="py-2 px-3 text-right text-amber-400 font-bold">{tx.wastage_g.toFixed(3)} g</td>
+                    <td className="py-2 px-3 text-right">{((tx as any).touch ?? tx.touch_pct ?? 0).toFixed(2)}</td>
+                    <td className="py-2 px-3 text-right text-amber-400 font-bold">{(tx.wastage_g || 0).toFixed(3)} g</td>
                     <td className="py-2 px-3 text-right text-gray-200">{tx.fine_weight_g.toFixed(3)}</td>
                     <td className="py-2 px-3 text-right text-emerald-400">₹ {tx.making_charges.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
                     <td className="py-2 px-3 text-right font-bold text-white">₹ {tx.total_amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>

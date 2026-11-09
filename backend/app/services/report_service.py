@@ -787,7 +787,7 @@ class ReportService:
         # -------------------------------------------------------------
         # 1a. Sold Gold (Invoices)
         g_sold_q = db.query(
-            func.coalesce(func.sum(GoldCalculation.net_weight * GoldCalculation.wastage / 100), 0),
+            func.coalesce(func.sum(GoldCalculation.wastage), 0),
             func.coalesce(func.sum(GoldCalculation.fine_weight), 0),
             func.coalesce(func.sum(GoldCalculation.making_charges_amount), 0),
             func.coalesce(func.sum(GoldCalculation.total_gold_value), 0)
@@ -804,7 +804,7 @@ class ReportService:
 
         # 1b. Purchased Gold (Purchases)
         g_pur_q = db.query(
-            func.coalesce(func.sum(PurchaseItem.net_weight * PurchaseItem.wastage / 100), 0),
+            func.coalesce(func.sum(PurchaseItem.wastage), 0),
             func.coalesce(func.sum(PurchaseItem.fine_weight), 0),
             func.coalesce(func.sum(PurchaseItem.labour_charge), 0),
             func.coalesce(func.sum(PurchaseItem.taxable_amount), 0)
@@ -835,7 +835,7 @@ class ReportService:
         # -------------------------------------------------------------
         # 2a. Sold Silver (Invoices)
         s_sold_q = db.query(
-            func.coalesce(func.sum(SilverCalculation.wastage * (SilverCalculation.gross_weight - SilverCalculation.stone_weight) / 100), 0),
+            func.coalesce(func.sum(SilverCalculation.wastage), 0),
             func.coalesce(func.sum(SilverCalculation.pure_weight), 0),
             func.coalesce(func.sum(SilverCalculation.making_charges_amount), 0),
             func.coalesce(func.sum(SilverCalculation.total_silver_value), 0)
@@ -852,7 +852,7 @@ class ReportService:
 
         # 2b. Purchased Silver (Purchases)
         s_pur_q = db.query(
-            func.coalesce(func.sum(PurchaseItem.net_weight * PurchaseItem.wastage / 100), 0),
+            func.coalesce(func.sum(PurchaseItem.wastage), 0),
             func.coalesce(func.sum(PurchaseItem.fine_weight), 0),
             func.coalesce(func.sum(PurchaseItem.labour_charge), 0),
             func.coalesce(func.sum(PurchaseItem.taxable_amount), 0)
@@ -947,7 +947,8 @@ class ReportService:
             g_lines = g_lines.filter(Invoice.invoice_date <= end_dt)
 
         for row in g_lines.order_by(Invoice.invoice_date.desc()).limit(20).all():
-            w_gms = float(Decimal(str(row[3] or 0)) * Decimal(str(row[5] or 0)) / Decimal('100'))
+            w_gms = float(Decimal(str(row[5] or 0)))
+            touch_val = float(Decimal(str(row[4] or 0)))
             transactions.append({
                 "date": row[0].strftime("%Y-%m-%d") if row[0] else "",
                 "type": "Sale",
@@ -955,8 +956,8 @@ class ReportService:
                 "item_name": row[2] or "Gold Item",
                 "metal": "Gold",
                 "weight_g": float(row[3] or 0),
-                "touch_pct": float(row[4] or 0),
-                "wastage_pct": float(row[5] or 0),
+                "touch": touch_val,
+                "touch_pct": touch_val,
                 "wastage_g": round(w_gms, 3),
                 "fine_weight_g": float(row[6] or 0),
                 "making_charges": float(row[7] or 0),
@@ -982,7 +983,8 @@ class ReportService:
             g_pur_lines = g_pur_lines.filter(Purchase.created_at <= end_dt)
 
         for row in g_pur_lines.order_by(Purchase.created_at.desc()).limit(20).all():
-            w_gms = float(Decimal(str(row[3] or 0)) * Decimal(str(row[5] or 0)) / Decimal('100'))
+            w_gms = float(Decimal(str(row[5] or 0)))
+            touch_val = float(Decimal(str(row[4] or 0)))
             transactions.append({
                 "date": row[0].strftime("%Y-%m-%d") if row[0] else "",
                 "type": "Purchase",
@@ -990,8 +992,8 @@ class ReportService:
                 "item_name": row[2] or "Gold Purchase",
                 "metal": "Gold",
                 "weight_g": float(row[3] or 0),
-                "touch_pct": float(row[4] or 0),
-                "wastage_pct": float(row[5] or 0),
+                "touch": touch_val,
+                "touch_pct": touch_val,
                 "wastage_g": round(w_gms, 3),
                 "fine_weight_g": float(row[6] or 0),
                 "making_charges": float(row[7] or 0),

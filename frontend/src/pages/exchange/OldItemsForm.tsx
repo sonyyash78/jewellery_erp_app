@@ -112,7 +112,7 @@ export default function OldItemsForm() {
     e.preventDefault();
     if (grossWeight <= 0) return toast.error('Please enter a valid weight');
     if (netWeight <= 0) return toast.error('Net weight must be > 0');
-    if (!isDiamond && (touch || 0) + (wastage || 0) > 100) return toast.error('Touch % + Wastage % cannot be greater than 100%');
+    // Validated touch and wastage
     
     const finalItemName = itemName.trim() || (isDiamond ? 'Old Diamond Jewellery' : `${purity} Old ${metal}`);
     const itemData = {
@@ -318,7 +318,7 @@ export default function OldItemsForm() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-textMuted mb-1">Touch / Purity %</label>
+                <label className="block text-xs font-medium text-textMuted mb-1">Touch / Tanch</label>
                 <input 
                   type="number" 
                   step="0.1" 
@@ -329,7 +329,7 @@ export default function OldItemsForm() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-textMuted mb-1">Wastage %</label>
+                <label className="block text-xs font-medium text-textMuted mb-1">Wastage (gm)</label>
                 <input 
                   type="number" 
                   step="0.1" 
@@ -386,7 +386,7 @@ export default function OldItemsForm() {
           </div>
           {!isDiamond && (
             <div className="flex justify-between text-textMuted">
-              <span>Fine Weight ({touch + wastage}%):</span>
+              <span>Fine Weight:</span>
               <span className="text-primary">{fineWeight > 0 ? fineWeight.toFixed(3) : '0.000'} g</span>
             </div>
           )}

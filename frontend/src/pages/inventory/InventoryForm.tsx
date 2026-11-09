@@ -39,10 +39,7 @@ export default function InventoryForm({ onClose, onSaveSuccess, editItem }: { on
       return;
     }
 
-    if ((Number(form.tanch) || 0) + (Number(form.wastage) || 0) > 100) {
-      toast.error('Tanch % + Wastage % cannot be greater than 100%');
-      return;
-    }
+    // Validated tanch and wastage
 
     setLoading(true);
     try {
@@ -110,8 +107,8 @@ export default function InventoryForm({ onClose, onSaveSuccess, editItem }: { on
               <div><InputLabel label="Gross Wt(g) *" /><input type="number" value={form.gross_weight} onChange={e=>setForm({...form, gross_weight: e.target.value})} className="w-full bg-background border border-gray-700 rounded px-3 py-2 text-sm text-textMain focus:border-primary outline-none font-mono" /></div>
               <div><InputLabel label="Stone Wt(g)" /><input type="number" value={form.stone_weight} onChange={e=>setForm({...form, stone_weight: e.target.value})} className="w-full bg-background border border-gray-700 rounded px-3 py-2 text-sm text-textMain focus:border-primary outline-none font-mono" /></div>
               <div><InputLabel label="Net Wt(g)" /><input disabled value={netWeight.toFixed(3)} className="w-full bg-gray-900 border border-gray-800 rounded px-3 py-2 text-sm text-primary font-bold outline-none font-mono cursor-not-allowed" /></div>
-              <div><InputLabel label="Tanch (%)" /><input type="number" value={form.tanch} onChange={e=>setForm({...form, tanch: e.target.value})} className="w-full bg-background border border-gray-700 rounded px-3 py-2 text-sm text-textMain focus:border-primary outline-none font-mono" placeholder="e.g. 91.6" /></div>
-              <div><InputLabel label="Wastage (%)" /><input type="number" value={form.wastage} onChange={e=>setForm({...form, wastage: e.target.value})} className="w-full bg-background border border-gray-700 rounded px-3 py-2 text-sm text-textMain focus:border-primary outline-none font-mono" placeholder="e.g. 2.0" /></div>
+              <div><InputLabel label="Touch / Tanch" /><input type="number" value={form.tanch} onChange={e=>setForm({...form, tanch: e.target.value})} className="w-full bg-background border border-gray-700 rounded px-3 py-2 text-sm text-textMain focus:border-primary outline-none font-mono" placeholder="e.g. 91.6" /></div>
+              <div><InputLabel label="Wastage (gm)" /><input type="number" value={form.wastage} onChange={e=>setForm({...form, wastage: e.target.value})} className="w-full bg-background border border-gray-700 rounded px-3 py-2 text-sm text-textMain focus:border-primary outline-none font-mono" placeholder="e.g. 2.0" /></div>
               <div><InputLabel label="Fine Wt(g)" /><input disabled value={((netWeight * ((Number(form.tanch) || 0) + (Number(form.wastage) || 0))) / 100).toFixed(3)} className="w-full bg-gray-900 border border-gray-800 rounded px-3 py-2 text-sm text-green-400 font-bold outline-none font-mono cursor-not-allowed" /></div>
             </div>
           </div>

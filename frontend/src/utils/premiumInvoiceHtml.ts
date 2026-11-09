@@ -314,7 +314,10 @@ export const renderTableRow = (item: any, index: number, isGold: boolean) => {
                     <td>${(() => {
             const tanch = item.tanch_percentage || item.touch_purity || item.tanch || item.touch;
             const wst = Number(item.wastage || item.wastage_percent || item.wastage_pct || 0);
-            return `${tanch ? tanch + '%' : '-'}${wst > 0 ? ` + ${wst}%` : ''}`;
+            if (!tanch && !wst) return '-';
+            const tanchStr = tanch ? `${tanch}` : '';
+            const wstStr = wst > 0 ? ` + ${wst} gm` : '';
+            return `${tanchStr}${wstStr}` || '-';
           })()}</td>
           <td>${netWt.toFixed(3)}</td>
           <td>${formatCurrency(displayRate)}<div style="font-size: 9px; color: #7f8c8d; margin-top: 1px;">${!isGold ? 'per kg' : 'per 10g'}</div></td>

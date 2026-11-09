@@ -873,7 +873,7 @@ export default function PurchaseCheckoutModal({ payload, grandTotal, onClose, on
 
                       <div>
 
-                        <label className="block text-[9px] text-gray-500 uppercase tracking-widest mb-1">Tanch %</label>
+                        <label className="block text-[9px] text-gray-500 uppercase tracking-widest mb-1">Tanch</label>
 
                         <input type="number" min="0" max="100" step="0.01" value={goldGivenTanch} onChange={e => setGoldGivenTanch(Number(e.target.value))} className="w-full bg-background border border-gray-700 rounded px-1 py-1 text-sm font-mono text-yellow-400 outline-none focus:border-yellow-500" />
 
@@ -941,7 +941,7 @@ export default function PurchaseCheckoutModal({ payload, grandTotal, onClose, on
 
                       <div>
 
-                        <label className="block text-[9px] text-gray-500 uppercase tracking-widest mb-1">Tanch %</label>
+                        <label className="block text-[9px] text-gray-500 uppercase tracking-widest mb-1">Tanch</label>
 
                         <input type="number" min="0" max="100" step="0.01" value={silverGivenTanch} onChange={e => setSilverGivenTanch(Number(e.target.value))} className="w-full bg-background border border-gray-700 rounded px-1 py-1 text-sm font-mono text-gray-300 outline-none focus:border-gray-400" />
 

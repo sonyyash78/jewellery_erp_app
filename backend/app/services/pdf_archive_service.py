@@ -451,7 +451,7 @@ def generate_invoice_pdf(invoice: Invoice, store_info: Dict[str, str], output_fi
 
             net_wt = float(it.gold_calculation.net_weight or 0)
 
-            purity_str = f"{float(it.gold_calculation.touch_purity or 91.6):.1f}%"
+            purity_str = f"{float(it.gold_calculation.touch_purity or 91.6):.1f}"
 
             rate_str = f"{float(it.gold_calculation.applied_rate or 0):,.0f}"
 
@@ -463,7 +463,7 @@ def generate_invoice_pdf(invoice: Invoice, store_info: Dict[str, str], output_fi
 
             net_wt = gross_wt - float(it.silver_calculation.stone_weight or 0)
 
-            purity_str = f"{float(it.silver_calculation.tanch_percentage or 80.0):.1f}%"
+            purity_str = f"{float(it.silver_calculation.tanch_percentage or 80.0):.1f}"
 
             rate_str = f"{float(it.silver_calculation.applied_rate or 0):,.0f}"
 
@@ -697,7 +697,7 @@ def generate_exchange_pdf(exchange: Exchange, store_info: Dict[str, str], output
 
                 _format_weight(ni.net_weight),
 
-                f"{float(ni.touch_purity or 91.6):.1f}%",
+                f"{float(ni.touch_purity or 91.6):.1f}",
 
                 f"{float(ni.rate_applied or 0):,.0f}",
 
@@ -747,7 +747,7 @@ def generate_exchange_pdf(exchange: Exchange, store_info: Dict[str, str], output
 
             _format_weight(oi.net_weight),
 
-            f"{float(oi.touch or 80):.1f}%",
+            f"{float(oi.touch or 80):.1f}",
 
             f"{float(oi.rate_applied or 0):,.0f}",
 

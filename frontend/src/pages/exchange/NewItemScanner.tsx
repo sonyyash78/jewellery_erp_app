@@ -157,7 +157,7 @@ export default function NewItemScanner() {
   const handleAddManualItem = (e: React.FormEvent) => {
     e.preventDefault();
     if (grossWeight <= 0) return toast.error('Please enter a valid gross weight');
-    if ((touch || 0) + (wastage || 0) > 100) return toast.error('Touch % + Wastage % cannot be greater than 100%');
+    // Validated touch and wastage
 
     const finalItemName = itemName.trim() || `${metal} Jewellery`;
     const itemData = {
@@ -344,8 +344,8 @@ export default function NewItemScanner() {
 
           {/* Calculations */}
           <div className="grid grid-cols-3 gap-3">
-            <div><InputLabel label="Touch %" /><input type="number" step="0.1" value={touch === 0 ? '' : touch} onChange={e=>setTouch(Number(e.target.value))} className={`w-full bg-[#1A1A20] border border-gray-700 rounded px-2 py-1 text-sm focus:border-primary outline-none font-mono ${metal === 'Gold' ? 'text-primary' : 'text-gray-300'}`} /></div>
-            <div><InputLabel label="Wastage %" /><input type="number" step="0.1" value={wastage === 0 ? '' : wastage} onChange={e=>setWastage(Number(e.target.value))} className={`w-full bg-[#1A1A20] border border-gray-700 rounded px-2 py-1 text-sm focus:border-primary outline-none font-mono ${metal === 'Gold' ? 'text-primary' : 'text-gray-300'}`} /></div>
+            <div><InputLabel label="Touch / Tanch" /><input type="number" step="0.1" value={touch === 0 ? '' : touch} onChange={e=>setTouch(Number(e.target.value))} className={`w-full bg-[#1A1A20] border border-gray-700 rounded px-2 py-1 text-sm focus:border-primary outline-none font-mono ${metal === 'Gold' ? 'text-primary' : 'text-gray-300'}`} /></div>
+            <div><InputLabel label="Wastage (gm)" /><input type="number" step="0.1" value={wastage === 0 ? '' : wastage} onChange={e=>setWastage(Number(e.target.value))} className={`w-full bg-[#1A1A20] border border-gray-700 rounded px-2 py-1 text-sm focus:border-primary outline-none font-mono ${metal === 'Gold' ? 'text-primary' : 'text-gray-300'}`} /></div>
             <div><InputLabel label="Fine Wt(g)" /><input disabled value={fineWeight.toFixed(3)} className={`w-full bg-gray-900 border border-gray-800 rounded px-2 py-1 text-sm outline-none font-mono cursor-not-allowed ${metal === 'Gold' ? 'text-primary/70' : 'text-gray-300/70'}`} /></div>
           </div>
 
