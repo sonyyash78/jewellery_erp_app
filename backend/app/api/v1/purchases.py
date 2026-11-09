@@ -1,8 +1,9 @@
-from typing import Any, List
+from typing import Any, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Query, Header
 
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 
 from decimal import Decimal
 
@@ -77,13 +78,10 @@ def get_or_create_seller(db: Session, seller_info: SellerInfo, store_id: int = 1
 @router.post("/", response_model=dict)
 
 def create_unified_purchase(
-
     purchase_in: UnifiedPurchaseCreate,
-
+    x_company_id: Optional[str] = Header(None, alias="X-Company-ID"),
     db: Session = Depends(get_db),
-
     current_user: User = Depends(get_current_user)
-
 ) -> Any:
 
     """Create a unified purchase with seller info and items array. Backend recalculates all totals."""
@@ -110,13 +108,23 @@ def create_unified_purchase(
 
         raise HTTPException(status_code=400, detail="Seller information is required")
 
+    # Resolve target operating company
+    target_company_id = None
+    if x_company_id and str(x_company_id).strip().isdigit():
+        target_company_id = int(str(x_company_id).strip())
+    if not target_company_id and getattr(purchase_in, 'company_id', None):
+        target_company_id = int(purchase_in.company_id)
+    if not target_company_id:
+        target_company_id = 1
+
     # Create purchase record first
-
+    from app.services.sequence_service import SequenceService
+    pur_num = SequenceService.generate_document_number(db, company_id=target_company_id, doc_type="PURCHASE")
     db_purchase = Purchase(
-
         store_id=store_id,
+        company_id=target_company_id,
 
-        purchase_number=f"PUR-{int(datetime.now().timestamp() * 1000) % 1000000}",
+        purchase_number=pur_num,
 
         seller_id=seller.id,
 
@@ -387,15 +395,12 @@ def get_purchases(
 @router.get("/history")
 
 def get_unified_purchases_history(
-
     skip: int = Query(0, ge=0),
-
     limit: int = Query(100, ge=1),
-
+    company_id: Optional[int] = Query(None),
+    x_company_id: Optional[str] = Header(None, alias="X-Company-ID"),
     db: Session = Depends(get_db),
-
     current_user: User = Depends(get_current_user)
-
 ) -> Any:
 
     """Get all unified purchases."""
@@ -403,6 +408,15 @@ def get_unified_purchases_history(
     store_id = require_tenant_id(current_user)
 
     query = db.query(Purchase).filter(Purchase.store_id == store_id)
+    active_company = company_id
+    if not active_company and x_company_id and x_company_id.isdigit():
+        active_company = int(x_company_id)
+    if not active_company:
+        active_company = 1
+    if active_company == 1:
+        query = query.filter(or_(Purchase.company_id == 1, Purchase.company_id.is_(None)))
+    else:
+        query = query.filter(Purchase.company_id == active_company)
 
     total = query.count()
 
@@ -854,8 +868,12 @@ def delete_unified_purchase(
 
 
 
+        orig_purchase_number = purchase.purchase_number
         purchase.status = PurchaseStatus.CANCELLED
-
+        purchase.purchase_number = f"{orig_purchase_number}-CAN-{purchase.id}"
+        from app.services.sequence_service import SequenceService
+        target_company_id = getattr(purchase, 'company_id', None) or 1
+        SequenceService.rollback_document_number(db, target_company_id, orig_purchase_number, 'PURCHASE')
         db.commit()
 
 

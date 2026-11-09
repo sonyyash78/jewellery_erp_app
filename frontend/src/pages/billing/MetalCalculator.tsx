@@ -1,3 +1,4 @@
+import { handleEnterKeyNavigation } from '../../utils/keyboardNavigation';
 import { useState, useEffect } from 'react';
 import { useBillingStore } from '../../store/billingStore';
 import type { BillItem } from '../../store/billingStore';
@@ -9,9 +10,9 @@ const InputLabel = ({ label }: { label: string }) => (
 );
 
 export default function MetalCalculator() {
-  const [metal, setMetal] = useState<'Gold' | 'Silver'>('Gold');
+  const [metal, setMetal] = useState<'Gold' | 'Silver' | 'Diamond'>('Gold');
   const {
-    goldForm, updateGoldForm, resetGoldForm,
+    goldForm, updateGoldForm, resetGoldForm, diamondForm, updateDiamondForm, resetDiamondForm,
     silverForm, updateSilverForm, resetSilverForm,
     addToCart, liveRates, editingItemId, setEditingItemId, cart
   } = useBillingStore();
@@ -19,25 +20,69 @@ export default function MetalCalculator() {
   useEffect(() => {
     if (editingItemId) {
       const item = cart.find(i => i.id === editingItemId);
-      if (item && (item.itemType === 'Gold' || item.itemType === 'Silver')) {
+      if (item && (item.itemType === 'Gold' || item.itemType === 'Silver' || item.itemType === 'Diamond')) {
         setMetal(item.itemType);
       }
     }
   }, [editingItemId, cart]);
 
-  const handleMetalSwitch = (m: 'Gold' | 'Silver') => {
+  const handleMetalSwitch = (m: 'Gold' | 'Silver' | 'Diamond') => {
     setMetal(m);
   };
 
+  useEffect(() => {
+    const focusFirst = () => {
+      setTimeout(() => {
+        const firstInput = document.querySelector<HTMLInputElement>('[data-enter-container] input:not([disabled])');
+        firstInput?.focus();
+        firstInput?.select();
+      }, 50);
+    };
+
+    const handleCustomSwitch = (e: any) => {
+      const targetMetal = e.detail;
+      if (targetMetal === 'Gold' || targetMetal === 'Silver' || targetMetal === 'Diamond') {
+        setMetal(targetMetal);
+        focusFirst();
+      }
+    };
+
+    const handleCalculatorHotkeys = (e: KeyboardEvent) => {
+      if (document.querySelector('.fixed.inset-0.z-50')) return;
+      if ((e.altKey && (e.key === 'g' || e.key === 'G')) || e.key === 'F1') {
+        e.preventDefault();
+        setMetal('Gold');
+        focusFirst();
+      } else if ((e.altKey && (e.key === 's' || e.key === 'S')) || e.key === 'F2') {
+        e.preventDefault();
+        setMetal('Silver');
+        focusFirst();
+      } else if ((e.altKey && (e.key === 'd' || e.key === 'D')) || e.key === 'F3') {
+        e.preventDefault();
+        setMetal('Diamond');
+        focusFirst();
+      }
+    };
+
+    window.addEventListener('keydown', handleCalculatorHotkeys);
+    window.addEventListener('switch-metal', handleCustomSwitch as EventListener);
+    return () => {
+      window.removeEventListener('keydown', handleCalculatorHotkeys);
+      window.removeEventListener('switch-metal', handleCustomSwitch as EventListener);
+    };
+  }, []);
+
   const handleReset = () => {
     if (metal === 'Gold') resetGoldForm();
-    else resetSilverForm();
+    else if (metal === 'Silver') resetSilverForm();
+    else resetDiamondForm();
   };
 
   const handleCancelEdit = () => {
     setEditingItemId(null);
     if (metal === 'Gold') resetGoldForm();
-    else resetSilverForm();
+    else if (metal === 'Silver') resetSilverForm();
+    else resetDiamondForm();
   };
 
   // ── Gold calculations ──
@@ -75,7 +120,12 @@ export default function MetalCalculator() {
       taxableAmount: gTaxable, rawGold: { ...goldForm }
     };
     addToCart(item); 
-    toast.success(editingItemId ? 'Item Updated in Bill' : 'Added to Bill'); 
+    toast.success(editingItemId ? 'Item Updated in Bill' : 'Added to Bill');
+    setTimeout(() => {
+      const firstInput = document.querySelector<HTMLInputElement>('[data-enter-container] input:not([disabled])');
+      firstInput?.focus();
+      firstInput?.select();
+    }, 50); 
     resetGoldForm();
   };
 
@@ -95,14 +145,70 @@ export default function MetalCalculator() {
       taxableAmount: sTaxable, rawSilver: { ...silverForm }
     };
     addToCart(item); 
-    toast.success(editingItemId ? 'Item Updated in Bill' : 'Added to Bill'); 
+    toast.success(editingItemId ? 'Item Updated in Bill' : 'Added to Bill');
+    setTimeout(() => {
+      const firstInput = document.querySelector<HTMLInputElement>('[data-enter-container] input:not([disabled])');
+      firstInput?.focus();
+      firstInput?.select();
+    }, 50); 
     resetSilverForm();
   };
 
+
+  // ── Diamond calculations (Weight in Grams) ──
+  const dWeightGm = Math.max(0, diamondForm.weightGm ?? (diamondForm.caratWeight || 0));
+  const dRate = Math.max(0, diamondForm.ratePerGm ?? (diamondForm.ratePerCarat || 0));
+  const dSubtotal = dWeightGm * dRate;
+  const dMaking = Math.max(0, diamondForm.makingCharges || 0);
+  const dOther = Math.max(0, diamondForm.otherCharges || 0);
+  const dDiscount = Math.max(0, diamondForm.discount || 0);
+  const dTaxable = Math.max(0, dSubtotal + dMaking + dOther - dDiscount);
+
+  const handleDiamondAdd = () => {
+    if (dWeightGm <= 0) { toast.error('Diamond weight in grams must be > 0'); return; }
+    if (dRate <= 0) { toast.error('Rate per gram must be > 0'); return; }
+    const item: BillItem = {
+      id: editingItemId || Math.random().toString(36).substring(7),
+      itemType: 'Diamond',
+      itemName: diamondForm.itemName.trim() || `${diamondForm.diamondType} ${diamondForm.shape} Diamond`,
+      purityDisplay: `${diamondForm.colour}/${diamondForm.clarity}`,
+      touchDisplay: 100,
+      wastageDisplay: 0,
+      grossWeight: dWeightGm,
+      stoneWeight: 0,
+      netWeight: dWeightGm,
+      fineWeight: dWeightGm,
+      rateDisplay: dRate,
+      metalValue: dSubtotal,
+      makingAmount: dMaking,
+      hallmark: 0,
+      otherCharges: dOther,
+      discount: dDiscount,
+      taxableAmount: dTaxable,
+      rawDiamond: { ...diamondForm, weightGm: dWeightGm, ratePerGm: dRate }
+    };
+    addToCart(item);
+    toast.success(editingItemId ? 'Item Updated in Bill' : 'Added to Bill');
+    setTimeout(() => {
+      const firstInput = document.querySelector<HTMLInputElement>('[data-enter-container] input:not([disabled])');
+      firstInput?.focus();
+      firstInput?.select();
+    }, 50);
+    resetDiamondForm();
+  };
+
   const isGold = metal === 'Gold';
+  const isDiamond = metal === 'Diamond';
 
   return (
-    <div className="bg-[#111115] border border-gray-800 rounded-2xl p-4 shadow-[0_4px_20px_rgba(0,0,0,0.5)] flex flex-col h-full">
+    <div 
+      data-enter-container="true"
+      onKeyDown={(e) => handleEnterKeyNavigation(e, '[data-enter-container]', () => {
+        if (isDiamond) handleDiamondAdd();
+        else if (isGold) handleGoldAdd();
+        else handleSilverAdd();
+      })}
+      className="bg-[#111115] border border-gray-800 rounded-2xl p-4 shadow-[0_4px_20px_rgba(0,0,0,0.5)] flex flex-col h-full">
       {/* Header */}
       <div className="flex justify-between items-center border-b border-gray-800 pb-2 mb-3 shrink-0">
         <h3 className={`font-bold tracking-widest uppercase text-sm ${editingItemId ? 'text-amber-400' : isGold ? 'text-primary' : 'text-gray-300'}`}>
@@ -130,7 +236,8 @@ export default function MetalCalculator() {
                 Editing Item In Bill
               </div>
               <div className="text-[11px] text-gray-300">
-                {isGold ? (goldForm.itemName || `${goldForm.purity} Gold`) : (silverForm.itemName || `${silverForm.silverPurity} Silver`)}
+                {isDiamond ? (diamondForm.itemName || `${diamondForm.diamondType} Diamond`) : isGold ? (goldForm.itemName || `${goldForm.purity} Gold`) : (silverForm.itemName || `${silverForm.silverPurity} Silver`)}
+
               </div>
             </div>
           </div>
@@ -154,14 +261,127 @@ export default function MetalCalculator() {
         </button>
         <button
           onClick={() => handleMetalSwitch('Silver')}
-          className={`flex-1 py-2 text-xs font-bold uppercase tracking-wide transition-all ${!isGold ? 'bg-gray-600/30 text-gray-100 border-b-2 border-gray-400' : 'text-gray-500 hover:text-gray-200 hover:bg-gray-800/40'}`}
+          className={`flex-1 py-2 text-xs font-bold uppercase tracking-wide transition-all ${metal === 'Silver' ? 'bg-gray-600/30 text-gray-100 border-b-2 border-gray-400' : 'text-gray-500 hover:text-gray-200 hover:bg-gray-800/40'}`}
         >
           🥈 Silver
+        </button>
+        <button
+          onClick={() => handleMetalSwitch('Diamond')}
+          className={`flex-1 py-2 text-xs font-bold uppercase tracking-wide transition-all ${isDiamond ? 'bg-cyan-500/20 text-cyan-400 border-b-2 border-cyan-400' : 'text-gray-500 hover:text-gray-200 hover:bg-gray-800/40'}`}
+        >
+          💎 Diamond
         </button>
       </div>
 
       {/* Scrollable form area */}
       <div className="flex-1 overflow-y-auto pr-2 space-y-3 custom-scrollbar pb-4 min-h-0">
+
+
+        {isDiamond && (
+          <>
+            <div>
+              <InputLabel label="Diamond Description" />
+              <input value={diamondForm.itemName} onChange={e => updateDiamondForm('itemName', e.target.value)}
+                placeholder="e.g. Solitaire Studs, Lab Diamond Ring..."
+                className="w-full bg-[#1A1A20] border border-gray-800 rounded px-3 py-2 text-sm text-white focus:border-cyan-500 outline-none transition-all placeholder-gray-600" />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <InputLabel label="Diamond Type" />
+                <select value={diamondForm.diamondType} onChange={e => updateDiamondForm('diamondType', e.target.value as any)}
+                  className="w-full bg-[#1A1A20] border border-gray-800 rounded px-2 py-1.5 text-xs text-white focus:border-cyan-500 outline-none">
+                  <option value="NATURAL">Natural Diamond</option>
+                  <option value="SYNTHETIC">Synthetic / Lab Grown</option>
+                </select>
+              </div>
+              <div>
+                <InputLabel label="Shape" />
+                <select value={diamondForm.shape} onChange={e => updateDiamondForm('shape', e.target.value)}
+                  className="w-full bg-[#1A1A20] border border-gray-800 rounded px-2 py-1.5 text-xs text-white focus:border-cyan-500 outline-none">
+                  {['Round', 'Princess', 'Cushion', 'Oval', 'Emerald', 'Pear', 'Radiant', 'Marquise', 'Heart'].map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <InputLabel label="Weight in Grams (gm)" />
+                <input type="number" step="0.001" value={diamondForm.weightGm ?? (diamondForm.caratWeight ? diamondForm.caratWeight : '')}
+                  onChange={e => {
+                    const val = e.target.value === '' ? 0 : Number(e.target.value);
+                    updateDiamondForm('weightGm', val);
+                    updateDiamondForm('caratWeight', val);
+                  }}
+                  placeholder="0.000 gm" className="w-full bg-[#1A1A20] border border-cyan-800/60 rounded px-2 py-1 text-sm text-cyan-300 font-bold focus:border-cyan-400 outline-none font-mono" />
+              </div>
+              <div>
+                <InputLabel label="Pieces" />
+                <input type="number" value={diamondForm.pieces ? diamondForm.pieces : ''}
+                  onChange={e => updateDiamondForm('pieces', e.target.value === '' ? 1 : Number(e.target.value))}
+                  placeholder="1" className="w-full bg-[#1A1A20] border border-gray-700 rounded px-2 py-1 text-sm text-white focus:border-cyan-500 outline-none font-mono" />
+              </div>
+              <div>
+                <InputLabel label="Rate / Gram (₹/gm)" />
+                <input type="number" value={diamondForm.ratePerGm ?? (diamondForm.ratePerCarat ? diamondForm.ratePerCarat : '')}
+                  onChange={e => {
+                    const val = e.target.value === '' ? 0 : Number(e.target.value);
+                    updateDiamondForm('ratePerGm', val);
+                    updateDiamondForm('ratePerCarat', val);
+                  }}
+                  placeholder="25000" className="w-full bg-[#1A1A20] border border-cyan-800/60 rounded px-2 py-1 text-sm text-cyan-300 font-bold focus:border-cyan-400 outline-none font-mono" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <InputLabel label="Colour" />
+                <select value={diamondForm.colour} onChange={e => updateDiamondForm('colour', e.target.value)}
+                  className="w-full bg-[#1A1A20] border border-gray-800 rounded px-2 py-1 text-xs text-white focus:border-cyan-500 outline-none">
+                  {['D', 'E', 'F', 'G', 'H', 'I', 'J', 'K-M'].map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <InputLabel label="Clarity" />
+                <select value={diamondForm.clarity} onChange={e => updateDiamondForm('clarity', e.target.value)}
+                  className="w-full bg-[#1A1A20] border border-gray-800 rounded px-2 py-1 text-xs text-white focus:border-cyan-500 outline-none">
+                  {['FL', 'IF', 'VVS1', 'VVS2', 'VS1', 'VS2', 'SI1', 'SI2', 'I1'].map(cl => <option key={cl} value={cl}>{cl}</option>)}
+                </select>
+              </div>
+              <div>
+                <InputLabel label="Certificate No." />
+                <input value={diamondForm.certificateNo} onChange={e => updateDiamondForm('certificateNo', e.target.value)}
+                  placeholder="IGI/GIA..." className="w-full bg-[#1A1A20] border border-gray-800 rounded px-2 py-1 text-xs text-white focus:border-cyan-500 outline-none" />
+              </div>
+            </div>
+
+            <div className="pt-1">
+              <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2 border-b border-gray-800 pb-1">Diamond Charges & Discount</h4>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <InputLabel label="Setting/Making (+)" />
+                  <input type="number" value={diamondForm.makingCharges ? diamondForm.makingCharges : ''}
+                    onChange={e => updateDiamondForm('makingCharges', e.target.value === '' ? 0 : Number(e.target.value))}
+                    placeholder="0" className="w-full bg-[#1A1A20] border border-gray-700 rounded px-2 py-1 text-sm text-white focus:border-cyan-500 outline-none font-mono" />
+                </div>
+                <div>
+                  <InputLabel label="Other (+)" />
+                  <input type="number" value={diamondForm.otherCharges ? diamondForm.otherCharges : ''}
+                    onChange={e => updateDiamondForm('otherCharges', e.target.value === '' ? 0 : Number(e.target.value))}
+                    placeholder="0" className="w-full bg-[#1A1A20] border border-gray-700 rounded px-2 py-1 text-sm text-white focus:border-cyan-500 outline-none font-mono" />
+                </div>
+                <div>
+                  <InputLabel label="Discount (-)" />
+                  <input type="number" value={diamondForm.discount ? diamondForm.discount : ''}
+                    onChange={e => updateDiamondForm('discount', e.target.value === '' ? 0 : Number(e.target.value))}
+                    placeholder="0" className="w-full bg-red-950/20 border border-red-900/50 rounded px-2 py-1 text-sm text-red-400 focus:border-red-500 outline-none font-mono" />
+                </div>
+              </div>
+            </div>
+          </>
+        )}
 
         {isGold ? (
           <>
@@ -383,8 +603,8 @@ export default function MetalCalculator() {
       <div className="mt-2 pt-3 border-t border-gray-800/50 shrink-0">
         <div className="flex justify-between items-center mb-3 px-1">
           <span className="text-gray-400 text-sm font-medium">Taxable Amount</span>
-          <span className={`font-bold text-lg font-mono ${isGold ? 'text-primary' : 'text-gray-300'}`}>
-            ₹{isGold ? gTaxable.toFixed(2) : sTaxable.toFixed(2)}
+          <span className={`font-bold text-lg font-mono ${isDiamond ? 'text-cyan-400' : isGold ? 'text-primary' : 'text-gray-300'}`}>
+            ₹{isDiamond ? dTaxable.toFixed(2) : isGold ? gTaxable.toFixed(2) : sTaxable.toFixed(2)}
           </span>
         </div>
         <div className="flex gap-2">
@@ -398,12 +618,26 @@ export default function MetalCalculator() {
             </button>
           )}
           <button
-            onClick={isGold ? handleGoldAdd : handleSilverAdd}
-            className={`flex-1 font-bold py-3 rounded-lg flex items-center justify-center gap-2 transition-all ${isGold
+            id="btn-add-to-bill"
+            data-nav-button="true"
+            type="button"
+            onClick={() => {
+              if (isDiamond) handleDiamondAdd();
+              else if (isGold) handleGoldAdd();
+              else handleSilverAdd();
+              // After adding to bill, focus GENERATE BILL button
+              setTimeout(() => {
+                const genBtn = document.getElementById('btn-generate-bill');
+                if (genBtn) genBtn.focus();
+              }, 120);
+            }}
+            className={`flex-1 font-bold py-3 rounded-lg flex items-center justify-center gap-2 transition-all focus:ring-2 focus:ring-offset-2 focus:ring-primary ${isDiamond
+              ? 'bg-cyan-500 hover:bg-cyan-400 text-black shadow-[0_0_15px_rgba(6,182,212,0.3)]'
+              : isGold
               ? 'bg-primary hover:bg-primary-dark text-black shadow-[0_0_15px_rgba(212,175,55,0.2)]'
               : 'bg-gray-300 hover:bg-gray-400 text-black shadow-[0_0_15px_rgba(200,200,200,0.1)]'}`}
           >
-            <ShoppingCart size={18} /> {editingItemId ? 'UPDATE ITEM' : 'ADD TO BILL'}
+            <ShoppingCart size={18} /> {editingItemId ? 'UPDATE ITEM (Enter)' : 'ADD TO BILL (Enter)'}
           </button>
         </div>
       </div>

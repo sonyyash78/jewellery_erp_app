@@ -36,6 +36,23 @@ class SilverCalcCreate(BaseModel):
     discount: float = 0.0
     total_silver_value: float
 
+class DiamondCalcCreate(BaseModel):
+    weight_gm: float = 0.0
+    weight_carats: float = 0.0
+    pieces: int = 1
+    rate_per_gm: float = 0.0
+    rate_per_carat: float = 0.0
+    diamond_type: str = "NATURAL"
+    diamond_form: str = "CUT_AND_POLISHED"
+    shape: Optional[str] = None
+    clarity: Optional[str] = None
+    colour: Optional[str] = None
+    certificate_no: Optional[str] = None
+    discount: float = 0.0
+    making_charges: float = 0.0
+    other_charges: float = 0.0
+    total_diamond_value: float = 0.0
+
 class InvoiceItemCreate(BaseModel):
     inventory_item_id: Optional[int] = None
     stock_item_id: Optional[int] = None
@@ -44,10 +61,12 @@ class InvoiceItemCreate(BaseModel):
     final_price: float
     gold_calculation: Optional[GoldCalcCreate] = None
     silver_calculation: Optional[SilverCalcCreate] = None
+    diamond_calculation: Optional[DiamondCalcCreate] = None
 
 from app.models.invoice import InvoiceStatus, BillType, SettlementType, MetalType
 
 class InvoiceCreate(BaseModel):
+    company_id: Optional[int] = None
     customer_id: Optional[int] = None
     subtotal: float
     tax_amount: float
@@ -68,6 +87,17 @@ class InvoiceCreate(BaseModel):
     balance_metal_weight: float = 0.0
     gold_balance_metal_weight: float = 0.0
     silver_balance_metal_weight: float = 0.0
+    # Editable Buyer details on invoice
+    buyer_name: Optional[str] = None
+    buyer_phone: Optional[str] = None
+    buyer_address: Optional[str] = None
+    buyer_city: Optional[str] = None
+    buyer_state: Optional[str] = None
+    buyer_state_code: Optional[str] = None
+    buyer_place_of_supply: Optional[str] = None
+    buyer_gstin: Optional[str] = None
+    buyer_pan: Optional[str] = None
+    buyer_email: Optional[str] = None
 
 class InvoiceCustomerInfo(BaseModel):
     first_name: str
@@ -79,6 +109,7 @@ class InvoiceCustomerInfo(BaseModel):
 class InvoiceResponse(BaseModel):
     id: int
     invoice_number: str
+    company_id: Optional[int] = None
     customer_id: Optional[int] = None
     customer: Optional[InvoiceCustomerInfo] = None
     invoice_date: datetime

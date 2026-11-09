@@ -1,4 +1,4 @@
-from sqlalchemy import Integer, String, DECIMAL, ForeignKey, DateTime, Enum, Boolean
+from sqlalchemy import Integer, String, DECIMAL, ForeignKey, DateTime, Enum, Boolean, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from typing import List, Optional
 from app.db.base_class import Base
@@ -12,9 +12,15 @@ class PurchaseStatus(str, enum.Enum):
 
 class Purchase(Base):
     __tablename__ = 'purchases'
+    __table_args__ = (
+        UniqueConstraint("store_id", "idempotency_key", name="uq_purchases_store_idempotency"),
+    )
+
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    company_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, default=1, index=True)
     store_id: Mapped[Optional[int]] = mapped_column(Integer, default=1, index=True)
     purchase_number: Mapped[str] = mapped_column(String(50), unique=True, index=True)
+    idempotency_key: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
     seller_id: Mapped[int] = mapped_column(Integer, ForeignKey('sellers.id'))
     created_by_id: Mapped[int] = mapped_column(Integer, ForeignKey('users.id'))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

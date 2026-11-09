@@ -2,7 +2,7 @@ import { create } from 'zustand';
 
 export type MakingChargeType = 'percent' | 'per_gm' | 'flat';
 export type GSTState = 'same_state' | 'different_state' | 'none';
-export type ItemType = 'Gold' | 'Silver';
+export type ItemType = 'Gold' | 'Silver' | 'Diamond';
 
 export interface BaseCalcForm {
   itemName: string;
@@ -22,6 +22,26 @@ export interface GoldForm extends BaseCalcForm {
   stoneWeight: number;
   ratePerGm: number;
   hallmark: number;
+}
+
+
+export interface DiamondForm {
+  itemName: string;
+  diamondType: 'NATURAL' | 'SYNTHETIC';
+  diamondForm: 'CUT_AND_POLISHED' | 'UNWORKED' | 'MOUNTED';
+  shape: string;
+  weightGm: number;
+  caratWeight?: number;
+  pieces: number;
+  colour: string;
+  clarity: string;
+  cut: string;
+  certificateNo: string;
+  ratePerGm: number;
+  ratePerCarat?: number;
+  makingCharges: number;
+  otherCharges: number;
+  discount: number;
 }
 
 export interface SilverForm extends BaseCalcForm {
@@ -59,6 +79,7 @@ export interface BillItem {
   // Store the raw form for re-editing/API payload
   rawGold?: GoldForm;
   rawSilver?: SilverForm;
+  rawDiamond?: DiamondForm;
 }
 
 export interface LiveRates {
@@ -81,6 +102,7 @@ interface BillingStoreState {
   
   goldForm: GoldForm;
   silverForm: SilverForm;
+  diamondForm: DiamondForm;
   
   editingItemId: string | null;
   setEditingItemId: (id: string | null) => void;
@@ -93,6 +115,8 @@ interface BillingStoreState {
   updateSilverForm: (field: keyof SilverForm, value: any) => void;
   resetGoldForm: () => void;
   resetSilverForm: () => void;
+  updateDiamondForm: (field: keyof DiamondForm, value: any) => void;
+  resetDiamondForm: () => void;
   addToCart: (item: BillItem) => void;
   removeFromCart: (id: string) => void;
   clearCart: () => void;
@@ -104,6 +128,26 @@ const initialGoldForm: GoldForm = {
   grossWeight: 0, stoneWeight: 0, ratePerGm: 72500,
   makingChargeType: 'per_gm', makingChargeValue: 650,
   hallmark: 120, otherCharges: 0, discount: 0
+};
+
+
+const initialDiamondForm: DiamondForm = {
+  itemName: '',
+  diamondType: 'NATURAL',
+  diamondForm: 'CUT_AND_POLISHED',
+  shape: 'Round',
+  weightGm: 0,
+  caratWeight: 0,
+  pieces: 1,
+  colour: 'G',
+  clarity: 'VS1',
+  cut: 'Excellent',
+  certificateNo: '',
+  ratePerGm: 25000,
+  ratePerCarat: 50000,
+  makingCharges: 0,
+  otherCharges: 0,
+  discount: 0
 };
 
 const initialSilverForm: SilverForm = {
@@ -131,6 +175,7 @@ export const useBillingStore = create<BillingStoreState>((set) => ({
   
   goldForm: initialGoldForm,
   silverForm: initialSilverForm,
+  diamondForm: initialDiamondForm,
   
   editingItemId: null,
   setEditingItemId: (id) => set({ editingItemId: id }),
@@ -144,6 +189,8 @@ export const useBillingStore = create<BillingStoreState>((set) => ({
   
   resetGoldForm: () => set({ goldForm: initialGoldForm }),
   resetSilverForm: () => set({ silverForm: initialSilverForm }),
+  updateDiamondForm: (field, value) => set((state) => ({ diamondForm: { ...state.diamondForm, [field]: value } })),
+  resetDiamondForm: () => set({ diamondForm: initialDiamondForm }),
   
   addToCart: (item) => set((state) => ({ 
     cart: state.editingItemId 

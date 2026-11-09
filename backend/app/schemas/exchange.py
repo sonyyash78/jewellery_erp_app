@@ -40,6 +40,7 @@ class ExchangeNewItemCreate(BaseModel):
     final_price: float
 
 class ExchangeCreate(BaseModel):
+    company_id: Optional[int] = None
     customer_id: int
     amount_paid: Optional[float] = None
     total_old_value: float

@@ -1,4 +1,4 @@
-﻿from fastapi import APIRouter, Depends, Query
+from fastapi import Header, APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from typing import Optional
 from datetime import date
@@ -12,6 +12,8 @@ router = APIRouter()
 def get_sales_report(
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
+    company_id: Optional[int] = Query(None),
+    x_company_id: Optional[str] = Header(None, alias="X-Company-ID"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -20,12 +22,19 @@ def get_sales_report(
     Uses historical transaction rates.
     """
     store_id = require_tenant_id(current_user)
-    return ReportService.get_sales_report(db, start_date, end_date, store_id=store_id)
+    resolved_cid = company_id
+    if not resolved_cid and x_company_id and x_company_id.isdigit():
+        resolved_cid = int(x_company_id)
+    if not resolved_cid:
+        resolved_cid = 1
+    return ReportService.get_sales_report(db, start_date, end_date, store_id=store_id, company_id=resolved_cid)
 
 @router.get("/purchases")
 def get_purchase_report(
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
+    company_id: Optional[int] = Query(None),
+    x_company_id: Optional[str] = Header(None, alias="X-Company-ID"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -34,12 +43,19 @@ def get_purchase_report(
     Uses historical transaction rates.
     """
     store_id = require_tenant_id(current_user)
-    return ReportService.get_purchase_report(db, start_date, end_date, store_id=store_id)
+    resolved_cid = company_id
+    if not resolved_cid and x_company_id and x_company_id.isdigit():
+        resolved_cid = int(x_company_id)
+    if not resolved_cid:
+        resolved_cid = 1
+    return ReportService.get_purchase_report(db, start_date, end_date, store_id=store_id, company_id=resolved_cid)
 
 @router.get("/gst")
 def get_gst_report(
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
+    company_id: Optional[int] = Query(None),
+    x_company_id: Optional[str] = Header(None, alias="X-Company-ID"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -51,12 +67,19 @@ def get_gst_report(
     Net GST = Output GST - Input GST (ITC)
     """
     store_id = require_tenant_id(current_user)
-    return ReportService.get_gst_report(db, start_date, end_date, store_id=store_id)
+    resolved_cid = company_id
+    if not resolved_cid and x_company_id and x_company_id.isdigit():
+        resolved_cid = int(x_company_id)
+    if not resolved_cid:
+        resolved_cid = 1
+    return ReportService.get_gst_report(db, start_date, end_date, store_id=store_id, company_id=resolved_cid)
 
 @router.get("/profit")
 def get_profit_report(
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
+    company_id: Optional[int] = Query(None),
+    x_company_id: Optional[str] = Header(None, alias="X-Company-ID"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -70,12 +93,19 @@ def get_profit_report(
     GST is NOT included in profit calculations.
     """
     store_id = require_tenant_id(current_user)
-    return ReportService.get_profit_report(db, start_date, end_date, store_id=store_id)
+    resolved_cid = company_id
+    if not resolved_cid and x_company_id and x_company_id.isdigit():
+        resolved_cid = int(x_company_id)
+    if not resolved_cid:
+        resolved_cid = 1
+    return ReportService.get_profit_report(db, start_date, end_date, store_id=store_id, company_id=resolved_cid)
 
 @router.get("/metal-flow")
 def get_metal_flow_report(
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
+    company_id: Optional[int] = Query(None),
+    x_company_id: Optional[str] = Header(None, alias="X-Company-ID"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -83,7 +113,12 @@ def get_metal_flow_report(
     Get detailed breakdown of physical metal movement.
     """
     store_id = require_tenant_id(current_user)
-    return ReportService.get_metal_flow_report(db, start_date, end_date, store_id=store_id)
+    resolved_cid = company_id
+    if not resolved_cid and x_company_id and x_company_id.isdigit():
+        resolved_cid = int(x_company_id)
+    if not resolved_cid:
+        resolved_cid = 1
+    return ReportService.get_metal_flow_report(db, start_date, end_date, store_id=store_id, company_id=resolved_cid)
 
 @router.get("/inventory")
 def get_inventory_report(
@@ -107,8 +142,12 @@ def get_customer_report(
     from decimal import Decimal
     
     store_id = require_tenant_id(current_user)
-    total_customers = db.query(Customer).filter(Customer.store_id == store_id).count()
-    total_receivables = db.query(func.sum(Customer.outstanding_balance)).filter(Customer.store_id == store_id, Customer.outstanding_balance > 0).scalar() or 0
+    total_customers = db.query(Customer).filter(Customer.store_id == store_id, Customer.is_deleted == False).count()
+    total_receivables = db.query(func.sum(Customer.outstanding_balance)).filter(
+        Customer.store_id == store_id,
+        Customer.is_deleted == False,
+        Customer.outstanding_balance > 0
+    ).scalar() or 0
     
     return {
         "total": total_customers, 
@@ -126,11 +165,15 @@ def get_supplier_report(
     
     store_id = require_tenant_id(current_user)
     total_suppliers = db.query(Seller).filter(Seller.store_id == store_id, Seller.is_active == True).count()
-    total_payables = db.query(func.sum(Seller.outstanding_balance)).filter(Seller.store_id == store_id, Seller.is_active == True, Seller.outstanding_balance < 0).scalar() or 0
+    total_payables = db.query(func.sum(Seller.outstanding_balance)).filter(
+        Seller.store_id == store_id,
+        Seller.is_active == True,
+        Seller.outstanding_balance > 0
+    ).scalar() or 0
     
     return {
         "total": total_suppliers, 
-        "payables": abs(float(Decimal(str(total_payables))))
+        "payables": float(Decimal(str(total_payables)))
     }
 
 @router.get("/expenses")
@@ -174,3 +217,74 @@ def get_expenses_report(
             for e in expenses
         ]
     }
+
+
+@router.get("/company-profit")
+def get_company_profit_analysis_report(
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    company_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    x_company_id: Optional[str] = Header(None, alias="X-Company-ID")
+):
+    """Company-wise actual purchase cost vs selling revenue profit report."""
+    resolved_cid = company_id
+    if not resolved_cid and x_company_id:
+        try:
+            resolved_cid = int(x_company_id)
+        except ValueError:
+            pass
+    if not resolved_cid:
+        resolved_cid = getattr(current_user, "tenant_id", 1) or 1
+
+    return ReportService.get_company_profit_analysis(
+        db, company_id=resolved_cid, start_date=start_date, end_date=end_date
+    )
+
+
+@router.get("/wastage-profit")
+def get_wastage_profit_report(
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    company_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    x_company_id: Optional[str] = Header(None, alias="X-Company-ID")
+):
+    """Unified Wastage Profit Report for Gold, Silver, and Diamond."""
+    resolved_cid = company_id
+    if not resolved_cid and x_company_id:
+        try:
+            resolved_cid = int(x_company_id)
+        except ValueError:
+            pass
+    if not resolved_cid:
+        resolved_cid = getattr(current_user, "tenant_id", 1) or 1
+
+    return ReportService.get_company_wastage_analysis(
+        db, company_id=resolved_cid, start_date=start_date, end_date=end_date
+    )
+
+@router.get("/company-wastage-profit")
+def get_company_wastage_analysis_report(
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    company_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    x_company_id: Optional[str] = Header(None, alias="X-Company-ID")
+):
+    """Company-wise wastage profit earned on metal sales."""
+    resolved_cid = company_id
+    if not resolved_cid and x_company_id:
+        try:
+            resolved_cid = int(x_company_id)
+        except ValueError:
+            pass
+    if not resolved_cid:
+        resolved_cid = getattr(current_user, "tenant_id", 1) or 1
+
+    return ReportService.get_company_wastage_analysis(
+        db, company_id=resolved_cid, start_date=start_date, end_date=end_date
+    )

@@ -1,9 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Outlet, useLocation, Link, Navigate } from 'react-router-dom';
+import { Outlet, useLocation, Link, Navigate, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { axiosClient } from '../../api/axiosClient';
 import { LayoutDashboard, Users, ArrowLeftRight, LogOut, Package, Settings, Receipt, FileText, ShoppingBag, BarChart2, Menu, X, Database, ShieldAlert } from 'lucide-react';
 import AIAssistant from '../ai/AIAssistant';
+import CompanySelector from '../common/CompanySelector';
+import { useCompanyStore } from '../../store/companyStore';
+import StartupCompanyModal from '../common/StartupCompanyModal';
+import ShortcutBar from '../common/ShortcutBar';
 import { BACKEND_BASE_URL } from '../../config/api';
 import toast from 'react-hot-toast';
 
@@ -18,6 +22,101 @@ export default function AdminLayout() {
   const [syncingStorage, setSyncingStorage] = useState(false);
 
   const isElectron = Boolean((window as any).electronAPI);
+  const navigate = useNavigate();
+  const { companies, selectCompany } = useCompanyStore();
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // 1. Alt + 1 or Alt + 2: Company switching anywhere
+      const isAlt1 = e.altKey && (e.key === '1' || e.code === 'Digit1' || e.code === 'Numpad1');
+      const isAlt2 = e.altKey && (e.key === '2' || e.code === 'Digit2' || e.code === 'Numpad2');
+      if (isAlt1 || isAlt2) {
+        e.preventDefault();
+        const cid = isAlt1 ? 1 : 2;
+        const comp = companies.find(c => c.id === cid);
+        if (comp) {
+          selectCompany(cid);
+          toast.success(`Switched to ${comp.name} (${comp.gst_enabled ? 'GST' : 'Normal'})`, { id: 'comp-switch' });
+        }
+        return;
+      }
+
+      const key = e.key;
+      const code = e.code;
+
+      // 2. F1, F2, F3: Switch Metal Tabs (Gold, Silver, Diamond)
+      if (key === 'F1' || code === 'F1' || (e.altKey && (key === 'g' || key === 'G'))) {
+        e.preventDefault();
+        if (location.pathname !== '/' && location.pathname !== '/billing') {
+          navigate('/billing');
+          setTimeout(() => window.dispatchEvent(new CustomEvent('switch-metal', { detail: 'Gold' })), 100);
+        } else {
+          window.dispatchEvent(new CustomEvent('switch-metal', { detail: 'Gold' }));
+        }
+        return;
+      }
+      if (key === 'F2' || code === 'F2' || (e.altKey && (key === 's' || key === 'S'))) {
+        e.preventDefault();
+        if (location.pathname !== '/' && location.pathname !== '/billing') {
+          navigate('/billing');
+          setTimeout(() => window.dispatchEvent(new CustomEvent('switch-metal', { detail: 'Silver' })), 100);
+        } else {
+          window.dispatchEvent(new CustomEvent('switch-metal', { detail: 'Silver' }));
+        }
+        return;
+      }
+      if (key === 'F3' || code === 'F3' || (e.altKey && (key === 'd' || key === 'D'))) {
+        e.preventDefault();
+        if (location.pathname !== '/' && location.pathname !== '/billing') {
+          navigate('/billing');
+          setTimeout(() => window.dispatchEvent(new CustomEvent('switch-metal', { detail: 'Diamond' })), 100);
+        } else {
+          window.dispatchEvent(new CustomEvent('switch-metal', { detail: 'Diamond' }));
+        }
+        return;
+      }
+
+      // 3. F12 or Ctrl+Enter: Quick Checkout trigger
+      if (key === 'F12' || code === 'F12' || (key === 'Enter' && (e.ctrlKey || e.metaKey))) {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent('trigger-quick-checkout'));
+        return;
+      }
+
+      // 4. Global Navigation with Function Keys
+      if (key === 'F4' || code === 'F4' || (e.altKey && (key === 'b' || key === 'B'))) {
+        e.preventDefault();
+        navigate('/billing');
+      } else if (key === 'F5' || code === 'F5' || (e.altKey && (key === 'p' || key === 'P'))) {
+        e.preventDefault();
+        navigate('/purchases');
+      } else if (key === 'F6' || code === 'F6' || (e.altKey && (key === 'e' || key === 'E'))) {
+        e.preventDefault();
+        navigate('/exchange');
+      } else if (key === 'F7' || code === 'F7') {
+        e.preventDefault();
+        navigate('/inventory');
+      } else if (key === 'F8' || code === 'F8' || (e.altKey && (key === 'i' || key === 'I'))) {
+        e.preventDefault();
+        navigate('/invoices');
+      } else if (key === 'F9' || code === 'F9' || (e.altKey && (key === 'c' || key === 'C'))) {
+        e.preventDefault();
+        navigate('/customers');
+      } else if (key === 'F10' || code === 'F10' || (e.altKey && (key === 'r' || key === 'R'))) {
+        e.preventDefault();
+        navigate('/reports');
+      } else if (key === 'F11' || code === 'F11' || (e.altKey && (key === 's' || key === 'S'))) {
+        e.preventDefault();
+        navigate('/settings');
+      } else if (e.altKey && (e.key === 'h' || e.key === 'H')) {
+        e.preventDefault();
+        navigate('/');
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown, { capture: true });
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown, { capture: true } as any);
+  }, [navigate, companies, selectCompany]);
 
   useEffect(() => {
     const electronAPI = (window as any).electronAPI;
@@ -137,7 +236,9 @@ export default function AdminLayout() {
 
   return (
     <div className="flex h-screen bg-background text-textMain overflow-hidden relative">
+      <StartupCompanyModal />
       <AIAssistant />
+      <ShortcutBar />
 
       {/* Mobile Slide-out Drawer */}
       {mobileMenuOpen && (
@@ -253,6 +354,7 @@ export default function AdminLayout() {
             </div>
           </div>
           <div className="flex items-center space-x-1.5 sm:space-x-3 shrink-0">
+            <CompanySelector />
             <div className="flex items-center space-x-1.5">
               <span className="text-xs sm:text-sm text-textMuted hidden sm:inline">Welcome,</span>
               <span className="text-xs sm:text-sm text-primary font-medium truncate max-w-[85px] sm:max-w-[140px] md:max-w-none">
@@ -327,7 +429,7 @@ export default function AdminLayout() {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 overflow-auto p-2 sm:p-4 md:p-6">
+        <main className="flex-1 overflow-auto p-2 sm:p-4 md:p-6 pb-20 sm:pb-24">
           {isCurrentRouteRestricted ? (
             <div className="h-full flex flex-col items-center justify-center text-center p-6">
               <div className="bg-surface border border-gray-800 rounded-2xl p-8 max-w-md shadow-xl flex flex-col items-center gap-4">

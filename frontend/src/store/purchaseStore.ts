@@ -2,7 +2,15 @@ import { create } from 'zustand';
 
 export interface PurchaseItem {
   id: string;
-  metalType: 'Gold' | 'Silver';
+  metalType: 'Gold' | 'Silver' | 'Diamond';
+  diamondType?: string;
+  shape?: string;
+  pieces?: number;
+  colour?: string;
+  clarity?: string;
+  certificateNo?: string;
+  weightGm?: number;
+  ratePerGm?: number;
   itemName: string;
   category: string;
   grossWeight: number;
@@ -56,12 +64,27 @@ interface PurchaseStoreState {
     otherCharges: number;
     discount: number;
   };
+  diamondForm: {
+    itemName: string;
+    diamondType: string;
+    shape: string;
+    weightGm: number;
+    pieces: number;
+    ratePerGm: number;
+    colour: string;
+    clarity: string;
+    certificateNo: string;
+    labourCharge: number;
+    otherCharges: number;
+    discount: number;
+  };
 
   editingItemId: string | null;
   setEditingItemId: (id: string | null) => void;
   
   updateGoldForm: (key: string, value: any) => void;
   updateSilverForm: (key: string, value: any) => void;
+  updateDiamondForm: (key: string, value: any) => void;
   setGstState: (val: 'same_state' | 'different_state' | 'none') => void;
   addItem: (item: PurchaseItem) => void;
   removeItem: (id: string) => void;
@@ -82,12 +105,17 @@ export const usePurchaseStore = create<PurchaseStoreState>((set) => ({
     itemName: '', grossWeight: 0, stoneWeight: 0, tanch: 99.9, wastage: 0,
     metalRate: 0, testingMeltingCharge: 0, makingChargeType: 'flat', makingChargeValue: 0, otherCharges: 0, discount: 0
   },
+  diamondForm: {
+    itemName: '', diamondType: 'NATURAL', shape: 'Round', weightGm: 0, pieces: 1, ratePerGm: 25000,
+    colour: 'G', clarity: 'VS1', certificateNo: '', labourCharge: 0, otherCharges: 0, discount: 0
+  },
 
   editingItemId: null,
   setEditingItemId: (id) => set({ editingItemId: id }),
 
   updateGoldForm: (key, value) => set((state) => ({ goldForm: { ...state.goldForm, [key]: value } })),
   updateSilverForm: (key, value) => set((state) => ({ silverForm: { ...state.silverForm, [key]: value } })),
+  updateDiamondForm: (key, value) => set((state) => ({ diamondForm: { ...state.diamondForm, [key]: value } })),
   setGstState: (val) => set({ gstState: val }),
   
   addItem: (item) => set((state) => ({
@@ -101,6 +129,7 @@ export const usePurchaseStore = create<PurchaseStoreState>((set) => ({
   resetForms: () => set((state) => ({
     goldForm: { itemName: '', category: '', grossWeight: 0, stoneWeight: 0, touchPurity: 91.6, wastage: 0, metalRate: state.goldForm.metalRate, labourCharge: 0, makingChargeType: 'flat', makingChargeValue: 0, hallmarkCharge: 0, otherCharges: 0, discount: 0 },
     silverForm: { itemName: '', grossWeight: 0, stoneWeight: 0, tanch: 99.9, wastage: 0, metalRate: state.silverForm.metalRate, testingMeltingCharge: 0, makingChargeType: 'flat', makingChargeValue: 0, otherCharges: 0, discount: 0 },
+    diamondForm: { itemName: '', diamondType: 'NATURAL', shape: 'Round', weightGm: 0, pieces: 1, ratePerGm: 25000, colour: 'G', clarity: 'VS1', certificateNo: '', labourCharge: 0, otherCharges: 0, discount: 0 },
     editingItemId: null
   })),
   

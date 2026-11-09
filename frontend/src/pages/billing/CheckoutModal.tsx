@@ -1,8 +1,10 @@
+import { handleEnterKeyNavigation } from '../../utils/keyboardNavigation';
 import { useState, useEffect, useMemo } from 'react';
 import { axiosClient } from '../../api/axiosClient';
 import toast from 'react-hot-toast';
-import { Check, X, Calculator, UserPlus } from 'lucide-react';
+import { Check, X, Calculator, UserPlus, Users, MapPin } from 'lucide-react';
 import { useBillingStore } from '../../store/billingStore';
+import { useCompanyStore } from '../../store/companyStore';
 import { getErrorMessage } from '../../utils/errorUtils';
 
 interface CheckoutModalProps {
@@ -13,12 +15,56 @@ interface CheckoutModalProps {
 }
 
 export default function CheckoutModal({ payload, grandTotal, onClose, onSuccess }: CheckoutModalProps) {
+  const { currentCompanyId } = useCompanyStore();
   const [loading, setLoading] = useState(false);
   const [customers, setCustomers] = useState<any[]>([]);
   const initialCustomerId = useBillingStore.getState().selectedCustomerId;
   const [selectedCustomer, setSelectedCustomer] = useState<number | ''>(initialCustomerId || '');
   const [mode, setMode] = useState<'checkout' | 'new_customer'>('checkout');
-  const [newCustomer, setNewCustomer] = useState({ first_name: '', last_name: '', phone: '', city: '' });
+  const [newCustomer, setNewCustomer] = useState({ first_name: '', last_name: '', phone: '', city: '', address: '', gst_number: '', aadhaar_pan: '' });
+
+  const [buyerDetails, setBuyerDetails] = useState({
+    name: 'Walk-in Customer',
+    phone: '',
+    address: '',
+    city: 'Takhatgarh',
+    state: 'Rajasthan',
+    state_code: '08',
+    place_of_supply: 'Rajasthan',
+    gstin: '',
+    pan: ''
+  });
+
+  useEffect(() => {
+    if (selectedCustomer) {
+      const c = customers.find(x => x.id === selectedCustomer);
+      if (c) {
+        setBuyerDetails({
+          name: `${c.first_name || ''} ${c.last_name || ''}`.trim() || 'Customer',
+          phone: c.phone_number || '',
+          address: c.address || '',
+          city: c.city || 'Takhatgarh',
+          state: c.state || 'Rajasthan',
+          state_code: c.state_code || '08',
+          place_of_supply: c.place_of_supply || c.state || 'Rajasthan',
+          gstin: c.gst_number || '',
+          pan: c.aadhaar_pan || ''
+        });
+      }
+    } else {
+      setBuyerDetails({
+        name: 'Walk-in Customer',
+        phone: '',
+        address: '',
+        city: 'Takhatgarh',
+        state: 'Rajasthan',
+        state_code: '08',
+        place_of_supply: 'Rajasthan',
+        gstin: '',
+        pan: ''
+      });
+    }
+  }, [selectedCustomer, customers]);
 
   const [cashReceived, setCashReceived] = useState<number>(0);
   const [goldDeposited, setGoldDeposited] = useState<number>(0);
@@ -30,6 +76,20 @@ export default function CheckoutModal({ payload, grandTotal, onClose, onSuccess 
   const [upiId, setUpiId] = useState('');
   const [cardRef, setCardRef] = useState('');
   const [chequeNo, setChequeNo] = useState('');
+  useEffect(() => {
+    const handleModalEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (mode === 'new_customer') {
+          setMode('checkout');
+        } else {
+          onClose();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleModalEsc);
+    return () => window.removeEventListener('keydown', handleModalEsc);
+  }, [mode, onClose]);
   const [bankName, setBankName] = useState('');
   const [chequeDate, setChequeDate] = useState('');
 
@@ -291,12 +351,22 @@ export default function CheckoutModal({ payload, grandTotal, onClose, onSuccess 
     const idempotencyKey = `chk_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     const finalPayload = {
       ...payload,
+      company_id: currentCompanyId || 1,
       subtotal: isPureMetal ? 0 : payload.subtotal,
       tax_amount: isPureMetal ? 0 : payload.tax_amount,
       discount_amount: isPureMetal ? 0 : payload.discount_amount,
       grand_total: isPureMetal ? 0 : payload.grand_total,
       items: updatedItems,
       customer_id: selectedCustomer || null,
+      buyer_name: buyerDetails.name,
+      buyer_phone: buyerDetails.phone,
+      buyer_address: buyerDetails.address,
+      buyer_city: buyerDetails.city,
+      buyer_state: buyerDetails.state,
+      buyer_state_code: buyerDetails.state_code,
+      buyer_place_of_supply: buyerDetails.place_of_supply,
+      buyer_gstin: buyerDetails.gstin,
+      buyer_pan: buyerDetails.pan,
       status: isFullySettled ? 'Paid' : 'Completed',
       amount_paid: isPureMetal ? 0 : cashReceived,
       payment_method: isPureMetal ? 'Cash' : paymentMethod,
@@ -316,7 +386,10 @@ export default function CheckoutModal({ payload, grandTotal, onClose, onSuccess 
 
     try {
       const res = await axiosClient.post('/invoices/', finalPayload, {
-        headers: { 'Idempotency-Key': idempotencyKey }
+        headers: {
+          'Idempotency-Key': idempotencyKey,
+          'X-Company-ID': String(currentCompanyId || 1)
+        }
       });
       toast.success(`Invoice ${res.data.invoice_number} generated!`);
       
@@ -346,8 +419,11 @@ export default function CheckoutModal({ payload, grandTotal, onClose, onSuccess 
         last_name: newCustomer.last_name,
         phone_number: newCustomer.phone,
         email: null,
-        address: '',
-        city: newCustomer.city
+        address: newCustomer.address || '',
+        city: newCustomer.city || 'Takhatgarh',
+        state: 'Rajasthan',
+        gst_number: newCustomer.gst_number || null,
+        aadhaar_pan: newCustomer.aadhaar_pan || null
       });
       setCustomers([...customers, res.data]);
       setSelectedCustomer(res.data.id);
@@ -362,7 +438,14 @@ export default function CheckoutModal({ payload, grandTotal, onClose, onSuccess 
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4 overflow-hidden">
-      <div className="bg-surface border border-gray-700 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden my-auto">
+      <div 
+        data-enter-container="true"
+        onKeyDown={(e) => handleEnterKeyNavigation(e, '[data-enter-container]', () => {
+          if (!loading && (isFullySettled || selectedCustomer)) {
+            handleGenerate(false);
+          }
+        })}
+        className="bg-surface border border-gray-700 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden my-auto">
         <div className="flex justify-between items-center p-3.5 sm:p-4 border-b border-gray-700 bg-gray-900/90 sticky top-0 z-20 shrink-0">
           <h2 className="text-base sm:text-lg font-bold text-primary flex items-center gap-2"><Calculator size={20} /> Checkout Settlement</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-white p-1 rounded hover:bg-gray-800 transition-colors"><X size={20} /></button>
@@ -748,53 +831,202 @@ export default function CheckoutModal({ payload, grandTotal, onClose, onSuccess 
                 )}
               </div>
 
-              {/* SECTION 3: Customer */}
+              {/* SECTION 3: Customer & Buyer Details (बिल क्रेता विवरण) */}
               <div className="border-t border-gray-800 pt-4">
                 <div className="flex justify-between items-end mb-2">
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest">Select Customer</label>
-                  <button onClick={() => setMode('new_customer')} className="text-[10px] bg-primary/20 text-primary px-2 py-1 rounded flex items-center gap-1 hover:bg-primary/30 transition-colors"><UserPlus size={12} /> New</button>
+                  <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
+                    <Users size={14} className="text-primary" />
+                    Buyer / Customer Details (क्रेता विवरण)
+                  </label>
+                  <button type="button" onClick={() => setMode('new_customer')} className="text-[10px] bg-primary/20 text-primary px-2.5 py-1 rounded flex items-center gap-1 hover:bg-primary/30 transition-colors font-bold">
+                    <UserPlus size={12} /> + New Customer
+                  </button>
                 </div>
-                <select className="w-full bg-background border border-gray-700 rounded p-3 text-white outline-none focus:border-primary transition-colors" value={selectedCustomer} onChange={e => setSelectedCustomer(Number(e.target.value))}>
-                  <option value="">-- Walk-in Customer --</option>
+                
+                <select 
+                  className="w-full bg-background border border-gray-700 rounded p-2.5 text-sm text-white outline-none focus:border-primary transition-colors mb-3" 
+                  value={selectedCustomer} 
+                  onChange={e => setSelectedCustomer(e.target.value ? Number(e.target.value) : '')}
+                >
+                  <option value="">-- Walk-in / Cash Customer --</option>
                   {customers.map(c => <option key={c.id} value={c.id}>{c.first_name} {c.last_name || ''} ({c.phone_number})</option>)}
                 </select>
+
+                {/* EDITABLE BUYER CARD */}
+                <div className="bg-[#14141B] border border-gray-800 rounded-xl p-3 space-y-2.5">
+                  <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex justify-between items-center pb-1.5 border-b border-gray-800">
+                    <span className="flex items-center gap-1.5 text-white">
+                      <MapPin size={13} className="text-amber-400" />
+                      Editable Buyer Details (बिल पर छपने वाला नाम व पता)
+                    </span>
+                    <span className="text-[10px] text-primary lowercase font-normal">* editable for this bill</span>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] text-gray-400 uppercase font-semibold mb-0.5">Buyer Name</label>
+                      <input 
+                        type="text"
+                        value={buyerDetails.name}
+                        onChange={e => setBuyerDetails({ ...buyerDetails, name: e.target.value })}
+                        placeholder="Customer / Buyer Name"
+                        className="w-full bg-background border border-gray-700 rounded px-2.5 py-1.5 text-xs text-white outline-none focus:border-primary font-medium"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-gray-400 uppercase font-semibold mb-0.5">Contact Phone</label>
+                      <input 
+                        type="text"
+                        value={buyerDetails.phone}
+                        onChange={e => setBuyerDetails({ ...buyerDetails, phone: e.target.value })}
+                        placeholder="Phone Number"
+                        className="w-full bg-background border border-gray-700 rounded px-2.5 py-1.5 text-xs text-white outline-none focus:border-primary"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] text-gray-400 uppercase font-semibold mb-0.5">
+                      Buyer Address (क्रेता का पूरा पता - Editable)
+                    </label>
+                    <input 
+                      type="text"
+                      value={buyerDetails.address}
+                      onChange={e => setBuyerDetails({ ...buyerDetails, address: e.target.value })}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          const saveBtn = document.querySelector<HTMLButtonElement>('[data-save-only="true"]');
+                          saveBtn?.focus();
+                        }
+                      }}
+                      placeholder="e.g. 167, Ward No. 3, Khedawas, Takhatgarh, Pali (Raj.)-306912"
+                      className="w-full bg-background border border-gray-700 rounded px-2.5 py-1.5 text-xs text-white outline-none focus:border-primary font-medium"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <div>
+                      <label className="block text-[10px] text-gray-400 uppercase font-semibold mb-0.5">Place of Supply</label>
+                      <input 
+                        type="text"
+                        value={buyerDetails.place_of_supply}
+                        onChange={e => setBuyerDetails({ ...buyerDetails, place_of_supply: e.target.value })}
+                        placeholder="State"
+                        className="w-full bg-background border border-gray-700 rounded px-2 py-1.5 text-xs text-white outline-none focus:border-primary"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-gray-400 uppercase font-semibold mb-0.5">State Code</label>
+                      <input 
+                        type="text"
+                        value={buyerDetails.state_code}
+                        onChange={e => setBuyerDetails({ ...buyerDetails, state_code: e.target.value })}
+                        placeholder="08"
+                        className="w-full bg-background border border-gray-700 rounded px-2 py-1.5 text-xs text-white outline-none focus:border-primary font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-gray-400 uppercase font-semibold mb-0.5">Buyer GSTIN</label>
+                      <input 
+                        type="text"
+                        value={buyerDetails.gstin}
+                        onChange={e => setBuyerDetails({ ...buyerDetails, gstin: e.target.value.toUpperCase() })}
+                        placeholder="Optional for B2B"
+                        className="w-full bg-background border border-gray-700 rounded px-2 py-1.5 text-xs text-white outline-none focus:border-primary font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-gray-400 uppercase font-semibold mb-0.5">Buyer PAN</label>
+                      <input 
+                        type="text"
+                        value={buyerDetails.pan}
+                        onChange={e => setBuyerDetails({ ...buyerDetails, pan: e.target.value.toUpperCase() })}
+                        placeholder="Optional"
+                        className="w-full bg-background border border-gray-700 rounded px-2 py-1.5 text-xs text-white outline-none focus:border-primary font-mono"
+                      />
+                    </div>
+                  </div>
+                </div>
+
                 {!isFullySettled && !selectedCustomer && <p className="text-red-400 text-[10px] mt-1">* A customer must be selected for outstanding balances.</p>}
               </div>
 
               <div className="flex flex-col sm:flex-row gap-2 mt-4 pt-3 border-t border-gray-800 bg-surface sticky bottom-0 z-10 shrink-0">
-                <button onClick={onClose} className="py-2.5 sm:py-3 px-4 border border-gray-700 rounded-lg text-gray-400 hover:bg-gray-800 font-bold transition-colors order-3 sm:order-1 sm:flex-1 text-xs sm:text-sm">Cancel</button>
-                <button onClick={() => handleGenerate(false)} disabled={loading || (!isFullySettled && !selectedCustomer)} className="py-2.5 sm:py-3 px-4 bg-gray-700 text-white font-bold rounded-lg hover:bg-gray-600 disabled:opacity-50 transition-all order-2 sm:order-2 sm:flex-1 text-xs sm:text-sm">
-                  {loading ? 'Saving...' : 'SAVE ONLY'}
+                <button 
+                  type="button"
+                  data-nav-button="true" 
+                  data-save-only="true"
+                  onClick={() => handleGenerate(false)} 
+                  disabled={loading || (!isFullySettled && !selectedCustomer)} 
+                  className="py-2.5 sm:py-3 px-4 bg-emerald-700 hover:bg-emerald-600 focus:ring-2 focus:ring-emerald-400 text-white font-bold rounded-lg disabled:opacity-50 transition-all flex-1 text-xs sm:text-sm shadow-md flex items-center justify-center gap-1.5"
+                >
+                  {loading ? 'Saving...' : '💾 SAVE ONLY (Enter)'}
                 </button>
-                <button onClick={() => handleGenerate(true)} disabled={loading || (!isFullySettled && !selectedCustomer)} className="py-2.5 sm:py-3 px-4 bg-primary text-black font-black rounded-lg hover:bg-primary-dark disabled:opacity-50 flex justify-center items-center shadow-[0_0_15px_rgba(212,175,55,0.3)] transition-all order-1 sm:order-3 sm:flex-1 text-xs sm:text-sm">
-                  {loading ? 'Processing...' : <><Check size={18} className="mr-2" /> SAVE &amp; PRINT</>}
+                <button 
+                  type="button"
+                  data-nav-button="true" 
+                  onClick={() => handleGenerate(true)} 
+                  disabled={loading || (!isFullySettled && !selectedCustomer)} 
+                  className="py-2.5 sm:py-3 px-4 bg-primary hover:bg-primary-dark focus:ring-2 focus:ring-primary text-black font-black rounded-lg disabled:opacity-50 flex justify-center items-center shadow-[0_0_15px_rgba(212,175,55,0.3)] transition-all flex-1 text-xs sm:text-sm"
+                >
+                  {loading ? 'Processing...' : <><Check size={18} className="mr-1.5" /> SAVE &amp; PRINT (F12)</>}
+                </button>
+                <button 
+                  type="button"
+                  data-nav-button="true" 
+                  onClick={onClose} 
+                  className="py-2.5 sm:py-3 px-4 border border-gray-700 rounded-lg text-gray-400 hover:bg-gray-800 font-bold transition-colors text-xs sm:text-sm"
+                >
+                  Cancel (Esc)
                 </button>
               </div>
             </div>
           )}
 
           {mode === 'new_customer' && (
-            <div className="space-y-4">
-              <h3 className="font-bold text-white mb-4 border-b border-gray-800 pb-2">Add New Customer</h3>
-              <div>
-                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">First Name *</label>
-                <input placeholder="First Name" className="w-full bg-background border border-gray-700 rounded p-2 text-white outline-none focus:border-primary" value={newCustomer.first_name} onChange={e => setNewCustomer({ ...newCustomer, first_name: e.target.value })} />
+            <div className="space-y-3">
+              <h3 className="font-bold text-white mb-2 border-b border-gray-800 pb-2 flex items-center gap-2">
+                <UserPlus size={16} className="text-primary" />
+                Add New Customer
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">First Name *</label>
+                  <input placeholder="First Name" className="w-full bg-background border border-gray-700 rounded p-2 text-white outline-none focus:border-primary text-xs" value={newCustomer.first_name} onChange={e => setNewCustomer({ ...newCustomer, first_name: e.target.value })} />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Last Name</label>
+                  <input placeholder="Last Name" className="w-full bg-background border border-gray-700 rounded p-2 text-white outline-none focus:border-primary text-xs" value={newCustomer.last_name} onChange={e => setNewCustomer({ ...newCustomer, last_name: e.target.value })} />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Phone Number *</label>
+                  <input placeholder="Phone Number" className="w-full bg-background border border-gray-700 rounded p-2 text-white outline-none focus:border-primary text-xs" value={newCustomer.phone} onChange={e => setNewCustomer({ ...newCustomer, phone: e.target.value })} />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">City</label>
+                  <input placeholder="City" className="w-full bg-background border border-gray-700 rounded p-2 text-white outline-none focus:border-primary text-xs" value={newCustomer.city} onChange={e => setNewCustomer({ ...newCustomer, city: e.target.value })} />
+                </div>
               </div>
               <div>
-                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Last Name</label>
-                <input placeholder="Last Name" className="w-full bg-background border border-gray-700 rounded p-2 text-white outline-none focus:border-primary" value={newCustomer.last_name} onChange={e => setNewCustomer({ ...newCustomer, last_name: e.target.value })} />
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Address (क्रेता का पता)</label>
+                <input placeholder="Full Address" className="w-full bg-background border border-gray-700 rounded p-2 text-white outline-none focus:border-primary text-xs" value={newCustomer.address} onChange={e => setNewCustomer({ ...newCustomer, address: e.target.value })} />
               </div>
-              <div>
-                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Phone Number *</label>
-                <input placeholder="Phone Number" className="w-full bg-background border border-gray-700 rounded p-2 text-white outline-none focus:border-primary" value={newCustomer.phone} onChange={e => setNewCustomer({ ...newCustomer, phone: e.target.value })} />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">GSTIN Number (Optional)</label>
+                  <input placeholder="e.g. 08XXXXX..." className="w-full bg-background border border-gray-700 rounded p-2 text-white outline-none focus:border-primary text-xs font-mono" value={newCustomer.gst_number} onChange={e => setNewCustomer({ ...newCustomer, gst_number: e.target.value.toUpperCase() })} />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">PAN Number (Optional)</label>
+                  <input placeholder="e.g. ABCDE1234F" className="w-full bg-background border border-gray-700 rounded p-2 text-white outline-none focus:border-primary text-xs font-mono" value={newCustomer.aadhaar_pan} onChange={e => setNewCustomer({ ...newCustomer, aadhaar_pan: e.target.value.toUpperCase() })} />
+                </div>
               </div>
-              <div>
-                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">City</label>
-                <input placeholder="City" className="w-full bg-background border border-gray-700 rounded p-2 text-white outline-none focus:border-primary" value={newCustomer.city} onChange={e => setNewCustomer({ ...newCustomer, city: e.target.value })} />
-              </div>
-              <div className="flex space-x-3 mt-6">
-                <button onClick={() => setMode('checkout')} className="flex-1 py-2 border border-gray-700 rounded text-gray-400 hover:bg-gray-800">Cancel</button>
-                <button onClick={handleSaveNewCustomer} disabled={loading} className="flex-1 py-2 bg-primary text-black font-bold rounded hover:bg-primary/90">{loading ? 'Saving...' : 'Save Customer'}</button>
+              <div className="flex space-x-3 mt-4 pt-2 border-t border-gray-800">
+                <button type="button" onClick={() => setMode('checkout')} className="flex-1 py-2 border border-gray-700 rounded text-gray-400 hover:bg-gray-800 text-xs font-bold">Cancel</button>
+                <button type="button" onClick={handleSaveNewCustomer} disabled={loading} className="flex-1 py-2 bg-primary text-black font-bold rounded hover:bg-primary/90 text-xs">{loading ? 'Saving...' : 'Save Customer'}</button>
               </div>
             </div>
           )}

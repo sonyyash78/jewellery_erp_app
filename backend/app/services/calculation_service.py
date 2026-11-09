@@ -61,8 +61,8 @@ class CalculationService:
             raise HTTPException(400, "Purity must be between 0-100")
         if metal_rate < Decimal('0'):
             raise HTTPException(400, "Rate must be >= 0")
-        if gst_rate not in [Decimal('0'), Decimal('3'), Decimal('5')]:
-            raise HTTPException(400, "GST must be 0, 3, or 5")
+        if gst_rate not in [Decimal('0'), Decimal('0.25'), Decimal('1.5'), Decimal('3'), Decimal('5')]:
+            raise HTTPException(400, "GST must be 0, 0.25, 1.5, 3, or 5")
         
         # Convert to Decimal
         gross_weight = CalculationService._to_decimal(gross_weight)
@@ -136,8 +136,8 @@ class CalculationService:
             raise HTTPException(400, "Net weight must be >= 0")
         if metal_rate < Decimal('0'):
             raise HTTPException(400, "Rate must be >= 0")
-        if gst_rate not in [Decimal('0'), Decimal('3'), Decimal('5')]:
-            raise HTTPException(400, "GST must be 0, 3, or 5")
+        if gst_rate not in [Decimal('0'), Decimal('0.25'), Decimal('1.5'), Decimal('3'), Decimal('5')]:
+            raise HTTPException(400, "GST must be 0, 0.25, 1.5, 3, or 5")
         
         # Convert to Decimal
         net_weight = CalculationService._to_decimal(net_weight)
@@ -414,6 +414,76 @@ class CalculationService:
         """Validate: GST only 0, 3, 5"""
         gst_rate = CalculationService._to_decimal(gst_rate)
         
-        if gst_rate not in [Decimal('0'), Decimal('3'), Decimal('5')]:
-            raise HTTPException(400, "GST must be 0, 3, or 5")
+        if gst_rate not in [Decimal('0'), Decimal('0.25'), Decimal('1.5'), Decimal('3'), Decimal('5')]:
+            raise HTTPException(400, "GST must be 0, 0.25, 1.5, 3, or 5")
         return True
+
+
+    # ========== DIAMOND CALCULATIONS ==========
+
+    @staticmethod
+    def calculate_diamond(
+        carat_weight: Decimal = Decimal('0'),
+        rate_per_carat: Decimal = Decimal('0'),
+        weight_gm: Optional[Decimal] = None,
+        rate_per_gm: Optional[Decimal] = None,
+        pieces: int = 1,
+        making_charges: Decimal = Decimal('0'),
+        other_charges: Decimal = Decimal('0'),
+        discount: Decimal = Decimal('0'),
+        gst_rate: Decimal = Decimal('1.5'),
+        is_same_state: bool = True
+    ) -> dict:
+        """
+        Calculate isolated Diamond item totals.
+        Subtotal = Carat Weight * Rate Per Carat
+        Taxable = Subtotal + Making Charges + Other Charges - Discount
+        """
+        wt_gm = CalculationService._to_decimal(weight_gm) if weight_gm is not None else None
+        rt_gm = CalculationService._to_decimal(rate_per_gm) if rate_per_gm is not None else None
+        making = CalculationService._to_decimal(making_charges)
+        other = CalculationService._to_decimal(other_charges)
+        disc = CalculationService._to_decimal(discount)
+        gst = CalculationService._to_decimal(gst_rate)
+
+        if wt_gm is not None and wt_gm > 0:
+            carat = CalculationService._round_final(wt_gm * Decimal('5'), Decimal('0.0001'))
+            rate = rt_gm if rt_gm is not None else CalculationService._to_decimal(rate_per_carat)
+            subtotal = CalculationService._round_final(wt_gm * (rt_gm if rt_gm is not None else rate))
+        else:
+            carat = CalculationService._to_decimal(carat_weight)
+            rate = CalculationService._to_decimal(rate_per_carat)
+            wt_gm = CalculationService._round_final(carat / Decimal('5'), Decimal('0.001'))
+            rt_gm = CalculationService._round_final(rate * Decimal('5'))
+            subtotal = CalculationService._round_final(carat * rate)
+        taxable = CalculationService._round_final(max(Decimal('0'), subtotal + making + other - disc))
+
+        if is_same_state:
+            half_rate = gst / Decimal('2')
+            cgst = CalculationService._round_final(taxable * half_rate / Decimal('100'))
+            sgst = CalculationService._round_final(taxable * half_rate / Decimal('100'))
+            igst = Decimal('0.00')
+        else:
+            cgst = Decimal('0.00')
+            sgst = Decimal('0.00')
+            igst = CalculationService._round_final(taxable * gst / Decimal('100'))
+
+        total_tax = cgst + sgst + igst
+        grand_total = CalculationService._round_final(taxable + total_tax)
+
+        return {
+            "carat_weight": carat,
+            "rate_per_carat": rate,
+            "pieces": pieces,
+            "subtotal": subtotal,
+            "making_charges": making,
+            "other_charges": other,
+            "discount": disc,
+            "taxable": taxable,
+            "taxable_amount": taxable,
+            "cgst": cgst,
+            "sgst": sgst,
+            "igst": igst,
+            "total_tax": total_tax,
+            "grand_total": grand_total
+        }

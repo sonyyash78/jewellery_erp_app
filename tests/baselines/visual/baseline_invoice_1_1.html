@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Invoice INV-20261107-0001</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --navy: #0F172A;
+      --navy-light: #1E293B;
+      --navy-dark: #0A0F1D;
+      --gold: #D4AF37;
+      --gold-light: #F6E6B4;
+      --gold-dark: #996515;
+      --gold-border: #E8D49E;
+      --text: #1E293B;
+      --text-muted: #64748B;
+      --border: #E2E8F0;
+      --card-bg: #FDFAF5;
+      --card-border: #EAE3D2;
+      --green: #059669;
+      --green-bg: #ECFDF5;
+      --red: #DC2626;
+      --red-bg: #FEF2F2;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: var(--text);
+      background: white;
+      -webkit-font-smoothing: antialiased;
+      line-height: 1.4;
+    }
+    @page { size: A4 portrait; margin: 0; }
+    @media print {
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+    .pdf-container {
+      width: 100%;
+      background: white;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .invoice-wrapper {
+      width: 210mm;
+      height: 296.5mm;
+      background: white;
+      position: relative;
+      padding: 4mm 5mm 5mm 5mm;
+      box-sizing: border-box;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .watermark {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-family: 'Cinzel', serif;
+      font-size: 320px;
+      color: var(--gold);
+      opacity: 0.035;
+      z-index: 0;
+      pointer-events: none;
+    }
+    .content {
+      position: relative;
+      z-index: 1;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 2px;
+    }
+    .logo-section {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+    .logo-circle {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      border: 2px solid var(--gold);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Cinzel', serif;
+      font-size: 32px;
+      color: var(--gold);
+      background: radial-gradient(circle, #FFFDF7 0%, #FAF6EA 100%);
+    }
+    .company-info h1 {
+      font-family: 'Cinzel', serif;
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--navy);
+      line-height: 1.15;
+      letter-spacing: 2px;
+      margin-bottom: 2px;
+    }
+    .tagline {
+      font-family: 'Inter', sans-serif;
+      font-size: 8.5px;
+      font-weight: 700;
+      color: var(--gold-dark);
+      letter-spacing: 2.2px;
+      text-transform: uppercase;
+    }
+    .tax-invoice-badge {
+      background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
+      color: var(--gold);
+      border: 1.5px solid rgba(212, 175, 55, 0.6);
+      padding: 4px 16px;
+      border-radius: 6px;
+      font-family: 'Cinzel', serif;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 1.2px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      margin-bottom: 2px;
+      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+    }
+    .tax-invoice-badge svg {
+      width: 14px;
+      height: 14px;
+      fill: var(--gold);
+    }
+    .meta-table {
+      margin-top: 2px;
+      font-size: 9px;
+      font-weight: 600;
+      color: var(--navy);
+    }
+    .meta-table td {
+      padding: 1px 6px 1px 0;
+    }
+    .meta-table td:first-child {
+      width: 85px;
+      color: var(--text-muted);
+      font-size: 8.5px;
+    }
+    .diamond-divider {
+      display: flex;
+      align-items: center;
+      margin: 2px 0 5px;
+    }
+    .diamond-divider::before, .diamond-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(90deg, rgba(212,175,55,0.1), rgba(212,175,55,0.6), rgba(212,175,55,0.1));
+    }
+    .diamond {
+      width: 5px;
+      height: 5px;
+      background: var(--gold);
+      transform: rotate(45deg);
+      margin: 0 10px;
+    }
+    .cards-row {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 3px;
+    }
+    .info-card {
+      flex: 1;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 5px 9px;
+      background: var(--card-bg);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+      border-bottom: 1px solid var(--card-border);
+      padding-bottom: 3px;
+    }
+    .card-title {
+      font-family: 'Cinzel', serif;
+      font-size: 10px;
+      font-weight: 800;
+      color: #0F172A;
+      letter-spacing: 1px;
+    }
+    .items-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0 1.5px;
+      margin-top: 2px;
+      font-variant-numeric: tabular-nums;
+    }
+    .items-table th {
+      background: linear-gradient(180deg, #0F172A 0%, #162036 100%);
+      color: #D4AF37;
+      padding: 4px 4px;
+      font-size: 8.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      border-bottom: 2px solid #D4AF37;
+    }
+    .items-table th:first-child { border-radius: 4px 0 0 0; }
+    .items-table th:last-child { border-radius: 0 4px 0 0; }
+    .items-table tbody td {
+      background: #FFFFFF;
+      padding: 3px 4px;
+      font-size: 9.5px;
+      border-top: 1px solid #ECE7DB;
+      border-bottom: 1px solid #ECE7DB;
+      text-align: center;
+      color: #1E293B;
+    }
+    .items-table tbody tr:nth-child(even) td { background: #FAF8F2; }
+    .items-table th:nth-child(2), .items-table td:nth-child(2) { text-align: left; }
+  </style>
+</head>
+<body>
+  <div class="pdf-container">
+    <div class="invoice-wrapper">
+      <div class="watermark">SJ</div>
+      <div class="content">
+
+        <!-- Header -->
+        <div class="header">
+          <div class="logo-section">
+            <div class="logo-circle">SJ</div>
+            <div class="company-info">
+              <h1>Saideep<br>Jewellers</h1>
+              <div class="tagline">Purity & Trust Since Inception</div>
+            </div>
+          </div>
+          <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end;">
+            <div class="tax-invoice-badge">
+              <svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+              TAX INVOICE
+            </div>
+            <table class="meta-table" style="margin-left: auto;">
+              <tr><td>INVOICE NO.</td><td>:</td><td style="color: var(--navy); font-weight: 800;">INV-20261107-0001</td></tr>
+              <tr><td>DATE</td><td>:</td><td style="color: var(--navy);">07 NOVEMBER 2026</td></tr>
+              <tr><td>PLACE</td><td>:</td><td style="color: var(--navy);">Takhatgarh</td></tr>
+              <tr><td>GSTIN</td><td>:</td><td style="color: var(--navy);">08BNUPK1610E1Z3</td></tr>
+            </table>
+          </div>
+        </div>
+
+        <div class="diamond-divider"><div class="diamond"></div></div>
+
+        <!-- Bill To & Payment Info Cards -->
+        <div class="cards-row">
+          <div class="info-card">
+            <div class="card-header">
+              <div class="card-title">BILL TO</div>
+            </div>
+            <div style="font-size: 13px; font-weight: 800; color: #0F172A; margin-bottom: 2px;">Yash</div>
+            <div style="font-size: 9.5px; color: #334155;"><b>Phone:</b> 7894563214</div>
+            <div style="font-size: 9.5px; color: #334155;"><b>Address:</b> -</div>
+            
+          </div>
+
+          <div class="info-card" style="display: flex; flex-direction: column;">
+            <div class="card-header">
+              <div class="card-title">PAYMENT &amp; STORE DETAILS</div>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; flex: 1;">
+              <table style="font-size: 9px; font-weight: 600; color: #16213E;">
+                <tr><td style="padding-bottom: 2px; width: 60px;">MODE</td><td>:</td><td style="padding-left: 6px;">METAL</td></tr>
+                <tr><td style="padding-bottom: 2px;">UPI ID</td><td>:</td><td style="padding-left: 6px; font-family: monospace;">saideep@upi</td></tr>
+                
+                
+                <tr><td colspan="3" style="padding-top: 3px; font-size: 8px; color: #7f8c8d; font-weight: 700;">SCAN TO PAY VIA ANY UPI APP</td></tr>
+              </table>
+              <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; width: 60px;">
+                <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKwAAACsAQAAAADOSnp1AAAB8ElEQVR4nLVXwY0bQQyjDvenOnD/ZU0HVAUMOOv8HCAXKPNY24KhFTgkJZXx4czXpyjww/BU1VR3Y6qnuxP4aRJ8PrIlQiAsS09gp25MAYfkuIEXdQNLuQGw1cc4wEz/a5I/hAc4r6nG6C/+/TO8/UBu0gF9C+9SA7+rfU4DO7nhHIpwuCLfwFJuRTzJjAcZMDxcqhskaFL08wXgTu5veMCCCmfgKg9rkSe8eMOiHXC4homCtyiFgL4AbeUWwmraeSCGEsZs1a03LPnB+4Kl3N9oGI0ZiD0HaJd3/BuiFaGH6BG+mMcSJmSI/eQ0FGUu8Ru37stBRqG+X9c075Akt5n6Aaf4Jf8uDGoGc9CQlUvd06Wfj8BDMI61ph0kX1pCOrLzqiWP/QLBUwwuR2BPjfdmCOpdL+FwJRrdwkSh3cMVxVsS3OI3Lr3TfzIAMaay1ItdcB+8cHiHCcRgdvykdBt7xingldIbWpo1cf37Qq0rezIDyhreuoYiBWg/nrg2szHkOCAOe+IB3uI3Yt0PP3QHFOz5tx2TfZTzqF9bmp+sCZoqqYfXFVfnWGVyUFqQ39vD4t6AQ7xYQu4yu89Sn89RFgegT3temLXeoDSbPG5flhyqL9VN39tjeaJ2VtrFXt/JZH9Ff5cScomD9R/34l/Rio/a/3lu5gAAAABJRU5ErkJggg==" style="width: 54px; height: 54px;" />
+                <div style="background: var(--navy); color: white; border-radius: 3px; padding: 1px 3px; font-size: 7px; font-weight: 700; text-align: center; width: 100%;">SCAN TO PAY</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Items Table -->
+        <table class="items-table">
+          <thead>
+            <tr>
+              <th style="width: 28px;">S.NO</th>
+              <th style="text-align: left;">DESCRIPTION</th>
+              <th style="width: 48px;">METAL</th>
+              <th style="width: 75px;">TANCH+WAST</th>
+              <th style="width: 60px;">WEIGHT(g)</th>
+              <th style="width: 80px;">RATE(&#8377;)</th>
+              <th style="width: 55px;">MAKING(&#8377;)</th>
+              <th style="width: 55px;">OTHER(&#8377;)</th>
+              <th style="width: 85px;">AMOUNT(&#8377;)</th>
+            </tr>
+          </thead>
+          <tbody>
+            
+        <tr>
+          <td>1</td>
+          <td style="text-align: left; font-weight: 600;">
+            <div style="font-size: 13px; color: #16213E; font-weight: 700;">CHAIN </div>
+            <div style="font-size: 10px; color: #7f8c8d; font-weight: 400; margin-top: 1px;">Gross: 50.000g | Fine: 42.500g</div>
+          </td>
+          <td>Gold</td>
+          <td>80% + 5%</td>
+          <td>50.000</td>
+          <td>&#8377; 72,500.00<div style="font-size: 8px; color: #7f8c8d;">per 10g</div></td>
+          <td>-</td>
+          <td>-</td>
+          <td style="font-weight: 700; color: #0F172A;">&#8377; 308,125.00</td>
+        </tr>
+        
+        <tr>
+          <td>2</td>
+          <td style="text-align: left; font-weight: 600;">
+            <div style="font-size: 13px; color: #16213E; font-weight: 700;">Gold Deposit</div>
+            <div style="font-size: 10px; color: #7f8c8d; font-weight: 400; margin-top: 1px;">Gross: 20.000g | Fine: 20.000g</div>
+          </td>
+          <td>Gold</td>
+          <td>100%</td>
+          <td>20.000</td>
+          <td>&#8377; 72,500.00<div style="font-size: 8px; color: #7f8c8d;">per 10g</div></td>
+          <td>-</td>
+          <td>-</td>
+          <td style="font-weight: 700; color: #0F172A;">&#8377; 0.00</td>
+        </tr>
+        
+          </tbody>
+        </table>
+
+        <!-- Metal Settlement Box (if applicable) -->
+        
+        <div style="margin-top: 6px; border: 1px solid #E8D49E; border-radius: 6px; padding: 5px 8px; background: #FDFAF5;">
+          <div style="text-align: center; font-family: 'Cinzel', serif; font-size: 9.5px; font-weight: 800; color: #996515; letter-spacing: 1px; margin-bottom: 4px;">
+            &#9670; METAL SETTLEMENT &amp; PURITY SUMMARY &#9670;
+            <div style="font-size: 7.5px; font-weight: 700; color: #B45309; text-transform: uppercase; margin-top: 1px;">
+              OPTION 2: GOLD DUE (+22.500 gm Gold Balance Due)
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            
+            <div style="flex: 1; border: 1px solid #E2D3B8; border-radius: 6px; background: linear-gradient(180deg, #FDFAF4 0%, #F8F4E8 100%); padding: 5px 8px;">
+              <div style="font-family: 'Cinzel', serif; font-size: 10px; font-weight: 800; color: #8F6614; border-bottom: 1px solid #E2D3B8; padding-bottom: 3px; margin-bottom: 3px;">
+                GOLD SETTLEMENT (22K)
+              </div>
+              <table style="width: 100%; font-size: 9px; font-weight: 600; color: #16213E;">
+                <tr><td>Gold Required (New Items)</td><td style="text-align: right;">62.500 gm</td></tr>
+                <tr><td>Gold Received (Old Items)</td><td style="text-align: right;">0.000 gm</td></tr>
+                <tr><td>Rate Applied</td><td style="text-align: right;">&#8377; 72,500.00/10g</td></tr>
+                <tr><td>Value Settled (Metal)</td><td style="text-align: right; color: #059669; font-weight: 700;">&#8377; 145,000.00</td></tr>
+                <tr style="border-top: 1px solid #E2D3B8; font-weight: 800;"><td style="color: #DC2626;">Gold Balance Due</td><td style="text-align: right; color: #DC2626;">+ 22.500 gm Balance Due</td></tr>
+              </table>
+            </div>
+            
+          </div>
+        </div>
+        
+
+        <!-- 3-Column Luxury Bottom Summary Row (Matching App Layout) -->
+        <div style="display: grid; grid-template-columns: 1.15fr 1fr 1fr; gap: 8px; margin-top: 5px; align-items: stretch;">
+          <!-- Col 1: Amount Summary -->
+          <div style="background: #FDFAF5; border: 1px solid #EAE3D2; border-radius: 6px; padding: 5px 8px; display: flex; flex-direction: column; justify-content: space-between;">
+            <div>
+              <div style="font-family: 'Cinzel', serif; font-size: 9.5px; font-weight: 800; color: #0F172A; border-bottom: 1px solid #EAE3D2; padding-bottom: 2px; margin-bottom: 3px; display: flex; align-items: center; gap: 4px;">
+                <span style="color: #D4AF37;">&#9632;</span> AMOUNT SUMMARY
+              </div>
+              <table style="width: 100%; font-size: 9px; font-weight: 600; color: #16213E; line-height: 1.4;">
+                <tr><td>Total Gold Amount</td><td style='text-align: right;'>:</td><td style='text-align: right;'>&#8377; 308,125.00</td></tr><tr><td>Taxable Amount</td><td style='text-align: right;'>:</td><td style='text-align: right;'>&#8377; 308,125.00</td></tr><tr><td>GST</td><td style='text-align: right;'>:</td><td style='text-align: right;'>&#8377; 9,243.75</td></tr><tr><td style='color: #059669; font-weight: 700;'>Metal Deposited Value</td><td style='text-align: right;'>:</td><td style='text-align: right; color: #059669; font-weight: 700;'>- &#8377; 145,000.00<br><span style='font-size: 7px; color: #7f8c8d;'>(Gold +22.500g Due)</span></td></tr>
+              </table>
+            </div>
+            <div style="background: #0F172A; color: white; border-radius: 4px; padding: 4px 8px; margin-top: 5px; text-align: center;">
+              <div style="font-size: 7px; font-weight: 700; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.5px;">CASH BALANCE DUE</div>
+              <div style="font-size: 13px; font-weight: 800; color: #F1F5F9; margin-top: 1px;">&#8377; 9,244.00</div>
+            </div>
+          </div>
+
+          <!-- Col 2: Center Cards -->
+          <div style="display: flex; flex-direction: column; gap: 4px; justify-content: flex-start;">
+            
+        <div style="background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 8px; padding: 6px 8px; display: flex; align-items: center; gap: 8px;">
+          <div style="width: 32px; height: 32px; border-radius: 50%; background: #F59E0B; color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 2px 4px rgba(245,158,11,0.2);">
+            <svg viewBox="0 0 24 24" style="width: 16px; height: 16px; fill: currentColor;"><path d="M12 2L4 6v2h16V6l-8-4zm0 2.5l5.5 2.75h-11L12 4.5zM4 10v9h16v-9H4zm14 7H6v-5h12v5z"/></svg>
+          </div>
+          <div>
+            <div style="color: #92400E; font-size: 8.5px; font-weight: 700; letter-spacing: 0.8px;">METAL RECEIVED</div>
+            <div style="color: #78350F; font-size: 13px; font-weight: 800;">20.000g Gold</div>
+            <div style="color: #92400E; font-size: 8.5px;">Value: &#8377; 145,000.00</div>
+          </div>
+        </div>
+        
+        <div style="background: #FFFBEB; border: 1.5px solid #FDE68A; border-radius: 8px; padding: 5px 8px; width: 100%; box-sizing: border-box;">
+          <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px dashed #FDE68A; padding-bottom: 3px; margin-bottom: 3px;">
+            <div style="display: flex; align-items: center; gap: 5px;">
+              <div style="width: 16px; height: 16px; border-radius: 50%; background: #F59E0B; color: white; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 800;">!</div>
+              <span style="color: #92400E; font-size: 8px; font-weight: 800; letter-spacing: 0.8px;">FINAL SETTLEMENT</span>
+            </div>
+            <span style="background: #FEF3C7; color: #92400E; font-size: 7.5px; font-weight: 800; padding: 1px 5px; border-radius: 10px; border: 1px solid #FDE68A;">METAL DUE</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 2.5px;">
+            
+            <div style="background: #FFFFFF; border: 1px solid #FCA5A5; border-radius: 4px; padding: 2.5px 6px; display: flex; justify-content: space-between; align-items: center;">
+              <span style="color: #7F1D1D; font-size: 8.5px; font-weight: 800;">CASH DUE:</span>
+              <span style="color: #991B1B; font-size: 11px; font-weight: 900;">&#8377; 9,244.00</span>
+            </div>
+            
+            <div style="background: #FFFDF5; border: 1px solid #FDE68A; border-radius: 4px; padding: 2.5px 6px; display: flex; justify-content: space-between; align-items: center;">
+              <span style="color: #92400E; font-size: 8.5px; font-weight: 800;">GOLD DUE:</span>
+              <span style="color: #B45309; font-size: 11px; font-weight: 900;">+22.500 gm</span>
+            </div>
+            
+          </div>
+          <div style="font-size: 6.5px; color: #92400E; opacity: 0.85; margin-top: 2px; text-align: center; font-style: italic;">*This Bill Due only</div>
+        </div>
+        
+            <div style="border: 1px dashed #CBD5E1; border-radius: 5px; padding: 3px 6px; font-size: 7px; color: #64748B; background: #F8FAFC; margin-top: auto;">
+              <b>Terms &amp; Conditions:</b> Goods once sold will be exchanged as per store policy. Weight &amp; purity guaranteed as per hallmark certification.
+            </div>
+          </div>
+
+          <!-- Col 3: Payment Details & Other Details -->
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <div style="background: #FDFAF5; border: 1px solid #EAE3D2; border-radius: 5px; padding: 4px 7px;">
+              <div style="font-family: 'Cinzel', serif; font-size: 8.5px; font-weight: 800; color: #0F172A; margin-bottom: 2px; border-bottom: 1px solid #EAE3D2; padding-bottom: 2px;">
+                PAYMENT DETAILS
+              </div>
+              <table style="width: 100%; font-size: 8px; color: #334155; line-height: 1.35;">
+                <tr><td style='width: 50%;'>Metal Value Settled</td><td style='text-align: right;'>:</td><td style='text-align: right;'>&#8377; 145,000.00</td></tr><tr><td>Date</td><td style='text-align: right;'>:</td><td style='text-align: right;'>07 NOVEMBER 2026</td></tr><tr><td>Mode</td><td style='text-align: right;'>:</td><td style='text-align: right;'>METAL</td></tr><tr><td>Metal Deposited</td><td style='text-align: right;'>:</td><td style='text-align: right;'>20.000g Gold</td></tr><tr><td style='color: #B45309; font-weight: 700;'>Gold Balance Due</td><td style='text-align: right;'>:</td><td style='text-align: right; color: #B45309; font-weight: 700;'>+22.500 gm</td></tr><tr><td style='color: #DC2626; font-weight: 700;'>Cash Due</td><td style='text-align: right;'>:</td><td style='text-align: right; color: #DC2626; font-weight: 700;'>&#8377; 9,244.00</td></tr>
+              </table>
+            </div>
+
+            <div style="background: #FDFAF5; border: 1px solid #EAE3D2; border-radius: 5px; padding: 4px 7px; flex: 1;">
+              <div style="font-family: 'Cinzel', serif; font-size: 8.5px; font-weight: 800; color: #0F172A; margin-bottom: 2px; border-bottom: 1px solid #EAE3D2; padding-bottom: 2px;">
+                OTHER DETAILS
+              </div>
+              <table style="width: 100%; font-size: 7.5px; color: #334155; line-height: 1.35;">
+                <tr><td style="width: 45%;">Hallmark</td><td>:</td><td style="text-align: right;">BIS 916 (Gold) / BIS 925 (Silver)</td></tr>
+                <tr><td>Wastage</td><td>:</td><td style="text-align: right;">0.00%</td></tr>
+                <tr><td>Making Charges</td><td>:</td><td style="text-align: right;">Gold &#8377; 1,000.00/gm<br>Silver &#8377; 20.00/gm</td></tr>
+                <tr><td>Remarks</td><td>:</td><td style="text-align: right;">-</td></tr>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Signatures Row -->
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: auto; padding-bottom: 42px; font-size: 8.5px; font-weight: 600; color: #334155;">
+          <div style="border-top: 1px solid #94A3B8; width: 140px; text-align: center; padding-top: 2px;">
+            Customer Signature
+          </div>
+          <div style="text-align: center; font-family: 'Cinzel', serif; font-size: 9px; font-weight: 700; color: var(--gold); letter-spacing: 1px;">
+            PURITY YOU TRUST, ELEGANCE YOU DESERVE.
+          </div>
+          <div style="border-top: 1px solid #94A3B8; width: 150px; text-align: center; padding-top: 2px;">
+            For Saideep Jewellers<br/><span style="font-size: 7.5px; font-weight: 400; color: #64748B;">Authorized Signatory</span>
+          </div>
+        </div>
+
+        <!-- Circular Overlapping Thank You Badge -->
+        <div style="position: absolute; bottom: 2mm; right: 18px; z-index: 10; width: 56px; height: 56px; border-radius: 50%; background: #0B132B; border: 2px solid var(--gold); display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,0.2);">
+          <svg viewBox="0 0 24 24" style="width: 12px; height: 12px; fill: var(--gold); margin-bottom: 1px;"><path d="M12 2l-5.5 9h11z"/><path d="M12 22l5.5-9h-11z"/></svg>
+          <div style="font-family: 'Cinzel', serif; font-size: 8px; font-weight: 800; color: var(--gold); line-height: 1.1; text-align: center;">THANK<br>YOU</div>
+          <div style="font-family: 'Inter', sans-serif; font-size: 5px; color: var(--gold); margin-top: 1px; text-transform: uppercase; letter-spacing: 0.6px;">For Your Visit</div>
+        </div>
+
+        <!-- Navy Strip Footer -->
+        <div style="position: absolute; bottom: 4mm; left: 5mm; right: 5mm; height: 32px; border-radius: 5px; background: #0B132B; display: flex; align-items: center; padding: 0 85px 0 15px; justify-content: space-between; color: white; font-size: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.12);">
+          <div>&#128205; Takhatgarh, Rajasthan</div>
+          <div>&#128222; 9876543210 | &#9993;&#65039; info@saideepjewellers.com</div>
+          <div>&#127760; www.saideepjewellers.com</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</body>
+</html>

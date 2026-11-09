@@ -29,6 +29,7 @@ import {
 import toast from 'react-hot-toast';
 
 import InvoicePreviewModal from '../../components/invoices/InvoicePreviewModal';
+import { useCompanyStore } from '../../store/companyStore';
 
 
 
@@ -59,7 +60,7 @@ interface Invoice {
 
 
 export default function InvoiceHistory() {
-
+  const { currentCompanyId } = useCompanyStore();
   const [tab, setTab] = useState<'sales' | 'purchases' | 'exchanges'>('sales');
 
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -86,11 +87,14 @@ export default function InvoiceHistory() {
 
 
 
+  // Reset pagination on company switch
   useEffect(() => {
+    setCurrentPage(1);
+  }, [currentCompanyId]);
 
+  useEffect(() => {
     fetchInvoices();
-
-  }, [searchTerm, statusFilter, currentPage, tab]);
+  }, [searchTerm, statusFilter, currentPage, tab, currentCompanyId]);
 
 
 
@@ -110,6 +114,7 @@ export default function InvoiceHistory() {
 
       
 
+      params.append('company_id', String(currentCompanyId || 1));
       if (searchTerm) params.append('search', searchTerm);
 
       if (statusFilter) params.append('status', statusFilter);
@@ -273,21 +278,15 @@ export default function InvoiceHistory() {
 
 
   const handleDelete = async (invoice: Invoice) => {
+    const isPurchase = tab === 'purchases' || invoice.invoice_number.startsWith('PUR-') || invoice.invoice_number.includes('/P/');
+    const isExchange = tab === 'exchanges' || invoice.invoice_number.startsWith('EXC-') || invoice.invoice_number.includes('/E/');
+    const billType = isPurchase ? 'purchase bill' : isExchange ? 'exchange bill' : 'invoice';
 
-    if (!confirm(`Are you sure you want to cancel invoice ${invoice.invoice_number}?`)) {
-
+    if (!confirm(`Are you sure you want to delete ${billType} ${invoice.invoice_number}? This will reverse stock and ledger balances.`)) {
       return;
-
     }
 
-
-
     try {
-
-      const isExchange = invoice.invoice_number.startsWith('EXC-');
-
-      const isPurchase = invoice.invoice_number.startsWith('PUR-');
-
       const endpoint = isPurchase ? `/purchases/${invoice.id}` : isExchange ? `/exchanges/${invoice.id}` : `/invoices/${invoice.id}`;
 
 
@@ -315,7 +314,7 @@ export default function InvoiceHistory() {
 
       await axiosClient.delete(endpoint);
 
-      toast.success('Invoice cancelled and PDF removed from vault successfully');
+      toast.success(`${isPurchase ? 'Purchase bill' : isExchange ? 'Exchange bill' : 'Invoice'} deleted and removed from vault successfully`);
 
       fetchInvoices();
 
@@ -354,17 +353,18 @@ export default function InvoiceHistory() {
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
 
       {/* Header */}
-
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
-
-          <h1 className="text-xl sm:text-2xl font-bold text-primary">Invoice History</h1>
-
-          <p className="text-xs sm:text-sm text-textMuted mt-0.5 sm:mt-1">View and manage all generated invoices across categories</p>
-
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl sm:text-2xl font-bold text-primary">Invoice History</h1>
+            <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold font-mono border ${currentCompanyId === 2 ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40' : 'bg-amber-500/20 text-amber-300 border-amber-500/40'}`}>
+              {currentCompanyId === 2 ? '💎 SAIDEEP JEWELLERS (GST)' : '🏛️ SAIDEEP JEWELLERS (Normal)'}
+            </span>
+          </div>
+          <p className="text-xs sm:text-sm text-textMuted mt-0.5 sm:mt-1">
+            Viewing strictly isolated {currentCompanyId === 2 ? 'GST Tax Invoices for Saideep Jewellers' : 'retail non-GST invoices for Saideep Jewellers'}
+          </p>
         </div>
-
       </div>
 
 
@@ -633,7 +633,7 @@ export default function InvoiceHistory() {
 
                         </button>
 
-                        {invoice.status !== 'Cancelled' && tab === 'sales' && (
+                        {invoice.status !== 'Cancelled' && (
 
                           <button
 

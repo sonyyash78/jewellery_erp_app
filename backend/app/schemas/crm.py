@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, constr, Field
+from pydantic import BaseModel, ConfigDict, constr, Field, field_validator
 from typing import Optional
 from decimal import Decimal
 from datetime import datetime
@@ -15,9 +15,16 @@ class CustomerBase(BaseModel):
     pincode: Optional[str] = None
     aadhaar_pan: Optional[str] = None
     gst_number: Optional[str] = None
-    credit_limit: Decimal = Decimal('0.00')
-    outstanding_balance: Decimal = Decimal('0.00')
+    credit_limit: Optional[Decimal] = Decimal('0.00')
+    outstanding_balance: Optional[Decimal] = Decimal('0.00')
     is_active: bool = True
+
+    @field_validator('credit_limit', 'outstanding_balance', mode='before')
+    @classmethod
+    def default_decimal_zero(cls, v):
+        if v is None or v == '':
+            return Decimal('0.00')
+        return Decimal(str(v))
 
 class CustomerCreate(CustomerBase):
     pass
@@ -45,8 +52,15 @@ class CustomerResponse(CustomerBase):
 
 class CustomerListResponse(BaseModel):
     total: int
-    total_outstanding: Decimal
+    total_outstanding: Optional[Decimal] = Decimal('0.00')
     items: list[CustomerResponse]
+
+    @field_validator('total_outstanding', mode='before')
+    @classmethod
+    def default_total_outstanding(cls, v):
+        if v is None or v == '':
+            return Decimal('0.00')
+        return Decimal(str(v))
 
 # Suppliers
 class SupplierBase(BaseModel):
@@ -59,8 +73,15 @@ class SupplierBase(BaseModel):
     state: Optional[str] = None
     pincode: Optional[str] = None
     gst_number: Optional[str] = None
-    outstanding_balance: Decimal = Decimal('0.00')
+    outstanding_balance: Optional[Decimal] = Decimal('0.00')
     is_active: bool = True
+
+    @field_validator('outstanding_balance', mode='before')
+    @classmethod
+    def default_supplier_outstanding(cls, v):
+        if v is None or v == '':
+            return Decimal('0.00')
+        return Decimal(str(v))
 
 class SupplierCreate(SupplierBase):
     pass
@@ -86,5 +107,12 @@ class SupplierResponse(SupplierBase):
 
 class SupplierListResponse(BaseModel):
     total: int
-    total_outstanding: Decimal
+    total_outstanding: Optional[Decimal] = Decimal('0.00')
     items: list[SupplierResponse]
+
+    @field_validator('total_outstanding', mode='before')
+    @classmethod
+    def default_supplier_total_outstanding(cls, v):
+        if v is None or v == '':
+            return Decimal('0.00')
+        return Decimal(str(v))

@@ -1,6 +1,6 @@
 from typing import List, Optional
 from datetime import datetime
-from sqlalchemy import Integer, String, DECIMAL, ForeignKey, Enum, DateTime, func
+from sqlalchemy import Integer, String, Text, DECIMAL, ForeignKey, Enum, DateTime, func, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base_class import Base
 import enum
@@ -20,19 +20,25 @@ class BillType(str, enum.Enum):
 class SettlementType(str, enum.Enum):
     CASH = "Cash"
     METAL = "Metal"
-    HYBRID = "Hybrid"
 
 class MetalType(str, enum.Enum):
     GOLD = "Gold"
     SILVER = "Silver"
+    BOTH = "Both"
 
 class Invoice(Base):
     __tablename__ = "invoices"
+    __table_args__ = (
+        UniqueConstraint("store_id", "idempotency_key", name="uq_invoices_store_idempotency"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    company_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, default=1, index=True)
     store_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("stores.id", ondelete="CASCADE"), nullable=True, default=1, index=True)
     customer_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("customers.id", ondelete="SET NULL"), nullable=True)
     invoice_number: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    idempotency_key: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
+    verification_token: Mapped[Optional[str]] = mapped_column(String(64), unique=True, nullable=True, index=True)
     invoice_date: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
     
     subtotal: Mapped[float] = mapped_column(DECIMAL(12, 2), default=0.0)
@@ -43,16 +49,21 @@ class Invoice(Base):
     # New Fields for Hybrid Settlement
     bill_type: Mapped[BillType] = mapped_column(Enum(BillType, values_callable=lambda obj: [e.value for e in obj]), default=BillType.CASH)
     settlement_type: Mapped[SettlementType] = mapped_column(Enum(SettlementType, values_callable=lambda obj: [e.value for e in obj]), default=SettlementType.CASH)
-    settlement_metal_type: Mapped[str] = mapped_column(String(50), nullable=True) # Gold or Silver (for old metal balance logic)
-    metal_received_value: Mapped[float] = mapped_column(DECIMAL(12, 2), default=0.0)
-    metal_received_str: Mapped[str] = mapped_column(String(255), nullable=True)
-    cash_received: Mapped[float] = mapped_column(DECIMAL(12, 2), default=0.0)
-    balance_amount: Mapped[float] = mapped_column(DECIMAL(12, 2), default=0.0)
-    balance_metal_weight: Mapped[float] = mapped_column(DECIMAL(12, 3), default=0.0)
-    gold_balance_metal_weight: Mapped[float] = mapped_column(DECIMAL(12, 3), default=0.0)
-    silver_balance_metal_weight: Mapped[float] = mapped_column(DECIMAL(12, 3), default=0.0)
+    settlement_metal_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True) # Gold or Silver (for old metal balance logic)
+    metal_received_value: Mapped[Optional[float]] = mapped_column(DECIMAL(12, 2), nullable=True, default=0.0)
+    metal_received_str: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    cash_received: Mapped[Optional[float]] = mapped_column(DECIMAL(12, 2), nullable=True, default=0.0)
+    balance_amount: Mapped[Optional[float]] = mapped_column(DECIMAL(12, 2), nullable=True, default=0.0)
+    balance_metal_weight: Mapped[Optional[float]] = mapped_column(DECIMAL(12, 3), nullable=True, default=0.0)
+    gold_balance_metal_weight: Mapped[Optional[float]] = mapped_column(DECIMAL(12, 3), nullable=True, default=0.0)
+    silver_balance_metal_weight: Mapped[Optional[float]] = mapped_column(DECIMAL(12, 3), nullable=True, default=0.0)
 
     status: Mapped[InvoiceStatus] = mapped_column(Enum(InvoiceStatus, values_callable=lambda obj: [e.value for e in obj]), default=InvoiceStatus.DRAFT, index=True)
+    seller_snapshot_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    buyer_snapshot_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    tax_summary_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    pdf_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    sha256_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     created_by: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="RESTRICT"))
 
     customer: Mapped["Customer"] = relationship("Customer", back_populates="invoices", foreign_keys=[customer_id])

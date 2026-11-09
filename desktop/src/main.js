@@ -1104,6 +1104,23 @@ function killOrphanedPortProcess(port) {
 
  */
 
+function getPythonExecutable() {
+  const candidates = [
+    process.env.PYTHON_PATH,
+    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python313', 'python.exe'),
+    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python312', 'python.exe'),
+    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python311', 'python.exe'),
+    'C:\\Python313\\python.exe',
+    'C:\\Python312\\python.exe',
+    'python.exe',
+    'python'
+  ];
+  for (const c of candidates) {
+    if (c && fs.existsSync(c)) return c;
+  }
+  return process.platform === 'win32' ? 'python' : 'python3';
+}
+
 function startBackend() {
 
   killOrphanedPortProcess(BACKEND_PORT);
@@ -1142,36 +1159,21 @@ function startBackend() {
 
 
 
-  if (fs.existsSync(standaloneBinary)) {
-
-    console.log(`[Desktop] Spawning Standalone Backend: ${standaloneBinary}`);
-
-    pythonProcess = spawn(standaloneBinary, [], {
-
-      cwd: path.dirname(standaloneBinary),
-
-      env,
-
-      stdio: ['ignore', 'pipe', 'pipe']
-
-    });
-
-  } else {
-
-    const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
-
-    const scriptPath = path.join(backendDir, 'run_server.py');
-
-    console.log(`[Desktop] Spawning Python interpreter: ${scriptPath}`);
-
+  const scriptPath = path.join(backendDir, 'run_server.py');
+  if (fs.existsSync(scriptPath)) {
+    const pythonCmd = getPythonExecutable();
+    console.log(`[Desktop] Spawning Python interpreter with latest backend: ${scriptPath}`);
     pythonProcess = spawn(pythonCmd, [scriptPath], {
-
       cwd: backendDir,
-
       env,
-
       stdio: ['ignore', 'pipe', 'pipe']
-
+    });
+  } else if (fs.existsSync(standaloneBinary)) {
+    console.log(`[Desktop] Spawning Standalone Backend: ${standaloneBinary}`);
+    pythonProcess = spawn(standaloneBinary, [], {
+      cwd: path.dirname(standaloneBinary),
+      env,
+      stdio: ['ignore', 'pipe', 'pipe']
     });
 
   }
@@ -1550,6 +1552,14 @@ function createWindow() {
 
   mainWindow.on('page-title-updated', (e) => e.preventDefault());
 
+  // Allow F1 through F12 function keys and Arrow keys to pass cleanly to web contents
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    // If user presses F1..F12, ensure Chromium does not hijack (e.g. F1 Windows Help)
+    if (input.key === 'F1' || input.key === 'F3' || input.key === 'F5' || input.key === 'F11' || input.key === 'F12') {
+      // Keydown allowed to fire in renderer
+    }
+  });
+
 
 
   createMenu();
@@ -1668,8 +1678,8 @@ ipcMain.handle('delete-vault-pdf', async (_, { category, folderName, docNumber, 
   try {
     const roots = [path.join(pcDir, 'Archived_PDFs')];
     const drives = getUsbDrives();
-    if (drives.length > 0) {
-      roots.push(path.join(drives[0].letter, 'JewelleryERP_Data', 'Archived_PDFs'));
+    for (const drive of drives) {
+      roots.push(path.join(drive.letter, 'JewelleryERP_Data', 'Archived_PDFs'));
     }
     const cleanDoc = (docNumber || '').toLowerCase().replace(/[^a-z0-9_-]/g, '_');
     const cleanDate = (docDate || '').toLowerCase().replace(/[^a-z0-9_-]/g, '-');
@@ -1784,41 +1794,27 @@ ipcMain.handle('save-vault-pdf', async (_, { category, folderName, fileName, bas
 
 
     const drives = getUsbDrives();
-
-    if (drives.length > 0) {
-
-      const usbArchiveDir = path.join(drives[0].letter, 'JewelleryERP_Data', 'Archived_PDFs', category || 'Sales', folderName || 'Unknown');
-
-      if (!fs.existsSync(usbArchiveDir)) {
-
-        fs.mkdirSync(usbArchiveDir, { recursive: true });
-
-      }
-
-      const usbFilePath = path.join(usbArchiveDir, fileName);
-
-      fs.writeFileSync(usbFilePath, buffer);
-
-
-
+    for (const drive of drives) {
       try {
-
-        const docBase = fileName.replace('.pdf', '');
-
-        const uFiles = fs.readdirSync(usbArchiveDir);
-
-        for (const f of uFiles) {
-
-          if (f !== fileName && f.includes(docBase) && f.endsWith('.pdf')) {
-
-            fs.unlinkSync(path.join(usbArchiveDir, f));
-
-          }
-
+        const usbArchiveDir = path.join(drive.letter, 'JewelleryERP_Data', 'Archived_PDFs', category || 'Sales', folderName || 'Unknown');
+        if (!fs.existsSync(usbArchiveDir)) {
+          fs.mkdirSync(usbArchiveDir, { recursive: true });
         }
+        const usbFilePath = path.join(usbArchiveDir, fileName);
+        fs.writeFileSync(usbFilePath, buffer);
 
-      } catch (e) {}
-
+        try {
+          const docBase = fileName.replace('.pdf', '');
+          const uFiles = fs.readdirSync(usbArchiveDir);
+          for (const f of uFiles) {
+            if (f !== fileName && f.includes(docBase) && f.endsWith('.pdf')) {
+              fs.unlinkSync(path.join(usbArchiveDir, f));
+            }
+          }
+        } catch (e) {}
+      } catch (usbErr) {
+        console.warn(`[Vault USB Save Error on ${drive.letter}]`, usbErr.message);
+      }
     }
 
     return { success: true, path: pcFilePath };

@@ -56,6 +56,7 @@ from app.api.v1.ai import router as ai_router
 from app.api.v1.backup import router as backup_router
 from app.api.v1.verification import router as verification_router
 from app.api.v1.staff import router as staff_router
+from app.api.v1.companies import router as companies_router
 
 # Migrate legacy Stack-A exchanges table if schema does not match Stack-B model
 from sqlalchemy import inspect, text
@@ -181,6 +182,7 @@ app.include_router(ai_router, prefix="/api/v1/ai", tags=["AI"])
 app.include_router(backup_router, prefix="/api/v1/backup", tags=["Backup"])
 app.include_router(verification_router, prefix="/api/v1/verification", tags=["Verification"])
 app.include_router(staff_router, prefix="/api/v1/staff", tags=["Staff Management"])
+app.include_router(companies_router, prefix="/api/v1/companies", tags=["Companies"])
 
 import sys
 

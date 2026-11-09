@@ -1,4 +1,5 @@
-﻿from fastapi import APIRouter, Depends, Query
+from decimal import Decimal
+from fastapi import APIRouter, Depends, Query
 
 from sqlalchemy.orm import Session
 
@@ -288,15 +289,15 @@ def get_supplier_bills(seller_id: int, db: Session = Depends(get_db), current_us
 
             "summary": entry.description or '-',
 
-            "gold_change": float(entry.gold_credit - entry.gold_debit),
+            "gold_change": float(Decimal(str(entry.gold_credit or 0)) - Decimal(str(entry.gold_debit or 0))),
 
-            "silver_change": float(entry.silver_credit - entry.silver_debit),
+            "silver_change": float(Decimal(str(entry.silver_credit or 0)) - Decimal(str(entry.silver_debit or 0))),
 
-            "debit": float(entry.debit),
+            "debit": float(Decimal(str(entry.debit or 0))),
 
-            "credit": float(entry.credit),
+            "credit": float(Decimal(str(entry.credit or 0))),
 
-            "balance": float(entry.balance)
+            "balance": float(Decimal(str(entry.balance or 0)))
 
         })
 

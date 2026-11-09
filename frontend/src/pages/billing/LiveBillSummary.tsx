@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useBillingStore } from '../../store/billingStore';
+import { useCompanyStore } from '../../store/companyStore';
 import type { BillItem } from '../../store/billingStore';
 import { Calculator, Trash2, Edit2, RotateCcw, Edit, Receipt } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -8,6 +9,7 @@ import LiveRatesModal from './LiveRatesModal';
 import InvoicePreviewModal from '../../components/invoices/InvoicePreviewModal';
 
 export default function LiveBillSummary() {
+  const { currentCompanyId } = useCompanyStore();
   const {
     cart,
     gstState,
@@ -119,6 +121,7 @@ export default function LiveBillSummary() {
     }
 
     const payload = {
+      company_id: currentCompanyId || 1,
       subtotal: baseTaxableAmount,
       tax_amount: gstAmount,
       discount_amount: globalDiscount,
@@ -160,6 +163,23 @@ export default function LiveBillSummary() {
           other_charges: item.otherCharges || 0,
           discount: item.discount || 0,
           total_silver_value: item.metalValue
+        } : null,
+        diamond_calculation: item.itemType === 'Diamond' ? {
+          weight_gm: item.grossWeight || (item.rawDiamond as any)?.weightGm || 0,
+          weight_carats: item.grossWeight || (item.rawDiamond as any)?.caratWeight || 0,
+          pieces: (item.rawDiamond as any)?.pieces || 1,
+          rate_per_gm: item.rateDisplay || (item.rawDiamond as any)?.ratePerGm || 0,
+          rate_per_carat: item.rateDisplay || (item.rawDiamond as any)?.ratePerCarat || 0,
+          diamond_type: (item.rawDiamond as any)?.diamondType || 'NATURAL',
+          diamond_form: (item.rawDiamond as any)?.diamondForm || 'CUT_AND_POLISHED',
+          shape: (item.rawDiamond as any)?.shape || 'Round',
+          clarity: (item.rawDiamond as any)?.clarity || '',
+          colour: (item.rawDiamond as any)?.colour || '',
+          certificate_no: (item.rawDiamond as any)?.certificateNo || '',
+          discount: (item.rawDiamond as any)?.discount || 0,
+          making_charges: item.makingAmount || 0,
+          other_charges: item.otherCharges || 0,
+          total_diamond_value: item.taxableAmount
         } : null
       }))
     };
@@ -171,13 +191,24 @@ export default function LiveBillSummary() {
   // Keyboard shortcut F7 to trigger checkout
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'F7') {
+      if (e.key === 'F7' || e.key === 'F12') {
         e.preventDefault();
         handleGenerate();
       }
     };
+    const handleQuickCheckout = () => {
+      if (cart.length > 0) {
+        handleGenerate();
+      } else {
+        toast.error('Add at least one item before checkout');
+      }
+    };
+    window.addEventListener('trigger-quick-checkout', handleQuickCheckout);
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('trigger-quick-checkout', handleQuickCheckout);
+    };
   }, [cart, grandTotal, taxableAmount, globalDiscount, gstAmount]);
 
   return (
@@ -461,12 +492,14 @@ export default function LiveBillSummary() {
 
         {/* Generate Bill Button */}
         <button
+          id="btn-generate-bill"
+          data-nav-button="true"
           disabled={cart.length === 0}
           onClick={handleGenerate}
-          className="bg-primary hover:bg-primary-dark text-black font-bold py-2.5 rounded w-full flex items-center justify-center gap-2 transition-colors disabled:opacity-50 text-sm shadow-md"
+          className="bg-primary hover:bg-primary-dark text-black font-bold py-2.5 rounded w-full flex items-center justify-center gap-2 transition-colors disabled:opacity-50 text-sm shadow-md focus:ring-2 focus:ring-offset-2 focus:ring-primary"
         >
           <Calculator size={16} />
-          GENERATE BILL (F7)
+          GENERATE BILL (F12 / Enter)
         </button>
 
         {/* Secondary Actions */}

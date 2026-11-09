@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import ReportViewer from './ReportViewer';
-import { LineChart, LayoutDashboard, Package, Users, Landmark, Receipt, Banknote } from 'lucide-react';
+import { LineChart, LayoutDashboard, Package, Users, Landmark, Receipt, Banknote, Sparkles } from 'lucide-react';
 
 export default function ReportsModule() {
   const [activeReport, setActiveReport] = useState('Sales');
@@ -9,6 +9,7 @@ export default function ReportsModule() {
     { name: 'Sales', icon: <LineChart size={18} /> },
     { name: 'Purchases', icon: <Package size={18} /> },
     { name: 'Profit', icon: <Landmark size={18} /> },
+    { name: 'Wastage Profit', icon: <Sparkles size={18} /> },
     { name: 'Metal Flow', icon: <Package size={18} /> },
     { name: 'Inventory', icon: <LayoutDashboard size={18} /> },
     { name: 'GST', icon: <Receipt size={18} /> },

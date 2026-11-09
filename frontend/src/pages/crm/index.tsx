@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
-import { Users, Building2, Wallet, PlusCircle, Search, X } from 'lucide-react';
+import { Users, Building2, Wallet, PlusCircle, Search, X, RefreshCcw } from 'lucide-react';
 import { getErrorMessage } from '../../utils/errorUtils';
 import { axiosClient } from '../../api/axiosClient';
 import toast from 'react-hot-toast';
+import { useCompanyStore } from '../../store/companyStore';
 import CustomerProfile from './CustomerProfile';
 import SupplierProfile from './SupplierProfile';
 
 export default function CRM() {
+  const { currentCompanyId } = useCompanyStore();
+  const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState<'customers'|'suppliers'>('customers');
   const [customers, setCustomers] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
@@ -39,26 +42,36 @@ export default function CRM() {
   const [suppBalance, setSuppBalance] = useState('');
 
   const fetchData = async () => {
+    setLoading(true);
     try {
       const [custRes, suppRes] = await Promise.all([
-        axiosClient.get('/customers/', { params: { search } }),
-        axiosClient.get('/sellers/', { params: { search } })
+        axiosClient.get('/customers/', { params: { search: search || undefined } }),
+        axiosClient.get('/sellers/', { params: { search: search || undefined } })
       ]);
-      setCustomers(custRes.data.items);
-      setSuppliers(suppRes.data.items);
+      const custList = Array.isArray(custRes.data) ? custRes.data : (custRes.data?.items || []);
+      const suppList = Array.isArray(suppRes.data) ? suppRes.data : (suppRes.data?.items || []);
+      setCustomers(custList);
+      setSuppliers(suppList);
+      const totalCust = custRes.data?.total ?? custList.length;
+      const totalSupp = suppRes.data?.total ?? suppList.length;
+      const custOut = Number(custRes.data?.total_outstanding) || 0;
+      const suppOut = Number(suppRes.data?.total_outstanding) || 0;
       setMetrics({
-        totalCustomers: custRes.data.total,
-        totalSuppliers: suppRes.data.total,
-        outstanding: custRes.data.total_outstanding - suppRes.data.total_outstanding // Net outstanding (we receive - we pay)
+        totalCustomers: totalCust,
+        totalSuppliers: totalSupp,
+        outstanding: custOut - suppOut
       });
     } catch (e) {
+      console.error('Failed to load CRM data', e);
       toast.error('Failed to load CRM data');
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchData();
-  }, [search]);
+  }, [search, currentCompanyId]);
 
   const handleAddCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -218,13 +231,23 @@ export default function CRM() {
               Suppliers Directory
             </button>
           </div>
-          <div className="w-full sm:w-64 p-3 relative border-t sm:border-t-0 border-gray-800">
-            <Search className="absolute left-6 top-5 text-gray-500" size={18} />
-            <input 
-              value={search} onChange={(e) => setSearch(e.target.value)}
-              className="w-full bg-background border border-gray-700 rounded-lg pl-10 pr-4 py-2 text-sm text-textMain focus:border-primary outline-none" 
-              placeholder={tab === 'customers' ? "Search customers..." : "Search suppliers..."} 
-            />
+          <div className="w-full sm:w-80 p-3 flex items-center gap-2 border-t sm:border-t-0 border-gray-800">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-2.5 text-gray-500" size={18} />
+              <input 
+                value={search} onChange={(e) => setSearch(e.target.value)}
+                className="w-full bg-background border border-gray-700 rounded-lg pl-10 pr-4 py-2 text-sm text-textMain focus:border-primary outline-none" 
+                placeholder={tab === 'customers' ? "Search customers..." : "Search suppliers..."} 
+              />
+            </div>
+            <button
+              onClick={fetchData}
+              disabled={loading}
+              title="Refresh CRM Data"
+              className="p-2.5 rounded-lg border border-gray-700 bg-background hover:bg-gray-800 text-gray-300 hover:text-primary transition-all disabled:opacity-50"
+            >
+              <RefreshCcw size={16} className={loading ? 'animate-spin text-primary' : ''} />
+            </button>
           </div>
         </div>
 

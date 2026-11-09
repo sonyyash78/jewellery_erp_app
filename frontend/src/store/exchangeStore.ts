@@ -3,7 +3,7 @@ import { create } from 'zustand';
 export interface OldItem {
   id: string;
   itemName: string;
-  metal: 'Gold' | 'Silver';
+  metal: 'Gold' | 'Silver' | 'Diamond';
   purity: string;
   touch: number;
   grossWeight: number;

@@ -1,0 +1,466 @@
+{
+  "gold_fixtures": [
+    {
+      "input": {
+        "name": "Gold 22K 10g Standard",
+        "net_weight": "10.000",
+        "metal_rate": "7250.00",
+        "touch_purity": "91.60",
+        "wastage": "3.00",
+        "making_rate": "450.00",
+        "making_type": "PER_GRAM",
+        "hallmark": "45.00",
+        "other": "0.00",
+        "discount": "100.00",
+        "gst_rate": "3.00"
+      },
+      "expected_output": {
+        "fine_weight": "9.460",
+        "metal_value": "68585.00",
+        "making_charge": "4500.00",
+        "taxable": "73030.00",
+        "gst": "2190.90",
+        "grand_total": "75220.90"
+      }
+    },
+    {
+      "input": {
+        "name": "Gold 24K 50g Bullion",
+        "net_weight": "50.000",
+        "metal_rate": "7850.00",
+        "touch_purity": "99.90",
+        "wastage": "0.00",
+        "making_rate": "150.00",
+        "making_type": "FIXED",
+        "hallmark": "0.00",
+        "other": "50.00",
+        "discount": "0.00",
+        "gst_rate": "3.00"
+      },
+      "expected_output": {
+        "fine_weight": "49.950",
+        "metal_value": "392107.50",
+        "making_charge": "150.00",
+        "taxable": "392307.50",
+        "gst": "11769.23",
+        "grand_total": "404076.73"
+      }
+    },
+    {
+      "input": {
+        "name": "Gold 18K 15.5g Ring",
+        "net_weight": "15.500",
+        "metal_rate": "7250.00",
+        "touch_purity": "75.00",
+        "wastage": "4.50",
+        "making_rate": "650.00",
+        "making_type": "PER_GRAM",
+        "hallmark": "45.00",
+        "other": "100.00",
+        "discount": "250.00",
+        "gst_rate": "3.00"
+      },
+      "expected_output": {
+        "fine_weight": "12.323",
+        "metal_value": "89338.13",
+        "making_charge": "10075.00",
+        "taxable": "99308.13",
+        "gst": "2979.24",
+        "grand_total": "102287.37"
+      }
+    },
+    {
+      "input": {
+        "name": "Gold 14K 8.25g Necklace",
+        "net_weight": "8.250",
+        "metal_rate": "7250.00",
+        "touch_purity": "58.50",
+        "wastage": "5.00",
+        "making_rate": "3500.00",
+        "making_type": "FIXED",
+        "hallmark": "45.00",
+        "other": "0.00",
+        "discount": "50.00",
+        "gst_rate": "3.00"
+      },
+      "expected_output": {
+        "fine_weight": "5.239",
+        "metal_value": "37980.94",
+        "making_charge": "3500.00",
+        "taxable": "41475.94",
+        "gst": "1244.28",
+        "grand_total": "42720.22"
+      }
+    },
+    {
+      "input": {
+        "name": "Gold 22K 100g Heavy Chain",
+        "net_weight": "100.000",
+        "metal_rate": "7300.00",
+        "touch_purity": "92.00",
+        "wastage": "2.50",
+        "making_rate": "380.00",
+        "making_type": "PER_GRAM",
+        "hallmark": "45.00",
+        "other": "200.00",
+        "discount": "1000.00",
+        "gst_rate": "3.00"
+      },
+      "expected_output": {
+        "fine_weight": "94.500",
+        "metal_value": "689850.00",
+        "making_charge": "38000.00",
+        "taxable": "727095.00",
+        "gst": "21812.85",
+        "grand_total": "748907.85"
+      }
+    },
+    {
+      "input": {
+        "name": "Gold 22K 2.5g Nose Pin",
+        "net_weight": "2.500",
+        "metal_rate": "7250.00",
+        "touch_purity": "91.60",
+        "wastage": "8.00",
+        "making_rate": "850.00",
+        "making_type": "FIXED",
+        "hallmark": "45.00",
+        "other": "0.00",
+        "discount": "0.00",
+        "gst_rate": "3.00"
+      },
+      "expected_output": {
+        "fine_weight": "2.490",
+        "metal_value": "18052.50",
+        "making_charge": "850.00",
+        "taxable": "18947.50",
+        "gst": "568.43",
+        "grand_total": "19515.93"
+      }
+    },
+    {
+      "input": {
+        "name": "Gold 20K 25g Bangle",
+        "net_weight": "25.000",
+        "metal_rate": "7250.00",
+        "touch_purity": "83.33",
+        "wastage": "3.50",
+        "making_rate": "420.00",
+        "making_type": "PER_GRAM",
+        "hallmark": "45.00",
+        "other": "75.00",
+        "discount": "500.00",
+        "gst_rate": "3.00"
+      },
+      "expected_output": {
+        "fine_weight": "21.708",
+        "metal_value": "157379.38",
+        "making_charge": "10500.00",
+        "taxable": "167499.38",
+        "gst": "5024.98",
+        "grand_total": "172524.36"
+      }
+    },
+    {
+      "input": {
+        "name": "Gold 22K 5g Coin",
+        "net_weight": "5.000",
+        "metal_rate": "7250.00",
+        "touch_purity": "91.60",
+        "wastage": "0.00",
+        "making_rate": "200.00",
+        "making_type": "FIXED",
+        "hallmark": "0.00",
+        "other": "0.00",
+        "discount": "0.00",
+        "gst_rate": "3.00"
+      },
+      "expected_output": {
+        "fine_weight": "4.580",
+        "metal_value": "33205.00",
+        "making_charge": "200.00",
+        "taxable": "33405.00",
+        "gst": "1002.15",
+        "grand_total": "34407.15"
+      }
+    },
+    {
+      "input": {
+        "name": "Gold 22K 42.5g Antique Set",
+        "net_weight": "42.500",
+        "metal_rate": "7400.00",
+        "touch_purity": "91.60",
+        "wastage": "6.00",
+        "making_rate": "750.00",
+        "making_type": "PER_GRAM",
+        "hallmark": "90.00",
+        "other": "300.00",
+        "discount": "1500.00",
+        "gst_rate": "3.00"
+      },
+      "expected_output": {
+        "fine_weight": "41.480",
+        "metal_value": "306952.00",
+        "making_charge": "31875.00",
+        "taxable": "337717.00",
+        "gst": "10131.51",
+        "grand_total": "347848.51"
+      }
+    },
+    {
+      "input": {
+        "name": "Gold 24K 1g Bar Tiny",
+        "net_weight": "1.000",
+        "metal_rate": "7900.00",
+        "touch_purity": "99.99",
+        "wastage": "0.00",
+        "making_rate": "100.00",
+        "making_type": "FIXED",
+        "hallmark": "0.00",
+        "other": "0.00",
+        "discount": "0.00",
+        "gst_rate": "3.00"
+      },
+      "expected_output": {
+        "fine_weight": "1.000",
+        "metal_value": "7899.21",
+        "making_charge": "100.00",
+        "taxable": "7999.21",
+        "gst": "239.98",
+        "grand_total": "8239.19"
+      }
+    }
+  ],
+  "silver_fixtures": [
+    {
+      "input": {
+        "name": "Silver 999 1000g Bullion Bar",
+        "net_weight": "1000.000",
+        "metal_rate": "92.50",
+        "touch_purity": "99.90",
+        "wastage": "0.00",
+        "making_rate": "500.00",
+        "making_type": "FIXED",
+        "hallmark": "0.00",
+        "other": "0.00",
+        "discount": "0.00",
+        "gst_rate": "3.00"
+      },
+      "expected_output": {
+        "fine_weight": "999.000",
+        "metal_value": "92407.50",
+        "making_charge": "500.00",
+        "taxable": "92907.50",
+        "gst": "2787.23",
+        "grand_total": "95694.73"
+      }
+    },
+    {
+      "input": {
+        "name": "Silver 925 50g Payal Pair",
+        "net_weight": "50.000",
+        "metal_rate": "92.50",
+        "touch_purity": "92.50",
+        "wastage": "4.00",
+        "making_rate": "12.00",
+        "making_type": "PER_GRAM",
+        "hallmark": "25.00",
+        "other": "50.00",
+        "discount": "100.00",
+        "gst_rate": "3.00"
+      },
+      "expected_output": {
+        "fine_weight": "48.250",
+        "metal_value": "4463.13",
+        "making_charge": "600.00",
+        "taxable": "5038.13",
+        "gst": "151.14",
+        "grand_total": "5189.27"
+      }
+    },
+    {
+      "input": {
+        "name": "Silver 800 150g Utensil / Bowl",
+        "net_weight": "150.000",
+        "metal_rate": "92.50",
+        "touch_purity": "80.00",
+        "wastage": "2.00",
+        "making_rate": "8.00",
+        "making_type": "PER_GRAM",
+        "hallmark": "0.00",
+        "other": "0.00",
+        "discount": "200.00",
+        "gst_rate": "3.00"
+      },
+      "expected_output": {
+        "fine_weight": "123.000",
+        "metal_value": "11377.50",
+        "making_charge": "1200.00",
+        "taxable": "12377.50",
+        "gst": "371.33",
+        "grand_total": "12748.83"
+      }
+    },
+    {
+      "input": {
+        "name": "Silver 925 12.5g Ring",
+        "net_weight": "12.500",
+        "metal_rate": "92.50",
+        "touch_purity": "92.50",
+        "wastage": "5.00",
+        "making_rate": "250.00",
+        "making_type": "FIXED",
+        "hallmark": "25.00",
+        "other": "0.00",
+        "discount": "25.00",
+        "gst_rate": "3.00"
+      },
+      "expected_output": {
+        "fine_weight": "12.188",
+        "metal_value": "1127.34",
+        "making_charge": "250.00",
+        "taxable": "1377.34",
+        "gst": "41.32",
+        "grand_total": "1418.66"
+      }
+    },
+    {
+      "input": {
+        "name": "Silver 700 250g Idol / Murti",
+        "net_weight": "250.000",
+        "metal_rate": "92.50",
+        "touch_purity": "70.00",
+        "wastage": "6.00",
+        "making_rate": "15.00",
+        "making_type": "PER_GRAM",
+        "hallmark": "0.00",
+        "other": "100.00",
+        "discount": "500.00",
+        "gst_rate": "3.00"
+      },
+      "expected_output": {
+        "fine_weight": "190.000",
+        "metal_value": "17575.00",
+        "making_charge": "3750.00",
+        "taxable": "20925.00",
+        "gst": "627.75",
+        "grand_total": "21552.75"
+      }
+    },
+    {
+      "input": {
+        "name": "Silver 999 100g Coin",
+        "net_weight": "100.000",
+        "metal_rate": "95.00",
+        "touch_purity": "99.90",
+        "wastage": "0.00",
+        "making_rate": "150.00",
+        "making_type": "FIXED",
+        "hallmark": "0.00",
+        "other": "0.00",
+        "discount": "50.00",
+        "gst_rate": "3.00"
+      },
+      "expected_output": {
+        "fine_weight": "99.900",
+        "metal_value": "9490.50",
+        "making_charge": "150.00",
+        "taxable": "9590.50",
+        "gst": "287.72",
+        "grand_total": "9878.22"
+      }
+    },
+    {
+      "input": {
+        "name": "Silver 925 35g Kada",
+        "net_weight": "35.000",
+        "metal_rate": "92.50",
+        "touch_purity": "92.50",
+        "wastage": "3.50",
+        "making_rate": "14.00",
+        "making_type": "PER_GRAM",
+        "hallmark": "25.00",
+        "other": "20.00",
+        "discount": "50.00",
+        "gst_rate": "3.00"
+      },
+      "expected_output": {
+        "fine_weight": "33.600",
+        "metal_value": "3108.00",
+        "making_charge": "490.00",
+        "taxable": "3593.00",
+        "gst": "107.79",
+        "grand_total": "3700.79"
+      }
+    },
+    {
+      "input": {
+        "name": "Silver 850 500g Thali",
+        "net_weight": "500.000",
+        "metal_rate": "92.50",
+        "touch_purity": "85.00",
+        "wastage": "2.50",
+        "making_rate": "7.50",
+        "making_type": "PER_GRAM",
+        "hallmark": "0.00",
+        "other": "150.00",
+        "discount": "300.00",
+        "gst_rate": "3.00"
+      },
+      "expected_output": {
+        "fine_weight": "437.500",
+        "metal_value": "40468.75",
+        "making_charge": "3750.00",
+        "taxable": "44068.75",
+        "gst": "1322.06",
+        "grand_total": "45390.81"
+      }
+    },
+    {
+      "input": {
+        "name": "Silver 925 8.75g Pendant",
+        "net_weight": "8.750",
+        "metal_rate": "92.50",
+        "touch_purity": "92.50",
+        "wastage": "4.50",
+        "making_rate": "180.00",
+        "making_type": "FIXED",
+        "hallmark": "25.00",
+        "other": "0.00",
+        "discount": "0.00",
+        "gst_rate": "3.00"
+      },
+      "expected_output": {
+        "fine_weight": "8.488",
+        "metal_value": "785.09",
+        "making_charge": "180.00",
+        "taxable": "990.09",
+        "gst": "29.70",
+        "grand_total": "1019.80"
+      }
+    },
+    {
+      "input": {
+        "name": "Silver 999 2000g Pride Bar",
+        "net_weight": "2000.000",
+        "metal_rate": "194.66",
+        "touch_purity": "100.00",
+        "wastage": "0.00",
+        "making_rate": "0.00",
+        "making_type": "FIXED",
+        "hallmark": "0.00",
+        "other": "0.00",
+        "discount": "0.00",
+        "gst_rate": "3.00"
+      },
+      "expected_output": {
+        "fine_weight": "2000.000",
+        "metal_value": "389320.00",
+        "making_charge": "0.00",
+        "taxable": "389320.00",
+        "gst": "11679.60",
+        "grand_total": "400999.60"
+      }
+    }
+  ]
+}

@@ -73,6 +73,7 @@ class SilverPurchaseResponse(SilverPurchaseBase):
     model_config = ConfigDict(from_attributes=True)
 
 class UnifiedPurchaseCreate(BaseModel):
+    company_id: Optional[int] = 1
     seller_id: Optional[int] = None
     seller: Optional[SellerInfo] = None
     amount_paid: Optional[float] = None

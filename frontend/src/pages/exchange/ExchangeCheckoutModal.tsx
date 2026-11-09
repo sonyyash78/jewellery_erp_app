@@ -1,3 +1,5 @@
+import { handleEnterKeyNavigation } from '../../utils/keyboardNavigation';
+import { useCompanyStore } from '../../store/companyStore';
 import { useState, useEffect, useMemo } from 'react';
 import { axiosClient } from '../../api/axiosClient';
 import toast from 'react-hot-toast';
@@ -8,6 +10,7 @@ import { getErrorMessage } from '../../utils/errorUtils';
 
 
 export default function ExchangeCheckoutModal({ payload, differenceAmount: _differenceAmount, onClose, onSuccess }: { payload: any; differenceAmount?: number; onClose: () => void; onSuccess: (id: string) => void; }) {
+  const { currentCompanyId } = useCompanyStore();
   const [loading, setLoading] = useState(false);
   const [customers, setCustomers] = useState<any[]>([]);
   const initialCustomerId = useBillingStore.getState().selectedCustomerId;
@@ -343,6 +346,7 @@ export default function ExchangeCheckoutModal({ payload, differenceAmount: _diff
       : (silverLeftGrams < -0.001 ? silverLeftGrams : 0);
 
     const finalPayload = {
+        company_id: currentCompanyId || 1,
       ...payload,
       subtotal: isPureMetal && nonMetalCharges === 0 ? 0 : payload.subtotal,
       total_taxable: isPureMetal && nonMetalCharges === 0 ? 0 : payload.total_taxable,
@@ -361,7 +365,11 @@ export default function ExchangeCheckoutModal({ payload, differenceAmount: _diff
     };
 
     try {
-      const res = await axiosClient.post('/exchanges/', finalPayload);
+      const res = await axiosClient.post('/exchanges/', finalPayload, {
+        headers: {
+          'X-Company-ID': String(currentCompanyId || 1)
+        }
+      });
       toast.success(`Exchange ${res.data.exchange_number || res.data.id} generated!`);
       
       try {
@@ -400,7 +408,14 @@ export default function ExchangeCheckoutModal({ payload, differenceAmount: _diff
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4 overflow-hidden">
-      <div className="bg-surface border border-gray-700 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden my-auto">
+      <div 
+        data-enter-container="true"
+        onKeyDown={(e) => handleEnterKeyNavigation(e, '[data-enter-container]', () => {
+          if (!loading && (isFullySettled || selectedCustomer)) {
+            handleGenerate(false);
+          }
+        })}
+        className="bg-surface border border-gray-700 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden my-auto">
         <div className="flex justify-between items-center p-3.5 sm:p-4 border-b border-gray-700 bg-gray-900/90 sticky top-0 z-20 shrink-0">
           <h2 className="text-base sm:text-lg font-bold text-primary flex items-center gap-2"><Calculator size={20} /> Checkout Settlement</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-white p-1 rounded hover:bg-gray-800 transition-colors"><X size={20} /></button>
@@ -774,11 +789,11 @@ export default function ExchangeCheckoutModal({ payload, differenceAmount: _diff
               </div>
 
               <div className="flex flex-col sm:flex-row gap-2 mt-4 pt-3 border-t border-gray-800 bg-surface sticky bottom-0 z-10 shrink-0">
-                <button onClick={onClose} className="py-2.5 sm:py-3 px-4 border border-gray-700 rounded-lg text-gray-400 hover:bg-gray-800 font-bold transition-colors order-3 sm:order-1 sm:flex-1 text-xs sm:text-sm">Cancel</button>
-                <button onClick={() => handleGenerate(false)} disabled={loading || (!isFullySettled && !selectedCustomer)} className="py-2.5 sm:py-3 px-4 bg-gray-700 text-white font-bold rounded-lg hover:bg-gray-600 disabled:opacity-50 transition-all order-2 sm:order-2 sm:flex-1 text-xs sm:text-sm">
+                <button data-nav-button="true" onClick={onClose} className="py-2.5 sm:py-3 px-4 border border-gray-700 rounded-lg text-gray-400 hover:bg-gray-800 font-bold transition-colors order-3 sm:order-1 sm:flex-1 text-xs sm:text-sm">Cancel</button>
+                <button data-nav-button="true" onClick={() => handleGenerate(false)} disabled={loading || (!isFullySettled && !selectedCustomer)} className="py-2.5 sm:py-3 px-4 bg-gray-700 text-white font-bold rounded-lg hover:bg-gray-600 disabled:opacity-50 transition-all order-2 sm:order-2 sm:flex-1 text-xs sm:text-sm">
                   {loading ? 'Saving...' : 'SAVE ONLY'}
                 </button>
-                <button onClick={() => handleGenerate(true)} disabled={loading || (!isFullySettled && !selectedCustomer)} className="py-2.5 sm:py-3 px-4 bg-primary text-black font-black rounded-lg hover:bg-primary-dark disabled:opacity-50 flex justify-center items-center shadow-[0_0_15px_rgba(212,175,55,0.3)] transition-all order-1 sm:order-3 sm:flex-1 text-xs sm:text-sm">
+                <button data-nav-button="true" onClick={() => handleGenerate(true)} disabled={loading || (!isFullySettled && !selectedCustomer)} className="py-2.5 sm:py-3 px-4 bg-primary text-black font-black rounded-lg hover:bg-primary-dark disabled:opacity-50 flex justify-center items-center shadow-[0_0_15px_rgba(212,175,55,0.3)] transition-all order-1 sm:order-3 sm:flex-1 text-xs sm:text-sm">
                   {loading ? 'Processing...' : <><Check size={18} className="mr-2" /> SAVE &amp; PRINT</>}
                 </button>
               </div>

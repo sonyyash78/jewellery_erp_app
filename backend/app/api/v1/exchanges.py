@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Header
 
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 from app.api.dependencies import require_tenant_id, get_db, get_current_user
 
@@ -33,13 +34,10 @@ router = APIRouter()
 @router.post("/", response_model=ExchangeResponse)
 
 def create_exchange(
-
     exchange_in: ExchangeCreate,
-
+    x_company_id: Optional[str] = Header(None, alias="X-Company-ID"),
     db: Session = Depends(get_db),
-
     current_user: User = Depends(get_current_user)
-
 ):
 
     store_id = require_tenant_id(current_user)
@@ -80,11 +78,22 @@ def create_exchange(
 
 
 
+    # Resolve target operating company
+    target_company_id = None
+    if x_company_id and str(x_company_id).strip().isdigit():
+        target_company_id = int(str(x_company_id).strip())
+    if not target_company_id and getattr(exchange_in, 'company_id', None):
+        target_company_id = int(exchange_in.company_id)
+    if not target_company_id:
+        target_company_id = 1
+
     # Create Exchange
-
+    from app.services.sequence_service import SequenceService
+    exc_num = SequenceService.generate_document_number(db, company_id=target_company_id, doc_type="EXCHANGE")
     exchange = Exchange(
-
         store_id=store_id,
+        company_id=target_company_id,
+        exchange_number=exc_num,
 
         customer_id=exchange_in.customer_id,
 
@@ -479,20 +488,26 @@ def create_exchange(
 @router.get("/", response_model=Dict[str, Any])
 
 def list_exchanges(
-
     skip: int = Query(0, ge=0),
-
     limit: int = Query(100, ge=1),
-
+    company_id: Optional[int] = Query(None),
+    x_company_id: Optional[str] = Header(None, alias="X-Company-ID"),
     db: Session = Depends(get_db),
-
     current_user: User = Depends(get_current_user)
-
 ):
 
     store_id = require_tenant_id(current_user)
 
     query = db.query(Exchange).filter(Exchange.store_id == store_id)
+    active_company = company_id
+    if not active_company and x_company_id and x_company_id.isdigit():
+        active_company = int(x_company_id)
+    if not active_company:
+        active_company = 1
+    if active_company == 1:
+        query = query.filter(or_(Exchange.company_id == 1, Exchange.company_id.is_(None)))
+    else:
+        query = query.filter(Exchange.company_id == active_company)
 
     total = query.count()
 
@@ -802,8 +817,13 @@ def delete_exchange(
 
 
 
+        orig_exchange_number = getattr(exchange, 'exchange_number', None) or f"EXC-{exchange.id}"
         exchange.status = "Cancelled"
-
+        if hasattr(exchange, 'exchange_number') and exchange.exchange_number:
+            exchange.exchange_number = f"{orig_exchange_number}-CAN-{exchange.id}"
+        from app.services.sequence_service import SequenceService
+        target_company_id = getattr(exchange, 'company_id', None) or 1
+        SequenceService.rollback_document_number(db, target_company_id, orig_exchange_number, 'EXCHANGE')
         db.commit()
 
 
