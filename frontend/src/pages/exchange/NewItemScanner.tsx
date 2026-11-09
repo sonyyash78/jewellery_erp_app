@@ -157,7 +157,8 @@ export default function NewItemScanner() {
   const handleAddManualItem = (e: React.FormEvent) => {
     e.preventDefault();
     if (grossWeight <= 0) return toast.error('Please enter a valid gross weight');
-    // Validated touch and wastage
+    if (((touch || 0) + (wastage || 0) >= 100) && (wastage || 0) > 0) { toast.error('Touch + Wastage must be less than 100 (Touch + Wastage < 100)'); return; }
+    if (((touch || 0) + (wastage || 0) > 100)) { toast.error('Touch + Wastage must be <= 100'); return; }
 
     const finalItemName = itemName.trim() || `${metal} Jewellery`;
     const itemData = {

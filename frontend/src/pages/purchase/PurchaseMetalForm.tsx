@@ -107,7 +107,8 @@ export default function PurchaseMetalForm() {
     if (gNet <= 0) { toast.error('Net weight must be > 0'); return; }
     const touch = Number(goldForm.touchPurity || 91.6);
     if (touch <= 0) { toast.error('Touch purity must be greater than 0'); return; }
-    // Touch and wastage validated
+    if ((touch + (goldForm.wastage || 0)) >= 100 && (goldForm.wastage || 0) > 0) { toast.error('Touch + Wastage must be less than 100 (Touch + Wastage < 100)'); return; }
+    if ((touch + (goldForm.wastage || 0)) > 100) { toast.error('Touch + Wastage must be <= 100'); return; }
     const item: PurchaseItem = {
       id: editingItemId || Math.random().toString(36).substring(7),
       metalType: 'Gold', itemName: goldForm.itemName || 'Gold Item',
@@ -130,7 +131,8 @@ export default function PurchaseMetalForm() {
     if (sNet <= 0) { toast.error('Net weight must be > 0'); return; }
     const tanch = Number(silverForm.tanch || 99.9);
     if (tanch <= 0) { toast.error('Tanch / Touch purity must be greater than 0'); return; }
-    // Tanch and wastage validated
+    if ((tanch + (silverForm.wastage || 0)) >= 100 && (silverForm.wastage || 0) > 0) { toast.error('Touch + Wastage must be less than 100 (Touch + Wastage < 100)'); return; }
+    if ((tanch + (silverForm.wastage || 0)) > 100) { toast.error('Touch + Wastage must be <= 100'); return; }
     const item: PurchaseItem = {
       id: editingItemId || Math.random().toString(36).substring(7),
       metalType: 'Silver', itemName: silverForm.itemName || 'Silver Item',

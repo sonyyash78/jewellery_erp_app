@@ -151,6 +151,10 @@ class CalculationService:
         gst_rate = CalculationService._to_decimal(gst_rate)
         
         # Calculate
+        if wastage > Decimal('0') and (touch_purity + wastage) >= Decimal('100'):
+            raise HTTPException(400, "Touch + Wastage must be less than 100 (Touch + Wastage < 100)")
+        if (touch_purity + wastage) > Decimal('100'):
+            raise HTTPException(400, "Touch + Wastage cannot exceed 100")
         fine_weight = net_weight * (touch_purity + wastage) / Decimal('100')
         
         # If touch_purity is 100 and wastage is 0, we can just use net_weight (standard case). 

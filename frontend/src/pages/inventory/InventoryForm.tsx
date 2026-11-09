@@ -39,7 +39,10 @@ export default function InventoryForm({ onClose, onSaveSuccess, editItem }: { on
       return;
     }
 
-    // Validated tanch and wastage
+    const tanchVal = Number(form.tanch) || 0;
+      const wstVal = Number(form.wastage) || 0;
+      if (wstVal > 0 && (tanchVal + wstVal >= 100)) { toast.error('Touch + Wastage must be less than 100 (Touch + Wastage < 100)'); return; }
+      if (tanchVal + wstVal > 100) { toast.error('Touch + Wastage must be <= 100'); return; }
 
     setLoading(true);
     try {

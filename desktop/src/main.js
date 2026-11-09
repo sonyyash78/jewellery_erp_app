@@ -68,6 +68,19 @@ try {
 
 const pcDbPath = path.join(pcDir, 'jewellery_erp.db');
 
+const desktopLogFile = path.join(pcDir, 'desktop_debug.log');
+const origLog = console.log;
+const origErr = console.error;
+console.log = (...args) => {
+  try { fs.appendFileSync(desktopLogFile, `[LOG ${new Date().toISOString()}] ${args.join(' ')}\n`); } catch (e) {}
+  origLog.apply(console, args);
+};
+console.error = (...args) => {
+  try { fs.appendFileSync(desktopLogFile, `[ERR ${new Date().toISOString()}] ${args.join(' ')}\n`); } catch (e) {}
+  origErr.apply(console, args);
+};
+
+
 
 
 // The active database is always pcDbPath for maximum local speed & zero crash risk if USB unplugged
@@ -1107,9 +1120,10 @@ function killOrphanedPortProcess(port) {
 function getPythonExecutable() {
   const candidates = [
     process.env.PYTHON_PATH,
-    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python313', 'python.exe'),
-    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python312', 'python.exe'),
-    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python311', 'python.exe'),
+    'C:\\Users\\YASH SONI\\AppData\\Local\\Programs\\Python\\Python313\\python.exe',
+    path.join(process.env.LOCALAPPDATA || 'C:\\Users\\YASH SONI\\AppData\\Local', 'Programs', 'Python', 'Python313', 'python.exe'),
+    path.join(process.env.LOCALAPPDATA || 'C:\\Users\\YASH SONI\\AppData\\Local', 'Programs', 'Python', 'Python312', 'python.exe'),
+    path.join(process.env.LOCALAPPDATA || 'C:\\Users\\YASH SONI\\AppData\\Local', 'Programs', 'Python', 'Python311', 'python.exe'),
     'C:\\Python313\\python.exe',
     'C:\\Python312\\python.exe',
     'python.exe',
