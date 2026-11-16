@@ -11,6 +11,7 @@ import httpx
 from app.api.dependencies import get_db, get_current_user, require_tenant_id
 from app.core.config import settings
 from app.models.user import User
+from app.models.store import Store
 from app.models.invoice import Invoice
 from app.models.purchase import Purchase
 from app.models.stock_item import StockItem
@@ -378,7 +379,7 @@ def call_gemini_api(
             candidate_models.append(m)
 
     system_instruction = (
-        "You are the intelligent, highly capable AI Business Copilot for Saideep Jewellery ERP.\n"
+        "You are the intelligent, highly capable AI Business Copilot for this Jewellery ERP store.\n"
         "You are having a direct conversation with the jewellery store owner or staff.\n\n"
         "COMMUNICATION RULES:\n"
         "1. Speak naturally, warmly, and fluently in Hindi, Hinglish, or English. Match the language and tone of the user's prompt.\n"
@@ -473,12 +474,15 @@ def _local_rule_fallback(prompt: str, store_id: int, db: Session) -> Dict[str, A
         end_prev_month,
     ) = _get_time_boundaries()
 
+    store_obj = db.query(Store).filter(Store.id == store_id).first()
+    store_label = (store_obj.name if store_obj and store_obj.name else "Jewellery ERP")
+
     # 1. Greetings & Help
     greeting_triggers = ["hello", "hi", "namaste", "pranam", "kya kar sakte ho", "help", "options", "commands"]
     if any(re.search(rf"\b{re.escape(g)}\b", prompt) for g in greeting_triggers) and len(prompt.split()) <= 4:
         return {
             "response": (
-                "🙏 **Namaste! Main aapka Saideep Jewellery ERP AI Assistant hoon.**\n\n"
+                f"🙏 **Namaste! Main aapka {store_label} AI Assistant hoon.**\n\n"
                 "Aap mujhse store ke business data ke baare me Hindi, Hinglish ya English me pooch sakte hain:\n\n"
                 "📊 **Sales (Bikri):**\n"
                 "- *Aaj ki sale kitni hui?*\n"
@@ -920,7 +924,7 @@ def _local_rule_fallback(prompt: str, store_id: int, db: Session) -> Dict[str, A
             
             return {
                 "response": (
-                    "📊 **Wastage & Business Profit Report (Saideep Jewellers):**\n\n"
+                    f"📊 **Wastage & Business Profit Report ({store_label}):**\n\n"
                     "🪙 **Gold Wastage Analysis:**\n"
                     f"- Customer Se Liya Wastage (Sell): **{g_sold:.3f} g**\n"
                     f"- Supplier Ko Diya Wastage (Purchase): **- {g_pur:.3f} g**\n"

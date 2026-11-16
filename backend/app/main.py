@@ -1,6 +1,7 @@
-from fastapi import FastAPI
+from fastapi import Body, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from typing import Any, Dict, Optional
 import os
 
 from app.db.base_class import Base
@@ -110,6 +111,12 @@ def _ensure_schema():
                 conn.execute(text("ALTER TABLE exchanges ADD COLUMN verification_token VARCHAR(64) NULL"))
             if "status" not in cols:
                 conn.execute(text("ALTER TABLE exchanges ADD COLUMN status VARCHAR(50) DEFAULT 'Completed'"))
+            if "exchange_number" not in cols:
+                conn.execute(text("ALTER TABLE exchanges ADD COLUMN exchange_number VARCHAR(50) NULL"))
+            if "idempotency_key" not in cols:
+                conn.execute(text("ALTER TABLE exchanges ADD COLUMN idempotency_key VARCHAR(100) NULL"))
+            if "company_id" not in cols:
+                conn.execute(text("ALTER TABLE exchanges ADD COLUMN company_id INTEGER DEFAULT 1"))
 
     # 5. Ensure users table has token_version and permissions
     if "users" in tables:
@@ -214,13 +221,22 @@ def checkpoint_db():
         return {"status": "error", "message": str(e)}
 
 @app.post("/api/v1/archive-pdfs")
-def internal_archive_pdfs():
+def internal_archive_pdfs(payload: Optional[Dict[str, Any]] = Body(default=None)):
     try:
         from app.db.database import SessionLocal
         from app.services.pdf_archive_service import archive_all_store_documents
         from app.core.config import DATA_DIR
+        opts = payload or {}
+        force = bool(opts.get("force_refresh", False))
+        refresh_stmt = bool(opts.get("refresh_statements", True))
         with SessionLocal() as db:
-            result = archive_all_store_documents(db, store_id=1, base_dir=DATA_DIR, force_refresh=False)
+            result = archive_all_store_documents(
+                db,
+                store_id=1,
+                base_dir=DATA_DIR,
+                force_refresh=force,
+                refresh_statements=refresh_stmt,
+            )
             return result
     except Exception as e:
         return {"status": "error", "message": str(e)}

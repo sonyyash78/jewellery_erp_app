@@ -19,9 +19,9 @@ from app.models.setting import Setting
 class InvoicePDFService:
     """Service to generate invoice PDF data for frontend rendering."""
     
-    COMPANY_NAME = "SAIDEEP JEWELLERS"
-    COMPANY_ADDRESS = "Takhatgarh khedawas"
-    COMPANY_PHONE = "8504837854"
+    COMPANY_NAME = "Jewellery Store"
+    COMPANY_ADDRESS = ""
+    COMPANY_PHONE = ""
     COMPANY_EMAIL = ""
     COMPANY_GSTIN = ""
     
@@ -41,14 +41,14 @@ class InvoicePDFService:
         from app.models.store import Store
         store = db.query(Store).filter(Store.id == store_id).first() if store_id else None
 
-        default_name = "SAIDEEP JEWELLERS" if (store_id == 1) else (f"Store #{store_id}" if store_id else "Jewellery Store")
+        default_name = f"Store #{store_id}" if (store_id and store_id != 1) else "Jewellery Store"
         name = store.name if (store and store.name) else (settings_dict.get('business_name') or default_name)
         address = store.address if (store and store.address) else (settings_dict.get('address') if store_id == 1 else (store.address if store else ""))
         phone = store.phone if (store and store.phone) else (settings_dict.get('phone') if store_id == 1 else (store.phone if store else ""))
         email = store.email if (store and store.email) else (settings_dict.get('email') if store_id == 1 else (store.email if store else ""))
         gstin = store.gstin if (store and store.gstin) else (settings_dict.get('gstin') if store_id == 1 else (store.gstin if store else ""))
         pan = store.pan if (store and store.pan) else (settings_dict.get('pan') or "")
-        tagline = store.tagline if (store and store.tagline) else (settings_dict.get('tagline') or "Trust. Purity. Elegance.")
+        tagline = store.tagline if (store and store.tagline) else (settings_dict.get('tagline') or "")
         logo_url = store.logo_url if (store and store.logo_url) else settings_dict.get('logo_url', '')
         
         # Read logo directly from disk and encode to base64 Data URL for instant, reliable rendering in PDFs
@@ -103,6 +103,7 @@ class InvoicePDFService:
         upi_id = settings_dict.get('upi_id') or ""
 
         return {
+            'id': store_id or 1,
             'name': name,
             'address': address,
             'phone': phone,
@@ -117,10 +118,58 @@ class InvoicePDFService:
             'bank_name': settings_dict.get('bank_name') or "",
             'bank_account_no': settings_dict.get('bank_account_no') or "",
             'bank_ifsc': settings_dict.get('bank_ifsc') or "",
+            'bank_branch': settings_dict.get('bank_branch') or "",
+            'computer_generated_note': settings_dict.get('computer_generated_note') or "",
             'print_hallmark': settings_dict.get('print_hallmark'),
             'print_wastage': settings_dict.get('print_wastage'),
             'print_making_charges': settings_dict.get('print_making_charges'),
             'print_remarks': settings_dict.get('print_remarks'),
+        }
+
+    @staticmethod
+    def _resolve_company_payload(db: Session, company_id: int, fallback_store_id: int = 1) -> Dict[str, Any]:
+        """Resolve complete, live editable Company details (falls back to Store/Setting only if Company missing)."""
+        from app.models.company import Company
+        cid = company_id or 1
+        co = db.query(Company).filter(Company.id == cid).first()
+        if not co:
+            co = db.query(Company).filter(Company.id == (2 if cid == 2 else 1)).first()
+
+        base_details = InvoicePDFService._get_company_details(db, fallback_store_id or 1)
+        if not co:
+            base_details['id'] = cid
+            base_details['gst_enabled'] = (cid == 2)
+            return base_details
+
+        is_gst = bool(co.gst_enabled)
+        return {
+            **base_details,
+            'id': co.id,
+            'name': co.name or base_details.get('name') or "Jewellery Store",
+            'address': co.address or "",
+            'city': co.city or "",
+            'state': co.state or "",
+            'state_code': co.state_code or "",
+            'gstin': (co.gstin or "") if is_gst else (co.gstin or ""),
+            'pan': co.pan or "",
+            'phone': co.phone or "",
+            'email': co.email or "",
+            'tagline': getattr(co, 'tagline', None) or base_details.get('tagline') or "",
+            'gst_enabled': is_gst,
+            'invoice_prefix': co.invoice_prefix or ('GST' if is_gst else 'INV'),
+            'invoice_series': co.invoice_series or 'S',
+            'jurisdiction_city': co.jurisdiction_city or "",
+            'declaration': co.declaration or "We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.",
+            'bank_name': co.bank_name or "",
+            'bank_account_no': co.bank_account_no or "",
+            'bank_ifsc': co.bank_ifsc or "",
+            'bank_branch': co.bank_branch or "",
+            'upi_id': co.upi_id or base_details.get('upi_id') or "",
+            'upi_name': co.upi_name or co.name or base_details.get('upi_name') or "",
+            'computer_generated_note': co.computer_generated_note or "",
+            'logo_url': co.logo_url or base_details.get('logo_url') or "",
+            'stamp_url': co.stamp_url or "",
+            'signature_url': co.signature_url or "",
         }
 
     @staticmethod
@@ -142,47 +191,30 @@ class InvoicePDFService:
         if not invoice:
             raise ValueError(f"Invoice {invoice_id} not found")
         
-        # Company details resolution based on invoice.company_id
+        # Company details resolution strictly based on live Company record for invoice.company_id
         company_id = getattr(invoice, 'company_id', None) or 1
-        from app.models.company import Company
-        co = db.query(Company).filter(Company.id == company_id).first()
-        if not co:
-            co = db.query(Company).filter(Company.id == 2).first() if company_id == 2 else db.query(Company).filter(Company.id == 1).first()
+        company = InvoicePDFService._resolve_company_payload(db, company_id, getattr(invoice, 'store_id', 1) or 1)
 
-        if co:
-            company = {
-                'name': co.name or "SAIDEEP JEWELLERS",
-                'address': co.address or "167, Ward No. 3, Khedawas, Takhatgarh, Pali (Raj.)-306912",
-                'city': co.city or "Takhatgarh",
-                'state': co.state or "Rajasthan",
-                'state_code': co.state_code or "08",
-                'gstin': co.gstin or ("08BNUPK1610E1Z3" if co.gst_enabled else ""),
-                'pan': co.pan or ("BNUPK1610E" if co.gst_enabled else ""),
-                'phone': co.phone or "+91-9460820878",
-                'email': co.email or "saideepjewellers78@gmail.com",
-                'gst_enabled': bool(co.gst_enabled),
-                'jurisdiction_city': co.jurisdiction_city or "PALI",
-                'declaration': co.declaration or "We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.",
-                'logo_url': co.logo_url or "",
-                'stamp_url': co.stamp_url or "",
-                'signature_url': co.signature_url or ""
-            }
-        else:
-            company = InvoicePDFService._get_company_details(db, getattr(invoice, 'store_id', 1) or 1)
-            company['gst_enabled'] = (company_id == 2)
-
+        # Fill ONLY empty fields from historical snapshot so Settings edits immediately apply to bills,
+        # and NEVER allow seller_snapshot_json to flip a Normal (No-GST) invoice into GST mode.
         if getattr(invoice, 'seller_snapshot_json', None):
             import json
             try:
                 snap_s = json.loads(invoice.seller_snapshot_json)
                 if snap_s and isinstance(snap_s, dict):
-                    company.update(snap_s)
-                    company['gst_enabled'] = True
+                    for k, v in snap_s.items():
+                        if k == 'gst_enabled':
+                            continue
+                        if k == 'gstin' and not company.get('gst_enabled'):
+                            continue
+                        if not company.get(k) and v:
+                            company[k] = v
             except Exception:
                 pass
         
         # Invoice details
         invoice_data = {
+            'company_id': company.get('id', company_id),
             'invoice_number': invoice.invoice_number,
             'invoice_date': invoice.invoice_date.strftime('%Y-%m-%d'),
             'status': invoice.status.value,
@@ -350,33 +382,7 @@ class InvoicePDFService:
         
         # Company details resolution based on purchase.company_id
         company_id = getattr(purchase, 'company_id', None) or 1
-        from app.models.company import Company
-        co = db.query(Company).filter(Company.id == company_id).first()
-        if not co:
-            co = db.query(Company).filter(Company.id == 2).first() if company_id == 2 else db.query(Company).filter(Company.id == 1).first()
-
-        if co:
-            company = {
-                'id': co.id,
-                'name': co.name or 'SAIDEEP JEWELLERS',
-                'address': co.address or '167, Ward No. 3, Khedawas, Takhatgarh, Pali (Raj.)-306912',
-                'city': co.city or 'Takhatgarh',
-                'state': co.state or 'Rajasthan',
-                'state_code': co.state_code or '08',
-                'gstin': co.gstin or ('08BNUPK1610E1Z3' if co.gst_enabled else ''),
-                'pan': co.pan or ('BNUPK1610E' if co.gst_enabled else ''),
-                'phone': co.phone or '+91-9460820878',
-                'email': co.email or 'saideepjewellers78@gmail.com',
-                'tagline': getattr(co, 'tagline', '') or 'Purity & Trust Since Inception',
-                'declaration': co.declaration or 'We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.',
-                'jurisdiction_city': co.jurisdiction_city or 'PALI',
-                'gst_enabled': bool(co.gst_enabled),
-                'invoice_prefix': co.invoice_prefix or 'SJ',
-                'logo_url': co.logo_url or '/static/logo_store_1.png',
-                'logo_data_url': InvoicePDFService._get_company_details(db, 1).get('logo_data_url', '')
-            }
-        else:
-            company = InvoicePDFService._get_company_details(db, getattr(purchase, 'store_id', 1) or 1)
+        company = InvoicePDFService._resolve_company_payload(db, company_id, getattr(purchase, 'store_id', 1) or 1)
         
         cash_paid = float(purchase.cash_paid or 0)
         balance_due = float(purchase.balance_amount if purchase.balance_amount is not None else (purchase.grand_total - cash_paid))
@@ -483,33 +489,7 @@ class InvoicePDFService:
         
         # Company details resolution based on exchange.company_id
         company_id = getattr(exchange, 'company_id', None) or 1
-        from app.models.company import Company
-        co = db.query(Company).filter(Company.id == company_id).first()
-        if not co:
-            co = db.query(Company).filter(Company.id == 2).first() if company_id == 2 else db.query(Company).filter(Company.id == 1).first()
-
-        if co:
-            company = {
-                'id': co.id,
-                'name': co.name or 'SAIDEEP JEWELLERS',
-                'address': co.address or '167, Ward No. 3, Khedawas, Takhatgarh, Pali (Raj.)-306912',
-                'city': co.city or 'Takhatgarh',
-                'state': co.state or 'Rajasthan',
-                'state_code': co.state_code or '08',
-                'gstin': co.gstin or ('08BNUPK1610E1Z3' if co.gst_enabled else ''),
-                'pan': co.pan or ('BNUPK1610E' if co.gst_enabled else ''),
-                'phone': co.phone or '+91-9460820878',
-                'email': co.email or 'saideepjewellers78@gmail.com',
-                'tagline': getattr(co, 'tagline', '') or 'Purity & Trust Since Inception',
-                'declaration': co.declaration or 'We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.',
-                'jurisdiction_city': co.jurisdiction_city or 'PALI',
-                'gst_enabled': bool(co.gst_enabled),
-                'invoice_prefix': co.invoice_prefix or 'SJ',
-                'logo_url': co.logo_url or '/static/logo_store_1.png',
-                'logo_data_url': InvoicePDFService._get_company_details(db, 1).get('logo_data_url', '')
-            }
-        else:
-            company = InvoicePDFService._get_company_details(db, getattr(exchange, 'store_id', 1) or 1)
+        company = InvoicePDFService._resolve_company_payload(db, company_id, getattr(exchange, 'store_id', 1) or 1)
         
         # Read settlement values from exchange entity with fallback to CustomerLedger
         amount_paid = float(getattr(exchange, 'amount_paid', 0.0) or 0.0)
@@ -545,8 +525,9 @@ class InvoicePDFService:
         elif silver_balance_metal > 0.001:
             settlement_metal_type = 'Silver'
 
-        vouch_number = f"EXC-{exchange.id}-{exchange.verification_token}" if getattr(exchange, 'verification_token', None) else f"EXC-{exchange.id}"
+        vouch_number = getattr(exchange, 'exchange_number', None) or (f"EXC-{exchange.id}-{exchange.verification_token}" if getattr(exchange, 'verification_token', None) else f"EXC-{exchange.id}")
         invoice_data = {
+            'company_id': company_id,
             'invoice_number': vouch_number,
             'invoice_date': exchange.exchange_date.strftime('%Y-%m-%d'),
             'status': "Completed",

@@ -5,7 +5,7 @@ from app.models.store import Store
 def ensure_user_store(db: Session, user: User) -> User:
     """
     Ensures that the given user has a valid isolated tenant store.
-    - User ID 1 / admin username / admin email owns Store 1 ('Saideep Jewellers').
+    - User ID 1 / admin username / admin email owns Store 1.
     - Every other user is strictly isolated to their own dedicated store.
     """
     if not user:

@@ -8,6 +8,7 @@ class StockItem(Base):
     __tablename__ = "stock_items"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     store_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=1, index=True)
+    company_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=1, index=True)
     item_code: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     item_name: Mapped[str] = mapped_column(String(255))
     metal: Mapped[str] = mapped_column(String(50), index=True)

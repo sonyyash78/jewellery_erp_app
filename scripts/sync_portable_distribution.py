@@ -58,6 +58,16 @@ def main():
     shutil.rmtree(temp_asar_dir, ignore_errors=True)
     print(f"app.asar created successfully ({os.path.getsize(target_asar):,} bytes)")
 
+    print("[3.5/5] Syncing Standalone Backend Binary to Portable resources/bin...")
+    bin_src = os.path.join(root, "backend", "dist", "jewellery-backend")
+    bin_dst = os.path.join(res, "bin", "jewellery-backend")
+    if os.path.exists(bin_src):
+        os.makedirs(bin_dst, exist_ok=True)
+        shutil.copytree(bin_src, bin_dst, dirs_exist_ok=True)
+        print(f"Standalone backend synced cleanly to {bin_dst}")
+    else:
+        print("Warning: Standalone backend binary not found at:", bin_src)
+
     print("[4/5] Removing stray files in resources...")
     stray_main = os.path.join(res, "main.js")
     if os.path.exists(stray_main):

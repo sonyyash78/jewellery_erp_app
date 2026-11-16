@@ -65,12 +65,16 @@ def get_latest_rates(db: Session):
         rate = db.query(GoldRate).filter(GoldRate.purity_id == p.id).order_by(desc(GoldRate.effective_datetime)).first()
         if rate:
             rate.purity = p
+            rate.purity_name = p.karat_name
+            rate.metal_type = "Gold"
             latest_rates.append(rate)
             
     for p in silver_purities:
         rate = db.query(SilverRate).filter(SilverRate.purity_id == p.id).order_by(desc(SilverRate.effective_datetime)).first()
         if rate:
             rate.purity = p
+            rate.purity_name = p.karat_name
+            rate.metal_type = "Silver"
             latest_rates.append(rate)
             
     return latest_rates

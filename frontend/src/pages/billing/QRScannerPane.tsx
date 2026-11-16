@@ -6,6 +6,7 @@ import { useBillingStore } from '../../store/billingStore';
 import type { BillItem } from '../../store/billingStore';
 import toast from 'react-hot-toast';
 import { getErrorMessage } from '../../utils/errorUtils';
+import { useCompanyStore } from '../../store/companyStore';
 
 export default function QRScannerPane() {
   const [mode, setMode] = useState<'camera' | 'manual'>('manual');
@@ -68,8 +69,11 @@ export default function QRScannerPane() {
 
     setLoading(true);
     try {
-      // Fetch StockItem
-      const res = await axiosClient.get(`/stock/scan/${code}`);
+      // Fetch StockItem scoped to active company
+      const { activeCompany } = useCompanyStore.getState();
+      const res = await axiosClient.get(`/stock/scan/${code}`, {
+        params: { company_id: activeCompany?.id || 1 }
+      });
       const item = res.data;
 
       // Ensure it's not sold (handled by backend 400, but double checking)

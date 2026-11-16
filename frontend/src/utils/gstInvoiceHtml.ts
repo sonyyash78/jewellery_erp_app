@@ -1,10 +1,10 @@
 /**
 
- * Saideep Jewellers GST Tax Invoice HTML Generator
+ * GST Tax Invoice HTML Generator
 
- * =========================================
+ * ==============================
 
- * Pixel-accurate layout matching GST reference tax invoice (Sales_PG_S_1944_26-27).
+ * Pixel-accurate layout matching GST reference tax invoice.
 
  * Strictly used ONLY when company.gst_enabled = true.
 
@@ -75,6 +75,20 @@ export interface GSTInvoiceData {
     jurisdiction_city?: string;
 
     declaration?: string;
+
+    bank_name?: string;
+
+    bank_account_no?: string;
+
+    bank_ifsc?: string;
+
+    bank_branch?: string;
+
+    upi_id?: string;
+
+    upi_name?: string;
+
+    computer_generated_note?: string;
 
     stamp_url?: string;
 
@@ -388,6 +402,8 @@ export const generateGSTInvoiceHtml = async (data: GSTInvoiceData): Promise<stri
 
       background: #fff;
 
+      color: #000;
+
       padding: 5px;
 
     }
@@ -395,6 +411,10 @@ export const generateGSTInvoiceHtml = async (data: GSTInvoiceData): Promise<stri
     .invoice-container {
 
       width: 100%;
+
+      background: #fff;
+
+      color: #000;
 
       border: 1px solid #000;
 
@@ -1286,6 +1306,12 @@ export const generateGSTInvoiceHtml = async (data: GSTInvoiceData): Promise<stri
 
         </div>
 
+        ${(seller.bank_name || seller.bank_account_no) ? `
+        <div style="font-size: 7pt; margin-bottom: 4px;">
+          <b>Bank Details:</b> ${[seller.bank_name, seller.bank_account_no ? `A/c: ${seller.bank_account_no}` : '', seller.bank_ifsc ? `IFSC: ${seller.bank_ifsc}` : '', seller.bank_branch].filter(Boolean).join(' | ')}
+        </div>
+        ` : ''}
+
         <div>
 
           <div style="font-weight: bold; text-decoration: underline; font-size: 7pt; margin-bottom: 2px;">Declaration</div>
@@ -1314,7 +1340,7 @@ export const generateGSTInvoiceHtml = async (data: GSTInvoiceData): Promise<stri
 
             <div>★ ${seller.name.toUpperCase()} ★</div>
 
-            <div style="font-size: 4.5pt; margin-top: 1px;">${(seller.city || seller.jurisdiction_city || "RAJASTHAN").toUpperCase()}</div>
+            <div style="font-size: 4.5pt; margin-top: 1px;">${(seller.city || seller.jurisdiction_city || seller.state || "").toUpperCase()}</div>
 
           </div>
 
@@ -1334,7 +1360,9 @@ export const generateGSTInvoiceHtml = async (data: GSTInvoiceData): Promise<stri
 
     <div class="jurisdiction-bar">
 
-      SUBJECT TO ${seller.jurisdiction_city || 'PALI'} JURISDICTION
+      ${(seller.jurisdiction_city || seller.city) ? `SUBJECT TO ${(seller.jurisdiction_city || seller.city || '').toUpperCase()} JURISDICTION` : ''}
+
+      ${seller.computer_generated_note ? `<div style="font-size: 6.5pt; font-weight: normal; color: #555; margin-top: 2px;">${seller.computer_generated_note}</div>` : ''}
 
     </div>
 

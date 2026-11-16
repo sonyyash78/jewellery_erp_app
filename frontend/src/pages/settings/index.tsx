@@ -2,12 +2,58 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { axiosClient } from '../../api/axiosClient';
 import { useAuthStore } from '../../store/authStore';
-import { useCompanyStore } from '../../store/companyStore';
+import { useCompanyStore, type Company } from '../../store/companyStore';
 import { Save, Upload, Download, ShieldCheck, Database, Building2, KeyRound, Users, FolderOpen, FileText, RefreshCw } from 'lucide-react';
 import { getErrorMessage } from '../../utils/errorUtils';
 import { BACKEND_BASE_URL } from '../../config/api';
 import toast from 'react-hot-toast';
 import StaffAccessPanel from './StaffAccessPanel';
+
+interface CompanyFormState {
+  name: string;
+  address: string;
+  city: string;
+  state: string;
+  state_code: string;
+  gstin: string;
+  pan: string;
+  phone: string;
+  email: string;
+  jurisdiction_city: string;
+  invoice_prefix: string;
+  invoice_series: string;
+  bank_name: string;
+  bank_account_no: string;
+  bank_ifsc: string;
+  bank_branch: string;
+  upi_id: string;
+  upi_name: string;
+  computer_generated_note: string;
+  declaration: string;
+}
+
+const mapCompanyToForm = (co?: Partial<Company> | null): CompanyFormState => ({
+  name: co?.name || '',
+  address: co?.address || '',
+  city: co?.city || '',
+  state: co?.state || '',
+  state_code: co?.state_code || '',
+  gstin: co?.gstin || '',
+  pan: co?.pan || '',
+  phone: co?.phone || '',
+  email: co?.email || '',
+  jurisdiction_city: co?.jurisdiction_city || '',
+  invoice_prefix: co?.invoice_prefix || (co?.gst_enabled ? 'GST' : 'INV'),
+  invoice_series: co?.invoice_series || 'S',
+  bank_name: co?.bank_name || '',
+  bank_account_no: co?.bank_account_no || '',
+  bank_ifsc: co?.bank_ifsc || '',
+  bank_branch: co?.bank_branch || '',
+  upi_id: co?.upi_id || '',
+  upi_name: co?.upi_name || '',
+  computer_generated_note: co?.computer_generated_note || '',
+  declaration: co?.declaration || ''
+});
 
 export default function SettingsModule() {
   const [searchParams] = useSearchParams();
@@ -19,21 +65,10 @@ export default function SettingsModule() {
       setActiveTab(tabParam);
     }
   }, [tabParam]);
-  const { companies, currentCompanyId, fetchCompanies } = useCompanyStore();
+  const { companies, currentCompanyId, fetchCompanies, upsertCompany } = useCompanyStore();
   const [selectedCompanyId, setSelectedCompanyId] = useState<number>(currentCompanyId || 1);
-  const [companyForm, setCompanyForm] = useState({
-    name: '',
-    address: '',
-    city: '',
-    state: 'Rajasthan',
-    state_code: '08',
-    gstin: '',
-    pan: '',
-    phone: '',
-    email: '',
-    jurisdiction_city: 'JODHPUR',
-    declaration: ''
-  });
+  const [companyDrafts, setCompanyDrafts] = useState<Record<number, CompanyFormState>>({});
+  const [dirtyCompanyIds, setDirtyCompanyIds] = useState<number[]>([]);
   const [savingCompany, setSavingCompany] = useState(false);
 
   useEffect(() => {
@@ -41,30 +76,69 @@ export default function SettingsModule() {
   }, []);
 
   useEffect(() => {
-    const co = companies.find(c => c.id === selectedCompanyId) || companies.find(c => c.id === 1);
-    if (co) {
-      setCompanyForm({
-        name: co.name || '',
-        address: co.address || '',
-        city: co.city || '',
-        state: co.state || 'Rajasthan',
-        state_code: co.state_code || '08',
-        gstin: co.gstin || '',
-        pan: co.pan || '',
-        phone: co.phone || '',
-        email: co.email || '',
-        jurisdiction_city: co.jurisdiction_city || (co.gst_enabled ? 'JODHPUR' : 'TAKHATGARH'),
-        declaration: co.declaration || ''
-      });
+    if (currentCompanyId) {
+      setSelectedCompanyId(currentCompanyId);
     }
-  }, [selectedCompanyId, companies]);
+  }, [currentCompanyId]);
+
+  useEffect(() => {
+    if (!companies || companies.length === 0) return;
+    setCompanyDrafts(prev => {
+      const next = { ...prev };
+      companies.forEach(c => {
+        if (!dirtyCompanyIds.includes(c.id)) {
+          next[c.id] = mapCompanyToForm(c);
+        }
+      });
+      return next;
+    });
+    if (!companies.some(c => c.id === selectedCompanyId)) {
+      setSelectedCompanyId(companies[0].id);
+    }
+  }, [companies]);
+
+  const activeCompany = companies.find(c => c.id === selectedCompanyId) || companies[0];
+  const companyForm: CompanyFormState = companyDrafts[selectedCompanyId] || mapCompanyToForm(activeCompany);
+
+  const updateCompanyField = <K extends keyof CompanyFormState>(field: K, value: CompanyFormState[K]) => {
+    setCompanyDrafts(prev => ({
+      ...prev,
+      [selectedCompanyId]: {
+        ...(prev[selectedCompanyId] || mapCompanyToForm(activeCompany)),
+        [field]: value
+      }
+    }));
+    setDirtyCompanyIds(prev => (prev.includes(selectedCompanyId) ? prev : [...prev, selectedCompanyId]));
+  };
+
+  const saveCompanyDrafts = async (targetIds?: number[]) => {
+    const ids = targetIds && targetIds.length > 0
+      ? targetIds
+      : dirtyCompanyIds.length > 0
+        ? dirtyCompanyIds
+        : [selectedCompanyId];
+    const savedNames: string[] = [];
+    for (const cid of ids) {
+      const co = companies.find(c => c.id === cid);
+      const draft = companyDrafts[cid] || (co ? mapCompanyToForm(co) : null);
+      if (!draft) continue;
+      const res = await axiosClient.put(`/companies/${cid}`, draft);
+      if (res.data) {
+        upsertCompany(res.data);
+      }
+      savedNames.push(draft.name || `Company #${cid}`);
+    }
+    setDirtyCompanyIds(prev => prev.filter(id => !ids.includes(id)));
+    return savedNames;
+  };
 
   const handleSaveCompany = async (e: React.FormEvent) => {
     e.preventDefault();
     setSavingCompany(true);
     try {
-      await axiosClient.put(`/companies/${selectedCompanyId}`, companyForm);
-      toast.success(`${companyForm.name} details saved successfully!`);
+      const idsToSave = Array.from(new Set([...dirtyCompanyIds, selectedCompanyId]));
+      const savedNames = await saveCompanyDrafts(idsToSave);
+      toast.success(`${savedNames.join(', ') || companyForm.name || 'Company'} details saved successfully!`);
       await fetchCompanies();
       await fetchSettings();
       window.dispatchEvent(new Event('settings-updated'));
@@ -110,9 +184,9 @@ export default function SettingsModule() {
     toast.loading('Organizing customer & supplier PDF folders...', { id: 'pdf-vault-sync' });
     try {
       if ((window as any).electronAPI?.archivePdfsNow) {
-        await (window as any).electronAPI.archivePdfsNow();
+        await (window as any).electronAPI.archivePdfsNow({ forceRefresh: false, refreshStatements: true });
       } else {
-        await axiosClient.post('/backup/archive-pdfs', { force_refresh: true });
+        await axiosClient.post('/backup/archive-pdfs', { force_refresh: false, refresh_statements: true });
       }
       const res = await axiosClient.get('/backup/archive-status');
       setPdfArchiveStats(res.data);
@@ -152,11 +226,12 @@ export default function SettingsModule() {
     try {
       setSavingDesktopUsb(true);
       toast.loading('Saving database to USB Pendrive...', { id: 'usb-save-now' });
-      const res = await electronAPI.backupToUsb();
+      const res = await electronAPI.backupToUsb({ showDialog: false });
       if (res?.success) {
-        toast.success(res.usbName ? `Database saved to ${res.usbName}!` : 'Saved to Pendrive successfully!', { id: 'usb-save-now' });
+        toast.success(res.usbName ? `Database & PDFs saved to ${res.usbName}!` : 'Saved to Backup/Pendrive successfully!', { id: 'usb-save-now' });
         const updated = await electronAPI.getStorageStatus();
         setDesktopStorage(updated);
+        axiosClient.get('/backup/archive-status').then(r => setPdfArchiveStats(r.data)).catch(() => {});
       } else if (res?.cancelled) {
         toast.dismiss('usb-save-now');
       } else {
@@ -204,28 +279,36 @@ export default function SettingsModule() {
 
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (logoFile) {
-      await handleLogoUpload();
-    }
-    const filteredPayload = Object.entries(settings)
-      .filter(([key]) => !key.match(/^store_\d+_/))
-      .map(([key, value]) => ({ key, value }));
     try {
+      if (dirtyCompanyIds.length > 0) {
+        await saveCompanyDrafts(dirtyCompanyIds);
+      }
+      if (logoFile) {
+        await handleLogoUpload();
+      }
+      const filteredPayload = Object.entries(settings)
+        .filter(([key]) => !key.match(/^store_\d+_/))
+        .map(([key, value]) => ({ key, value }));
       const res = await axiosClient.post('/settings/', filteredPayload);
       toast.success('Settings saved successfully');
       
       const newName = res.data?.store_name || res.data?.business_name || settings['business_name'] || settings['store_name'];
+      const newAppName = res.data?.app_name || settings['app_name'] || newName || 'Jewellery ERP';
       const newLogo = res.data?.logo_url || settings['logo_url'];
       useAuthStore.getState().updateUser({
         store_name: newName,
         logo_url: newLogo
       });
-      window.dispatchEvent(new Event('settings-updated'));
-
+      if (newAppName) {
+        document.title = newAppName;
+        (window as any).electronAPI?.setAppTitle?.(newAppName);
+      }
+      await fetchCompanies();
       await fetchSettings();
       await syncUserStore();
-    } catch (e) {
-      toast.error('Failed to save settings');
+      window.dispatchEvent(new Event('settings-updated'));
+    } catch (err: any) {
+      toast.error(getErrorMessage(err, 'Failed to save settings'));
     }
   };
 
@@ -423,23 +506,28 @@ export default function SettingsModule() {
                     Select company below to edit its name, address, GSTIN, and contact details shown on invoices.
                   </p>
                 </div>
-                <div className="flex gap-2 shrink-0">
-                  {companies.map(c => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => setSelectedCompanyId(c.id)}
-                      className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                        selectedCompanyId === c.id
-                          ? c.gst_enabled
-                            ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/20'
-                            : 'bg-primary text-black shadow-lg shadow-primary/20'
-                          : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700'
-                      }`}
-                    >
-                      {c.gst_enabled ? '💎 ' + c.name + ' (GST)' : '🏛️ ' + c.name + ' (Normal)'}
-                    </button>
-                  ))}
+                <div className="flex gap-2 shrink-0 flex-wrap">
+                  {companies.map(c => {
+                    const displayCoName = companyDrafts[c.id]?.name || c.name;
+                    const isDirty = dirtyCompanyIds.includes(c.id);
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setSelectedCompanyId(c.id)}
+                        className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                          selectedCompanyId === c.id
+                            ? c.gst_enabled
+                              ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/20'
+                              : 'bg-primary text-black shadow-lg shadow-primary/20'
+                            : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700'
+                        }`}
+                      >
+                        {c.gst_enabled ? `💎 ${displayCoName} (GST)` : `🏛️ ${displayCoName} (Normal)`}
+                        {isDirty && <span title="Unsaved changes" className="ml-1 inline-block w-2 h-2 rounded-full bg-amber-300 ring-1 ring-black/40" />}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -449,8 +537,8 @@ export default function SettingsModule() {
                     <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Seller / Company Name</label>
                     <input 
                       value={companyForm.name} 
-                      onChange={e => setCompanyForm({ ...companyForm, name: e.target.value })} 
-                      placeholder="e.g. SAIDEEP JEWELLERS"
+                      onChange={e => updateCompanyField('name', e.target.value)} 
+                      placeholder="e.g. Your Company / Shop Name"
                       className="w-full bg-background border border-gray-700 rounded p-2.5 text-sm text-white focus:border-primary outline-none font-semibold" 
                     />
                   </div>
@@ -458,8 +546,8 @@ export default function SettingsModule() {
                     <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Phone Number(s)</label>
                     <input 
                       value={companyForm.phone} 
-                      onChange={e => setCompanyForm({ ...companyForm, phone: e.target.value })} 
-                      placeholder="e.g. +91-9460820878"
+                      onChange={e => updateCompanyField('phone', e.target.value)} 
+                      placeholder="e.g. +91-98XXXXXXXX"
                       className="w-full bg-background border border-gray-700 rounded p-2.5 text-sm text-white focus:border-primary outline-none" 
                     />
                   </div>
@@ -467,8 +555,8 @@ export default function SettingsModule() {
                     <label className="block text-xs font-bold text-gray-400 uppercase mb-1">GSTIN Number</label>
                     <input 
                       value={companyForm.gstin} 
-                      onChange={e => setCompanyForm({ ...companyForm, gstin: e.target.value.toUpperCase() })} 
-                      placeholder="e.g. 08BNUPK1610E1Z3"
+                      onChange={e => updateCompanyField('gstin', e.target.value.toUpperCase())} 
+                      placeholder="e.g. 08XXXXX0000X1Z5"
                       className="w-full bg-background border border-gray-700 rounded p-2.5 text-sm text-white focus:border-primary outline-none font-mono" 
                     />
                   </div>
@@ -476,8 +564,8 @@ export default function SettingsModule() {
                     <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Company PAN</label>
                     <input 
                       value={companyForm.pan} 
-                      onChange={e => setCompanyForm({ ...companyForm, pan: e.target.value.toUpperCase() })} 
-                      placeholder="e.g. BNUPK1610E"
+                      onChange={e => updateCompanyField('pan', e.target.value.toUpperCase())} 
+                      placeholder="e.g. XXXXX0000X"
                       className="w-full bg-background border border-gray-700 rounded p-2.5 text-sm text-white focus:border-primary outline-none font-mono" 
                     />
                   </div>
@@ -485,32 +573,175 @@ export default function SettingsModule() {
                     <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Email Address</label>
                     <input 
                       value={companyForm.email} 
-                      onChange={e => setCompanyForm({ ...companyForm, email: e.target.value })} 
+                      onChange={e => updateCompanyField('email', e.target.value)} 
                       type="email" 
-                      placeholder="e.g. saideepjewellers78@gmail.com"
+                      placeholder="e.g. store@example.com"
                       className="w-full bg-background border border-gray-700 rounded p-2.5 text-sm text-white focus:border-primary outline-none" 
                     />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-400 uppercase mb-1">City</label>
+                    <input 
+                      value={companyForm.city} 
+                      onChange={e => updateCompanyField('city', e.target.value)} 
+                      placeholder="e.g. City"
+                      className="w-full bg-background border border-gray-700 rounded p-2.5 text-sm text-white focus:border-primary outline-none" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-400 uppercase mb-1">State &amp; State Code</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      <input 
+                        value={companyForm.state} 
+                        onChange={e => updateCompanyField('state', e.target.value)} 
+                        placeholder="State"
+                        className="col-span-2 bg-background border border-gray-700 rounded p-2.5 text-sm text-white focus:border-primary outline-none" 
+                      />
+                      <input 
+                        value={companyForm.state_code} 
+                        onChange={e => updateCompanyField('state_code', e.target.value)} 
+                        placeholder="08"
+                        className="bg-background border border-gray-700 rounded p-2.5 text-sm text-white focus:border-primary outline-none font-mono" 
+                      />
+                    </div>
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Jurisdiction City</label>
                     <input 
                       value={companyForm.jurisdiction_city} 
-                      onChange={e => setCompanyForm({ ...companyForm, jurisdiction_city: e.target.value })} 
-                      placeholder="e.g. JODHPUR"
+                      onChange={e => updateCompanyField('jurisdiction_city', e.target.value)} 
+                      placeholder="e.g. City Jurisdiction"
                       className="w-full bg-background border border-gray-700 rounded p-2.5 text-sm text-white focus:border-primary outline-none" 
                     />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Invoice Prefix &amp; Series</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input 
+                        value={companyForm.invoice_prefix} 
+                        onChange={e => updateCompanyField('invoice_prefix', e.target.value.toUpperCase())} 
+                        placeholder="Prefix (e.g. INV)"
+                        className="bg-background border border-gray-700 rounded p-2.5 text-sm text-white focus:border-primary outline-none font-mono" 
+                      />
+                      <input 
+                        value={companyForm.invoice_series} 
+                        onChange={e => updateCompanyField('invoice_series', e.target.value.toUpperCase())} 
+                        placeholder="Series (e.g. S)"
+                        className="bg-background border border-gray-700 rounded p-2.5 text-sm text-white focus:border-primary outline-none font-mono" 
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Bank Name</label>
+                    <input 
+                      value={companyForm.bank_name} 
+                      onChange={e => updateCompanyField('bank_name', e.target.value)} 
+                      placeholder="e.g. State Bank of India"
+                      className="w-full bg-background border border-gray-700 rounded p-2.5 text-sm text-white focus:border-primary outline-none" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Bank Account No.</label>
+                    <input 
+                      value={companyForm.bank_account_no} 
+                      onChange={e => updateCompanyField('bank_account_no', e.target.value)} 
+                      placeholder="Account number"
+                      className="w-full bg-background border border-gray-700 rounded p-2.5 text-sm text-white focus:border-primary outline-none font-mono" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Bank IFSC &amp; Branch</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input 
+                        value={companyForm.bank_ifsc} 
+                        onChange={e => updateCompanyField('bank_ifsc', e.target.value.toUpperCase())} 
+                        placeholder="IFSC Code"
+                        className="bg-background border border-gray-700 rounded p-2.5 text-sm text-white focus:border-primary outline-none font-mono" 
+                      />
+                      <input 
+                        value={companyForm.bank_branch} 
+                        onChange={e => updateCompanyField('bank_branch', e.target.value)} 
+                        placeholder="Branch"
+                        className="bg-background border border-gray-700 rounded p-2.5 text-sm text-white focus:border-primary outline-none" 
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Company UPI ID &amp; Payee Name</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input 
+                        value={companyForm.upi_id} 
+                        onChange={e => updateCompanyField('upi_id', e.target.value)} 
+                        placeholder="yourname@upi"
+                        className="bg-background border border-gray-700 rounded p-2.5 text-sm text-white focus:border-primary outline-none font-mono" 
+                      />
+                      <input 
+                        value={companyForm.upi_name} 
+                        onChange={e => updateCompanyField('upi_name', e.target.value)} 
+                        placeholder="UPI Payee Name"
+                        className="bg-background border border-gray-700 rounded p-2.5 text-sm text-white focus:border-primary outline-none" 
+                      />
+                    </div>
                   </div>
                   <div className="md:col-span-2">
                     <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Seller Address (Full)</label>
                     <textarea 
                       value={companyForm.address} 
-                      onChange={e => setCompanyForm({ ...companyForm, address: e.target.value })} 
-                      rows={3} 
-                      placeholder="e.g. 167, Ward No. 3, Khedawas, Takhatgarh, Pali (Raj.)-306912"
+                      onChange={e => updateCompanyField('address', e.target.value)} 
+                      rows={2} 
+                      placeholder="e.g. Shop No., Street, Market, City, State - Pincode"
                       className="w-full bg-background border border-gray-700 rounded p-2.5 text-sm text-white focus:border-primary outline-none resize-none" 
                     />
                   </div>
-                  <div className="md:col-span-2 flex justify-end">
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Invoice Declaration</label>
+                    <input 
+                      value={companyForm.declaration} 
+                      onChange={e => updateCompanyField('declaration', e.target.value)} 
+                      placeholder="e.g. We declare that this invoice shows the actual price of the goods described..."
+                      className="w-full bg-background border border-gray-700 rounded p-2.5 text-sm text-white focus:border-primary outline-none" 
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Invoice Footer Note</label>
+                    <input 
+                      value={companyForm.computer_generated_note} 
+                      onChange={e => updateCompanyField('computer_generated_note', e.target.value)} 
+                      placeholder="e.g. This is a Computer Generated Invoice"
+                      className="w-full bg-background border border-gray-700 rounded p-2.5 text-sm text-white focus:border-primary outline-none" 
+                    />
+                  </div>
+                  <div className="md:col-span-2 flex flex-wrap justify-between items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCompanyDrafts(prev => {
+                          const current = prev[selectedCompanyId] || mapCompanyToForm(activeCompany);
+                          return {
+                            ...prev,
+                            [selectedCompanyId]: {
+                              ...current,
+                              name: settings['business_name'] || settings['store_name'] || current.name,
+                              phone: settings['phone'] || current.phone,
+                              email: settings['email'] || current.email,
+                              address: settings['address'] || current.address,
+                              gstin: activeCompany?.gst_enabled ? (settings['gstin'] || current.gstin) : current.gstin,
+                              pan: settings['pan'] || current.pan,
+                              bank_name: settings['bank_name'] || current.bank_name,
+                              bank_account_no: settings['bank_account_no'] || current.bank_account_no,
+                              bank_ifsc: settings['bank_ifsc'] || current.bank_ifsc,
+                              upi_id: settings['upi_id'] || current.upi_id,
+                              upi_name: settings['upi_name'] || current.upi_name
+                            }
+                          };
+                        });
+                        setDirtyCompanyIds(prev => (prev.includes(selectedCompanyId) ? prev : [...prev, selectedCompanyId]));
+                        toast.success('Copied Shop Settings info into this company — click Save to apply!');
+                      }}
+                      className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 font-semibold text-xs rounded-xl transition-all cursor-pointer"
+                    >
+                      Copy Shop Profile to This Company
+                    </button>
                     <button
                       type="submit"
                       disabled={savingCompany}
@@ -572,8 +803,17 @@ export default function SettingsModule() {
 
             <form onSubmit={handleSaveSettings} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-bold text-primary uppercase mb-1">Application / Software Name (ऐप / सॉफ्टवेयर का नाम)</label>
+                  <input 
+                    value={settings['app_name'] || ''} 
+                    onChange={e => setSettings({ ...settings, app_name: e.target.value })} 
+                    placeholder="e.g. My Jewellery ERP"
+                    className="w-full bg-background border border-gray-700 rounded p-3 text-sm text-textMain focus:border-primary outline-none font-semibold" 
+                  />
+                </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Business Name</label>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Business / Shop Name (दुकान का नाम)</label>
                   <input 
                     value={settings['business_name'] || ''} 
                     onChange={e => {
@@ -586,7 +826,7 @@ export default function SettingsModule() {
                       }
                       setSettings(newSettings);
                     }} 
-                    placeholder="e.g. Soni Jewellers"
+                    placeholder="e.g. Your Jewellery Store"
                     className="w-full bg-background border border-gray-700 rounded p-3 text-sm text-textMain focus:border-primary outline-none" 
                   />
                 </div>
@@ -629,7 +869,7 @@ export default function SettingsModule() {
                       <label className="block text-xs font-bold text-gray-400 uppercase mb-1">UPI ID (VPA)</label>
                       <input 
                         value={settings['upi_id'] || ''} 
-                        placeholder="e.g. 9460820878@upi or shop@okhdfcbank" 
+                        placeholder="e.g. yourshop@upi or shop@okhdfcbank" 
                         onChange={e=>setSettings({...settings, upi_id: e.target.value})} 
                         className="w-full bg-background border border-gray-700 rounded p-3 text-sm text-textMain focus:border-primary outline-none font-mono" 
                       />
@@ -638,7 +878,7 @@ export default function SettingsModule() {
                       <label className="block text-xs font-bold text-gray-400 uppercase mb-1">UPI Payee / Business Name</label>
                       <input 
                         value={settings['upi_name'] || ''} 
-                        placeholder={settings['business_name'] || "e.g. Soni Jewellers"} 
+                        placeholder={settings['business_name'] || "e.g. Your Jewellery Store"} 
                         onChange={e=>setSettings({...settings, upi_name: e.target.value})} 
                         className="w-full bg-background border border-gray-700 rounded p-3 text-sm text-textMain focus:border-primary outline-none" 
                       />

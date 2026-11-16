@@ -59,7 +59,6 @@ export function ItemQRCode({
       src={dataUrl}
       alt={alt || `QR for ${itemCode}`}
       className={className}
-      loading="lazy"
     />
   );
 }

@@ -16,6 +16,10 @@ import io
 
 import json
 
+import re
+
+import time
+
 import base64
 
 import shutil
@@ -23,6 +27,8 @@ import shutil
 import tempfile
 
 import subprocess
+
+import urllib.request
 
 from pathlib import Path
 
@@ -174,112 +180,118 @@ def _generate_qr_data_url(upi_id: str, upi_name: str, amount: float, note: str) 
 
 
 
-def render_html_to_pdf(html_content: str, output_path: Path) -> bool:
+def _write_pdf_bytes_safely(pdf_bytes: bytes, output_path: Path) -> str:
+    """Atomically write PDF bytes without leaving duplicate *_new.pdf files. Returns 'ok', 'locked', or 'error'."""
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = output_path.parent / f".tmp_{os.getpid()}_{id(pdf_bytes)}_{output_path.name}"
+    try:
+        tmp_path.write_bytes(pdf_bytes)
+        for attempt in range(3):
+            try:
+                os.replace(tmp_path, output_path)
+                stale_new = output_path.parent / f"{output_path.stem}_new{output_path.suffix}"
+                if stale_new.exists():
+                    try:
+                        stale_new.unlink()
+                    except Exception:
+                        pass
+                return "ok"
+            except PermissionError:
+                if attempt < 2:
+                    time.sleep(0.12)
+                else:
+                    print(f"[LuxuryPDF] Target file {output_path.name} is open/locked in viewer; skipping duplicate creation.")
+                    return "locked"
+    except Exception as exc:
+        print(f"[LuxuryPDF] Safe write failed for {output_path.name}: {exc}")
+        return "error"
+    finally:
+        if tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except Exception:
+                pass
+    return "error"
 
-    """Render full HTML string into a PDF using headless Chromium (Edge/Chrome)."""
+
+def render_html_to_pdf(html_content: str, output_path: Path) -> bool:
+    """Render HTML into a vector PDF via Electron's Chromium bridge (primary) or headless browser (fallback)."""
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    clean_html = re.sub(r'<link[^>]+fonts\.googleapis\.com[^>]*>', '', html_content, flags=re.IGNORECASE)
+
+    # Primary: use in-process Electron Chromium PDF bridge (sub-second, immune to desktop Edge hangs)
+    bridge_url = os.environ.get("ELECTRON_PDF_BRIDGE_URL", "").strip()
+    if bridge_url:
+        try:
+            body = json.dumps({"html": clean_html, "landscape": False}).encode("utf-8")
+            req = urllib.request.Request(
+                bridge_url,
+                data=body,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=12) as resp:
+                if resp.status == 200:
+                    pdf_bytes = resp.read()
+                    if len(pdf_bytes) > 500 and pdf_bytes[:5] == b"%PDF-":
+                        write_res = _write_pdf_bytes_safely(pdf_bytes, output_path)
+                        if write_res == "ok":
+                            return True
+                        if write_res == "locked":
+                            return output_path.exists()
+        except Exception as bridge_err:
+            print(f"[LuxuryPDF] Electron PDF bridge warning: {bridge_err}")
 
     browser_exe = _find_browser_binary()
-
     if not browser_exe:
-
         print("[LuxuryPDF] No Chromium browser binary found for headless rendering.")
-
         return False
 
-
-
-    output_path = Path(output_path)
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-
-
     with tempfile.NamedTemporaryFile("w", suffix=".html", delete=False, encoding="utf-8") as tf:
-
-        tf.write(html_content)
-
+        tf.write(clean_html)
         temp_html = tf.name
-
-
 
     temp_pdf = temp_html.replace(".html", ".pdf")
 
-
-
     try:
-
-        cmd = [
-
-            browser_exe,
-
-            "--headless",
-
-            "--disable-gpu",
-
-            "--no-pdf-header-footer",
-
-            f"--print-to-pdf={temp_pdf}",
-
-            temp_html
-
-        ]
-
-        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20)
+        with tempfile.TemporaryDirectory(prefix="edge_pdf_") as prof_dir:
+            cmd = [
+                browser_exe,
+                "--headless=new",
+                "--disable-gpu",
+                "--disable-background-networking",
+                "--disable-extensions",
+                "--no-first-run",
+                "--no-default-browser-check",
+                f"--user-data-dir={prof_dir}",
+                "--no-pdf-header-footer",
+                f"--print-to-pdf={temp_pdf}",
+                temp_html,
+            ]
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=8)
 
         temp_pdf_path = Path(temp_pdf)
-
         if temp_pdf_path.exists() and temp_pdf_path.stat().st_size > 500:
-
-            try:
-
-                shutil.copy2(temp_pdf, str(output_path))
-
-                return True
-
-            except PermissionError:
-
-                # If target PDF is currently locked open in user's browser, write with a fresh copy
-
-                print(f"[LuxuryPDF] Target file {output_path.name} is locked in user viewer. Retrying via safe write.")
-
-                try:
-
-                    alt_path = output_path.parent / f"{output_path.stem}_new{output_path.suffix}"
-
-                    shutil.copy2(temp_pdf, str(alt_path))
-
-                except Exception:
-
-                    pass
-
-                return True
-
+            pdf_bytes = temp_pdf_path.read_bytes()
+            write_res = _write_pdf_bytes_safely(pdf_bytes, output_path)
+            return write_res == "ok" or (write_res == "locked" and output_path.exists())
         else:
-
             print(f"[LuxuryPDF] Headless browser failed or produced empty file: {res.stderr.decode('utf-8', errors='ignore')}")
-
             return False
 
     except Exception as e:
-
         print(f"[LuxuryPDF] Execution error rendering HTML to PDF: {e}")
-
         return False
 
     finally:
-
         try:
-
             if os.path.exists(temp_html):
-
                 os.remove(temp_html)
-
             if os.path.exists(temp_pdf):
-
                 os.remove(temp_pdf)
-
         except Exception:
-
             pass
 
 
@@ -299,17 +311,17 @@ def generate_luxury_bill_html(data: Dict[str, Any]) -> str:
     old_items = data.get("old_items", [])
     totals = data.get("totals", {})
 
-    company_name = company.get("name") or "SAIDEEP JEWELLERS"
-    initials = "".join([w[0] for w in company_name.split() if w])[:2].upper() or "SJ"
-    tagline = company.get("tagline") or "PURITY & TRUST SINCE INCEPTION"
-    address = company.get("address") or "Takhatgarh, Rajasthan"
-    phone = company.get("phone") or "9876543210"
-    email = company.get("email") or "info@saideepjewellers.com"
+    company_name = company.get("name") or "Jewellery Store"
+    initials = "".join([w[0] for w in company_name.split() if w])[:2].upper() or "JS"
+    tagline = company.get("tagline") or ""
+    address = company.get("address") or ""
+    phone = company.get("phone") or ""
+    email = company.get("email") or ""
     gstin = company.get("gstin") or ""
-    website = company.get("website") or (f"www.{email.split('@')[1]}" if "@" in email else "www.saideepjewellers.com")
+    website = company.get("website") or (f"www.{email.split('@')[1]}" if "@" in email else "")
 
     logo_data_url = company.get("logo_data_url", "")
-    upi_id = company.get("upi_id") or "saideep@upi"
+    upi_id = company.get("upi_id") or ""
     upi_name = company.get("upi_name") or company_name
     bank_acc = company.get("bank_account_no", "")
     bank_ifsc = company.get("bank_ifsc", "")
@@ -676,7 +688,6 @@ def generate_luxury_bill_html(data: Dict[str, Any]) -> str:
 <head>
   <meta charset="UTF-8">
   <title>Invoice {inv_number}</title>
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {{
       --navy: #0F172A;
@@ -1093,17 +1104,17 @@ def generate_luxury_statement_html(
 
     """Generate professional luxury account statement HTML."""
 
-    company_name = store_info.get("name") or "SAIDEEP JEWELLERS"
+    company_name = store_info.get("name") or "Jewellery Store"
 
-    initials = "".join([w[0] for w in company_name.split() if w])[:2].upper() or "SJ"
+    initials = "".join([w[0] for w in company_name.split() if w])[:2].upper() or "JS"
 
-    tagline = store_info.get("tagline") or "PURITY & TRUST SINCE INCEPTION"
+    tagline = store_info.get("tagline") or ""
 
-    address = store_info.get("address") or "Takhatgarh, Rajasthan"
+    address = store_info.get("address") or ""
 
-    phone = store_info.get("phone") or "9876543210"
+    phone = store_info.get("phone") or ""
 
-    email = store_info.get("email") or "info@saideepjewellers.com"
+    email = store_info.get("email") or ""
 
     logo_data_url = store_info.get("logo_data_url", "")
 
@@ -1188,8 +1199,6 @@ def generate_luxury_statement_html(
   <meta charset="utf-8">
 
   <title>{entity_type.upper()} STATEMENT - {entity_name}</title>
-
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
   <style>
 

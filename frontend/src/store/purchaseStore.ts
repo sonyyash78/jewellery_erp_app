@@ -41,7 +41,7 @@ interface PurchaseStoreState {
     grossWeight: number;
     stoneWeight: number;
     touchPurity: number;
-    wastage: number;
+    wastage: number | '';
     metalRate: number;
     labourCharge: number;
     makingChargeType?: string;
@@ -56,7 +56,7 @@ interface PurchaseStoreState {
     grossWeight: number;
     stoneWeight: number;
     tanch: number;
-    wastage: number;
+    wastage: number | '';
     metalRate: number;
     makingChargeType?: string;
     makingChargeValue?: number;
@@ -97,12 +97,12 @@ export const usePurchaseStore = create<PurchaseStoreState>((set) => ({
   gstState: 'same_state',
   
   goldForm: {
-    itemName: '', category: '', grossWeight: 0, stoneWeight: 0, touchPurity: 91.6, wastage: 0,
+    itemName: '', category: '', grossWeight: 0, stoneWeight: 0, touchPurity: 91.6, wastage: '',
     metalRate: 0, labourCharge: 0, makingChargeType: 'flat', makingChargeValue: 0, hallmarkCharge: 0, otherCharges: 0, discount: 0
   },
   
   silverForm: {
-    itemName: '', grossWeight: 0, stoneWeight: 0, tanch: 99.9, wastage: 0,
+    itemName: '', grossWeight: 0, stoneWeight: 0, tanch: 99.9, wastage: '',
     metalRate: 0, testingMeltingCharge: 0, makingChargeType: 'flat', makingChargeValue: 0, otherCharges: 0, discount: 0
   },
   diamondForm: {
@@ -127,8 +127,8 @@ export const usePurchaseStore = create<PurchaseStoreState>((set) => ({
   removeItem: (id) => set((state) => ({ items: state.items.filter(i => i.id !== id) })),
   
   resetForms: () => set((state) => ({
-    goldForm: { itemName: '', category: '', grossWeight: 0, stoneWeight: 0, touchPurity: 91.6, wastage: 0, metalRate: state.goldForm.metalRate, labourCharge: 0, makingChargeType: 'flat', makingChargeValue: 0, hallmarkCharge: 0, otherCharges: 0, discount: 0 },
-    silverForm: { itemName: '', grossWeight: 0, stoneWeight: 0, tanch: 99.9, wastage: 0, metalRate: state.silverForm.metalRate, testingMeltingCharge: 0, makingChargeType: 'flat', makingChargeValue: 0, otherCharges: 0, discount: 0 },
+    goldForm: { itemName: '', category: '', grossWeight: 0, stoneWeight: 0, touchPurity: 91.6, wastage: '', metalRate: state.goldForm.metalRate, labourCharge: 0, makingChargeType: 'flat', makingChargeValue: 0, hallmarkCharge: 0, otherCharges: 0, discount: 0 },
+    silverForm: { itemName: '', grossWeight: 0, stoneWeight: 0, tanch: 99.9, wastage: '', metalRate: state.silverForm.metalRate, testingMeltingCharge: 0, makingChargeType: 'flat', makingChargeValue: 0, otherCharges: 0, discount: 0 },
     diamondForm: { itemName: '', diamondType: 'NATURAL', shape: 'Round', weightGm: 0, pieces: 1, ratePerGm: 25000, colour: 'G', clarity: 'VS1', certificateNo: '', labourCharge: 0, otherCharges: 0, discount: 0 },
     editingItemId: null
   })),

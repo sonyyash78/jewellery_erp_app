@@ -1,13 +1,21 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import PurchaseMetalForm from './PurchaseMetalForm';
 import { usePurchaseStore } from '../../store/purchaseStore';
+import { useCompanyStore } from '../../store/companyStore';
 import { Save, Printer, Trash2, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
 import PurchaseCheckoutModal from './PurchaseCheckoutModal';
 
 export default function Purchase() {
+  const { currentCompany } = useCompanyStore();
   const { items, gstState, setGstState, removeItem, clearCart } = usePurchaseStore();
   const [showCheckout, setShowCheckout] = useState(false);
+
+  useEffect(() => {
+    if (currentCompany) {
+      setGstState(currentCompany.gst_enabled ? 'same_state' : 'none');
+    }
+  }, [currentCompany?.id, currentCompany?.gst_enabled, setGstState]);
 
   const totalTaxable = items.reduce((sum, item) => sum + item.taxableAmount, 0);
   

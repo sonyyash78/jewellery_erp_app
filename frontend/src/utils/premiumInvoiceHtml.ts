@@ -185,7 +185,7 @@ export const renderHeader = (company: any, invoice: any, logoDataUrl?: string) =
         ${logoDataUrl ? `<img src="${logoDataUrl}" class="logo-img" />` : `<div class="logo-circle">${initials}</div>`}
         <div class="company-info">
           <h1>${storeName.replace(' ', '<br>')}</h1>
-          <div class="tagline">${company?.tagline || 'TIMELESS BEAUTY. TRUSTED FOREVER.'}</div>
+          <div class="tagline">${company?.tagline || ''}</div>
         </div>
       </div>
       <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end;">

@@ -1,3 +1,4 @@
+import re
 from pydantic import BaseModel, ConfigDict, constr, Field, field_validator
 from typing import Optional
 from decimal import Decimal
@@ -19,6 +20,16 @@ class CustomerBase(BaseModel):
     outstanding_balance: Optional[Decimal] = Decimal('0.00')
     is_active: bool = True
 
+    @field_validator('phone_number', mode='before')
+    @classmethod
+    def clean_phone_number(cls, v):
+        if not v:
+            return v
+        cleaned = re.sub(r'[^0-9]', '', str(v))
+        if len(cleaned) == 12 and cleaned.startswith('91'):
+            cleaned = cleaned[2:]
+        return cleaned
+
     @field_validator('credit_limit', 'outstanding_balance', mode='before')
     @classmethod
     def default_decimal_zero(cls, v):
@@ -33,6 +44,17 @@ class CustomerUpdate(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     phone_number: Optional[str] = Field(None, pattern=r'^\d{10}$')
+
+    @field_validator('phone_number', mode='before')
+    @classmethod
+    def clean_phone_number(cls, v):
+        if not v:
+            return v
+        cleaned = re.sub(r'[^0-9]', '', str(v))
+        if len(cleaned) == 12 and cleaned.startswith('91'):
+            cleaned = cleaned[2:]
+        return cleaned
+
     email: Optional[str] = None
     address: Optional[str] = None
     city: Optional[str] = None
@@ -76,6 +98,16 @@ class SupplierBase(BaseModel):
     outstanding_balance: Optional[Decimal] = Decimal('0.00')
     is_active: bool = True
 
+    @field_validator('mobile', mode='before')
+    @classmethod
+    def clean_supplier_mobile(cls, v):
+        if not v:
+            return v
+        cleaned = re.sub(r'[^0-9]', '', str(v))
+        if len(cleaned) == 12 and cleaned.startswith('91'):
+            cleaned = cleaned[2:]
+        return cleaned
+
     @field_validator('outstanding_balance', mode='before')
     @classmethod
     def default_supplier_outstanding(cls, v):
@@ -90,6 +122,17 @@ class SupplierUpdate(BaseModel):
     name: Optional[str] = None
     contact_person: Optional[str] = None
     mobile: Optional[str] = Field(None, pattern=r'^\d{10}$')
+
+    @field_validator('mobile', mode='before')
+    @classmethod
+    def clean_supplier_mobile(cls, v):
+        if not v:
+            return v
+        cleaned = re.sub(r'[^0-9]', '', str(v))
+        if len(cleaned) == 12 and cleaned.startswith('91'):
+            cleaned = cleaned[2:]
+        return cleaned
+
     email: Optional[str] = None
     address: Optional[str] = None
     city: Optional[str] = None
@@ -104,15 +147,3 @@ class SupplierResponse(SupplierBase):
     created_at: datetime
     updated_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
-
-class SupplierListResponse(BaseModel):
-    total: int
-    total_outstanding: Optional[Decimal] = Decimal('0.00')
-    items: list[SupplierResponse]
-
-    @field_validator('total_outstanding', mode='before')
-    @classmethod
-    def default_supplier_total_outstanding(cls, v):
-        if v is None or v == '':
-            return Decimal('0.00')
-        return Decimal(str(v))

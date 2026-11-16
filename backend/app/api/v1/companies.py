@@ -151,28 +151,6 @@ def update_company(
         changes={"old": {k: str(v) for k, v in old_values.items()}, "new": {k: str(v) for k, v in update_data.items()}}
     )
     db.add(audit)
-    # If company 1, sync core details to Setting table
-    if company_id == 1:
-        from app.models.setting import Setting
-        key_map = {
-            "name": ["business_name", "store_name"],
-            "address": ["address"],
-            "phone": ["phone"],
-            "email": ["email"],
-            "gstin": ["gstin"],
-            "pan": ["pan"],
-            "upi_id": ["upi_id"],
-            "upi_name": ["upi_name"]
-        }
-        for f_name, s_keys in key_map.items():
-            if f_name in update_data and update_data[f_name] is not None:
-                for k in s_keys:
-                    s_row = db.query(Setting).filter(Setting.key == k).first()
-                    if s_row:
-                        s_row.value = str(update_data[f_name])
-                    else:
-                        db.add(Setting(key=k, value=str(update_data[f_name])))
-
     db.commit()
     db.refresh(company)
     return company

@@ -42,3 +42,4 @@ from app.models.company import (
     StateCode, InvoiceGSTLine, InvoiceEInvoice
 )
 from app.models.diamond_calculation import DiamondCalculation
+from app.models.number_sequence import NumberSequence

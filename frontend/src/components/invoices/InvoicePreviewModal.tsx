@@ -26,6 +26,89 @@ export default function InvoicePreviewModal({
   const [loading, setLoading] = useState<boolean>(true);
   const [isPrinting, setIsPrinting] = useState<boolean>(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const printTriggerRef = useRef<() => void>(() => {});
+
+  // Global Escape & Ctrl+P listener on window
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleWindowKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        onClose();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        e.stopPropagation();
+        printTriggerRef.current();
+      }
+    };
+
+    window.addEventListener('keydown', handleWindowKeyDown, true);
+    return () => {
+      window.removeEventListener('keydown', handleWindowKeyDown, true);
+    };
+  }, [isOpen, onClose]);
+
+  // Escape & Ctrl+P listener inside the preview iframe (if focused)
+  useEffect(() => {
+    if (!isOpen || !renderedHtml || !iframeRef.current) return;
+
+    let attachedDoc: Document | null = null;
+    let attachedWin: Window | null = null;
+
+    const handleFrameKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        onClose();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        e.stopPropagation();
+        printTriggerRef.current();
+      }
+    };
+
+    const detachIframeListeners = () => {
+      try {
+        attachedDoc?.removeEventListener('keydown', handleFrameKeyDown, true);
+      } catch {}
+      try {
+        attachedWin?.removeEventListener('keydown', handleFrameKeyDown, true);
+      } catch {}
+    };
+
+    const attachIframeEscape = () => {
+      detachIframeListeners();
+      try {
+        const frameDoc = iframeRef.current?.contentDocument || null;
+        const frameWin = iframeRef.current?.contentWindow || null;
+        if (frameDoc) {
+          frameDoc.addEventListener('keydown', handleFrameKeyDown, true);
+          attachedDoc = frameDoc;
+        }
+        if (frameWin) {
+          frameWin.addEventListener('keydown', handleFrameKeyDown, true);
+          attachedWin = frameWin;
+        }
+      } catch {
+        // Safe cross-origin fallback
+      }
+    };
+
+    const iframe = iframeRef.current;
+    iframe.addEventListener('load', attachIframeEscape);
+    attachIframeEscape();
+
+    return () => {
+      iframe.removeEventListener('load', attachIframeEscape);
+      detachIframeListeners();
+    };
+  }, [isOpen, renderedHtml, onClose]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -80,15 +163,34 @@ export default function InvoicePreviewModal({
     };
   }, [isOpen, invoiceId, initialPdfData, type]);
 
-  if (!isOpen) return null;
+  const invoiceNumber = pdfData?.invoice?.invoice_number || (invoiceId ? `#${invoiceId}` : 'Invoice');
 
-  const handleDirectPrint = () => {
-    if (!iframeRef.current || !iframeRef.current.contentWindow) {
+  const handleDirectPrint = async () => {
+    if (isPrinting) return;
+    if (!renderedHtml) {
       toast.error('Print preview is not ready yet');
       return;
     }
     setIsPrinting(true);
     try {
+      const electronAPI = (window as any).electronAPI;
+      if (electronAPI?.printHtml) {
+        const res = await electronAPI.printHtml({
+          html: renderedHtml,
+          title: invoiceNumber,
+        });
+        if (res && !res.success && res.error && res.error !== 'cancelled') {
+          toast.error(`Failed to print: ${res.error}`);
+        } else if (res?.success && onAfterPrint) {
+          onAfterPrint();
+        }
+        return;
+      }
+
+      if (!iframeRef.current || !iframeRef.current.contentWindow) {
+        toast.error('Print preview is not ready yet');
+        return;
+      }
       const frameWin = iframeRef.current.contentWindow;
       frameWin.focus();
       frameWin.print();
@@ -100,6 +202,12 @@ export default function InvoicePreviewModal({
       setIsPrinting(false);
     }
   };
+
+  printTriggerRef.current = () => {
+    void handleDirectPrint();
+  };
+
+  if (!isOpen) return null;
 
   const handleDownloadPDF = async () => {
     if (!pdfData) return;
@@ -120,7 +228,7 @@ export default function InvoicePreviewModal({
     const cust = pdfData.customer || {};
     const comp = pdfData.company || {};
 
-    const storeName = comp.name || 'Saideep Jewellers';
+    const storeName = comp.name || 'Jewellery Store';
     const invNo = inv.invoice_number || `#${invoiceId}`;
     const grand = parseFloat(inv.grand_total || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
     const paid = parseFloat(inv.cash_received || inv.amount_paid || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
@@ -135,11 +243,15 @@ export default function InvoicePreviewModal({
     window.open(waUrl, '_blank');
   };
 
-  const invoiceNumber = pdfData?.invoice?.invoice_number || (invoiceId ? `#${invoiceId}` : 'Invoice');
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
-      <div className="relative w-full max-w-5xl h-[92vh] max-h-[920px] bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 animate-fadeIn cursor-pointer"
+      onClick={onClose}
+    >
+      <div 
+        className="relative w-full max-w-5xl h-[92vh] max-h-[920px] bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden cursor-default"
+        onClick={(e) => e.stopPropagation()}
+      >
         
         {/* Modal Header Toolbar */}
         <div className="px-4 py-3 sm:px-6 bg-gradient-to-r from-zinc-900 via-zinc-950 to-zinc-900 border-b border-zinc-800 flex flex-wrap items-center justify-between gap-3 select-none">
@@ -167,7 +279,7 @@ export default function InvoicePreviewModal({
             <button
               onClick={handleDirectPrint}
               disabled={loading || isPrinting}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-black rounded-xl font-bold text-xs shadow-lg shadow-amber-500/20 transition-all active:scale-95 disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-black rounded-xl font-bold text-xs shadow-lg shadow-amber-500/20 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
               title="Print Bill (Opens printer dialog)"
             >
               <Printer className="w-4 h-4" />
@@ -177,7 +289,7 @@ export default function InvoicePreviewModal({
             <button
               onClick={handleDownloadPDF}
               disabled={loading}
-              className="flex items-center gap-1.5 px-3 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 rounded-xl font-medium text-xs transition-all active:scale-95 disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 rounded-xl font-medium text-xs transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
               title="Save PDF file to computer"
             >
               <Download className="w-4 h-4 text-emerald-400" />
@@ -187,19 +299,21 @@ export default function InvoicePreviewModal({
             <button
               onClick={handleWhatsAppShare}
               disabled={loading}
-              className="flex items-center gap-1.5 px-3 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 rounded-xl font-medium text-xs transition-all active:scale-95 disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 rounded-xl font-medium text-xs transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
               title="Send bill summary on WhatsApp"
             >
               <MessageCircle className="w-4 h-4 text-emerald-400" />
               <span className="hidden sm:inline">WhatsApp</span>
             </button>
 
+            {/* High-visibility Red EXIT Button */}
             <button
               onClick={onClose}
-              className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-xl transition-colors ml-1"
-              title="Close Preview (Next Customer)"
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-bold text-xs shadow-lg shadow-rose-600/30 transition-all active:scale-95 cursor-pointer ml-1.5 border border-rose-500"
+              title="Exit Bill Preview and Return to Billing (Esc)"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4 stroke-[3]" />
+              <span>EXIT (Esc)</span>
             </button>
           </div>
         </div>
@@ -226,14 +340,23 @@ export default function InvoicePreviewModal({
         </div>
 
         {/* Modal Footer Banner */}
-        <div className="px-4 py-2 bg-zinc-950 border-t border-zinc-800/80 flex items-center justify-between text-[11px] text-zinc-400">
+        <div className="px-4 py-2.5 bg-zinc-950 border-t border-zinc-800/80 flex flex-wrap items-center justify-between gap-2 text-[11px] text-zinc-400">
           <div className="flex items-center gap-1.5 text-emerald-400">
             <CheckCircle2 className="w-3.5 h-3.5" />
             <span>Document safely saved in PC &amp; Pendrive database</span>
           </div>
-          <span className="text-zinc-500 font-mono text-[10px]">
-            Press Ctrl+P or click Print Bill above
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-zinc-500 font-mono text-[10px] hidden sm:inline">
+              Press Esc, Ctrl+P, or click buttons
+            </span>
+            <button
+              onClick={onClose}
+              className="px-3.5 py-1.5 bg-zinc-800 hover:bg-rose-600 text-zinc-200 hover:text-white rounded-lg font-bold text-xs border border-zinc-700 hover:border-rose-500 transition-colors flex items-center gap-1.5 cursor-pointer active:scale-95"
+            >
+              <X className="w-3.5 h-3.5 stroke-[2.5]" />
+              <span>Exit Preview / Next Bill (Esc)</span>
+            </button>
+          </div>
         </div>
 
       </div>

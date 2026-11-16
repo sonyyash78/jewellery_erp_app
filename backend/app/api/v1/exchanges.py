@@ -459,7 +459,7 @@ def create_exchange(
 
             silver_debit=total_silver_change if total_silver_change > 0 else 0.0,
 
-            silver_credit=abs(base_silver_change) if base_silver_change < 0 else 0.0,
+            silver_credit=abs(total_silver_change) if total_silver_change < 0 else 0.0,
 
             silver_balance=customer.fine_silver_balance
 
@@ -523,7 +523,7 @@ def list_exchanges(
 
             "id": e.id,
 
-            "invoice_number": f"EXC-{e.id}",
+            "invoice_number": getattr(e, 'exchange_number', None) or f"EXC-{e.id}",
 
             "invoice_date": e.exchange_date,
 
@@ -853,7 +853,7 @@ def delete_exchange(
 
 
             exc_d_str = exchange.exchange_date.strftime("%d-%m-%Y") if exchange.exchange_date else ""
-            remove_archived_document(category="Sales", folder_name=c_folder, doc_number=f"EXC-{exchange.id}", doc_date=exc_d_str)
+            remove_archived_document(category="Sales", folder_name=c_folder, doc_number=orig_exchange_number, doc_date=exc_d_str)
 
         except Exception as del_err:
 

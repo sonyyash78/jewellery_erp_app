@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
+import { getErrorMessage } from '../utils/errorUtils';
 import { 
   ShieldCheck, 
   Search, 
@@ -35,7 +36,7 @@ export default function VerifyInvoice() {
       const res = await axios.get(`/api/v1/verification/verify/${encodeURIComponent(voucher.trim())}`);
       setData(res.data);
     } catch (err: any) {
-      setError(err.response?.data?.detail || `No authentic record found for voucher "${voucher}".`);
+      setError(getErrorMessage(err, `No authentic record found for voucher "${voucher}".`));
     } finally {
       setLoading(false);
     }
@@ -209,7 +210,7 @@ export default function VerifyInvoice() {
             <div className="pt-4 border-t border-gray-800 flex flex-wrap items-center justify-between text-[11px] text-gray-500 gap-2">
               <div className="flex items-center gap-2">
                 <Award className="w-4 h-4 text-amber-400" />
-                <span>BIS 916 & 925 Hallmark Certified Guarantee • Saideep Jewellers</span>
+                <span>BIS 916 & 925 Hallmark Certified Guarantee • {data.company?.name || 'Authorized Jeweller'}</span>
               </div>
               <span className="font-mono">Reference: {data.voucher_number}</span>
             </div>

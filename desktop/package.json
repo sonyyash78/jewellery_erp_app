@@ -14,7 +14,7 @@
     "desktop",
     "offline"
   ],
-  "author": "Saideep Jewellers",
+  "author": "Jewellery ERP",
   "license": "ISC",
   "devDependencies": {
     "electron": "^34.5.8",

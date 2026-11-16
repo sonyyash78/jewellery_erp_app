@@ -86,7 +86,8 @@ export default function CRM() {
         city: custCity,
         aadhaar_pan: custPan,
         gst_number: custGst,
-        outstanding_balance: Number(custBalance) || 0
+        outstanding_balance: Number(custBalance) || 0,
+        company_id: currentCompanyId || 1
       };
       if (editingId) {
         await axiosClient.put(`/customers/${editingId}`, payload);

@@ -4,6 +4,7 @@ import { useBillingStore } from '../../store/billingStore';
 import type { BillItem } from '../../store/billingStore';
 import toast from 'react-hot-toast';
 import { ShoppingCart, RotateCcw } from 'lucide-react';
+import { validateWastage, formatWastageInputValue } from '../../utils/wastageValidation';
 
 const InputLabel = ({ label }: { label: string }) => (
   <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">{label}</label>
@@ -87,7 +88,7 @@ export default function MetalCalculator() {
 
   // ── Gold calculations ──
   const gNetWeight = Math.max(0, (goldForm.grossWeight || 0) - (goldForm.stoneWeight || 0));
-  const gFineWeight = gNetWeight * (((goldForm.touch || 0) + (goldForm.wastage || 0)) / 100);
+  const gFineWeight = gNetWeight * (((goldForm.touch || 0) + (Number(goldForm.wastage) || 0)) / 100);
   const gMetalValue = gFineWeight * ((goldForm.ratePerGm || 0) / 10);
   let gMaking = 0;
   if (goldForm.makingChargeType === 'percent') gMaking = gMetalValue * (goldForm.makingChargeValue / 100);
@@ -97,7 +98,7 @@ export default function MetalCalculator() {
 
   // ── Silver calculations ──
   const sNetWeight = Math.max(0, (silverForm.grossWeight || 0) - (silverForm.stoneWeight || 0));
-  const sFineWeight = sNetWeight * (((silverForm.tanch || 0) + (silverForm.wastage || 0)) / 100);
+  const sFineWeight = sNetWeight * (((silverForm.tanch || 0) + (Number(silverForm.wastage) || 0)) / 100);
   const sMetalValue = sFineWeight * ((silverForm.ratePerKg || 0) / 1000);
   let sMaking = 0;
   if (silverForm.makingChargeType === 'percent') sMaking = sMetalValue * (silverForm.makingChargeValue / 100);
@@ -105,16 +106,17 @@ export default function MetalCalculator() {
   else sMaking = silverForm.makingChargeValue;
   const sTaxable = Math.max(0, sMetalValue + sMaking + (silverForm.otherCharges || 0) - (silverForm.discount || 0));
 
-  const handleGoldAdd = () => {
-    if ((goldForm.grossWeight || 0) <= 0) { toast.error('Gross weight must be > 0'); return; }
-    if (gNetWeight <= 0) { toast.error('Net weight must be > 0'); return; }
-    if (((goldForm.touch || 0) + (goldForm.wastage || 0)) >= 100 && (goldForm.wastage || 0) > 0) { toast.error('Touch + Wastage must be less than 100 (Touch + Wastage < 100)'); return; }
-    if (((goldForm.touch || 0) + (goldForm.wastage || 0)) > 100) { toast.error('Touch + Wastage must be <= 100'); return; }
+  const handleGoldAdd = (): boolean => {
+    if ((goldForm.grossWeight || 0) <= 0) { toast.error('Gross weight must be > 0'); return false; }
+    if (gNetWeight <= 0) { toast.error('Net weight must be > 0'); return false; }
+    const gWastageErr = validateWastage(goldForm.touch, goldForm.wastage);
+    if (gWastageErr) { toast.error(gWastageErr); return false; }
+    const gWastageNum = Number(goldForm.wastage);
     const item: BillItem = {
       id: editingItemId || Math.random().toString(36).substring(7),
       itemType: 'Gold', 
       itemName: goldForm.itemName.trim() || `${goldForm.purity} Gold`,
-      purityDisplay: goldForm.purity, touchDisplay: goldForm.touch, wastageDisplay: goldForm.wastage,
+      purityDisplay: goldForm.purity, touchDisplay: goldForm.touch, wastageDisplay: gWastageNum,
       grossWeight: goldForm.grossWeight, stoneWeight: goldForm.stoneWeight, netWeight: gNetWeight, fineWeight: gFineWeight,
       rateDisplay: goldForm.ratePerGm, metalValue: gMetalValue, makingAmount: gMaking,
       hallmark: goldForm.hallmark, otherCharges: goldForm.otherCharges, discount: goldForm.discount,
@@ -128,18 +130,20 @@ export default function MetalCalculator() {
       firstInput?.select();
     }, 50); 
     resetGoldForm();
+    return true;
   };
 
-  const handleSilverAdd = () => {
-    if ((silverForm.grossWeight || 0) <= 0) { toast.error('Gross weight must be > 0'); return; }
-    if (sNetWeight <= 0) { toast.error('Net weight must be > 0'); return; }
-    if (((silverForm.tanch || 0) + (silverForm.wastage || 0)) >= 100 && (silverForm.wastage || 0) > 0) { toast.error('Touch + Wastage must be less than 100 (Touch + Wastage < 100)'); return; }
-    if (((silverForm.tanch || 0) + (silverForm.wastage || 0)) > 100) { toast.error('Touch + Wastage must be <= 100'); return; }
+  const handleSilverAdd = (): boolean => {
+    if ((silverForm.grossWeight || 0) <= 0) { toast.error('Gross weight must be > 0'); return false; }
+    if (sNetWeight <= 0) { toast.error('Net weight must be > 0'); return false; }
+    const sWastageErr = validateWastage(silverForm.tanch, silverForm.wastage);
+    if (sWastageErr) { toast.error(sWastageErr); return false; }
+    const sWastageNum = Number(silverForm.wastage);
     const item: BillItem = {
       id: editingItemId || Math.random().toString(36).substring(7),
       itemType: 'Silver', 
       itemName: silverForm.itemName.trim() || `${silverForm.silverPurity} Silver`,
-      purityDisplay: silverForm.silverPurity, touchDisplay: silverForm.tanch, wastageDisplay: silverForm.wastage,
+      purityDisplay: silverForm.silverPurity, touchDisplay: silverForm.tanch, wastageDisplay: sWastageNum,
       grossWeight: silverForm.grossWeight, stoneWeight: silverForm.stoneWeight || 0,
       netWeight: sNetWeight, fineWeight: sFineWeight,
       rateDisplay: silverForm.ratePerKg, metalValue: sMetalValue, makingAmount: sMaking,
@@ -154,6 +158,7 @@ export default function MetalCalculator() {
       firstInput?.select();
     }, 50); 
     resetSilverForm();
+    return true;
   };
 
 
@@ -166,9 +171,9 @@ export default function MetalCalculator() {
   const dDiscount = Math.max(0, diamondForm.discount || 0);
   const dTaxable = Math.max(0, dSubtotal + dMaking + dOther - dDiscount);
 
-  const handleDiamondAdd = () => {
-    if (dWeightGm <= 0) { toast.error('Diamond weight in grams must be > 0'); return; }
-    if (dRate <= 0) { toast.error('Rate per gram must be > 0'); return; }
+  const handleDiamondAdd = (): boolean => {
+    if (dWeightGm <= 0) { toast.error('Diamond weight in grams must be > 0'); return false; }
+    if (dRate <= 0) { toast.error('Rate per gram must be > 0'); return false; }
     const item: BillItem = {
       id: editingItemId || Math.random().toString(36).substring(7),
       itemType: 'Diamond',
@@ -197,6 +202,7 @@ export default function MetalCalculator() {
       firstInput?.select();
     }, 50);
     resetDiamondForm();
+    return true;
   };
 
   const isGold = metal === 'Gold';
@@ -422,7 +428,7 @@ export default function MetalCalculator() {
 
             <div className="grid grid-cols-3 gap-3">
               <div><InputLabel label="Touch / Tanch" /><input type="number" step="0.1" value={goldForm.touch ? goldForm.touch : ''} onChange={e => updateGoldForm('touch', e.target.value === '' ? 0 : Number(e.target.value))} placeholder="91.6" className="w-full bg-[#1A1A20] border border-gray-700 rounded px-2 py-1 text-sm text-primary focus:border-primary outline-none font-mono" /></div>
-              <div><InputLabel label="Wastage (gm)" /><input type="number" step="0.1" value={goldForm.wastage ? goldForm.wastage : ''} onChange={e => updateGoldForm('wastage', e.target.value === '' ? 0 : Number(e.target.value))} placeholder="0.0" className="w-full bg-[#1A1A20] border border-gray-700 rounded px-2 py-1 text-sm text-primary focus:border-primary outline-none font-mono" /></div>
+              <div><InputLabel label="Wastage (gm) *" /><input type="number" step="0.1" min="0" value={formatWastageInputValue(goldForm.wastage)} onChange={e => updateGoldForm('wastage', e.target.value === '' ? '' : Number(e.target.value))} placeholder="Required (0+)" className="w-full bg-[#1A1A20] border border-gray-700 rounded px-2 py-1 text-sm text-primary focus:border-primary outline-none font-mono" /></div>
               <div><InputLabel label="Fine Wt(g)" /><input disabled value={gFineWeight.toFixed(3)} className="w-full bg-gray-900 border border-gray-800 rounded px-2 py-1 text-sm text-primary/70 outline-none font-mono cursor-not-allowed" /></div>
             </div>
 
@@ -528,7 +534,7 @@ export default function MetalCalculator() {
 
             <div className="grid grid-cols-3 gap-3">
               <div><InputLabel label="Touch / Tanch" /><input type="number" step="0.1" value={silverForm.tanch ? silverForm.tanch : ''} onChange={e => updateSilverForm('tanch', e.target.value === '' ? 0 : Number(e.target.value))} placeholder="65.0" className="w-full bg-[#1A1A20] border border-gray-700 rounded px-2 py-1 text-sm text-gray-300 focus:border-gray-500 outline-none font-mono" /></div>
-              <div><InputLabel label="Wastage (gm)" /><input type="number" step="0.1" value={silverForm.wastage ? silverForm.wastage : ''} onChange={e => updateSilverForm('wastage', e.target.value === '' ? 0 : Number(e.target.value))} placeholder="0.0" className="w-full bg-[#1A1A20] border border-gray-700 rounded px-2 py-1 text-sm text-gray-300 focus:border-gray-500 outline-none font-mono" /></div>
+              <div><InputLabel label="Wastage (gm) *" /><input type="number" step="0.1" min="0" value={formatWastageInputValue(silverForm.wastage)} onChange={e => updateSilverForm('wastage', e.target.value === '' ? '' : Number(e.target.value))} placeholder="Required (0+)" className="w-full bg-[#1A1A20] border border-gray-700 rounded px-2 py-1 text-sm text-gray-300 focus:border-gray-500 outline-none font-mono" /></div>
               <div><InputLabel label="Fine Wt(g)" /><input disabled value={sFineWeight.toFixed(3)} className="w-full bg-gray-900 border border-gray-800 rounded px-2 py-1 text-sm text-gray-300/70 outline-none font-mono cursor-not-allowed" /></div>
             </div>
 
@@ -624,9 +630,12 @@ export default function MetalCalculator() {
             data-nav-button="true"
             type="button"
             onClick={() => {
-              if (isDiamond) handleDiamondAdd();
-              else if (isGold) handleGoldAdd();
-              else handleSilverAdd();
+              const added = isDiamond
+                ? handleDiamondAdd()
+                : isGold
+                ? handleGoldAdd()
+                : handleSilverAdd();
+              if (!added) return;
               // After adding to bill, focus GENERATE BILL button
               setTimeout(() => {
                 const genBtn = document.getElementById('btn-generate-bill');

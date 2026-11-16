@@ -1,6 +1,11 @@
+import string
 import os
-
+import shutil
+import threading
+import time
 import re
+import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from pathlib import Path
 
@@ -50,18 +55,28 @@ from app.models.seller import Seller
 
 from app.models.supplier_ledger import SupplierLedger
 
+
+def get_gst_subfolder(company_id: Optional[int], doc_number: Optional[str]) -> str:
+    """Returns 'GST' if company_id == 2 or document number indicates GST, else 'Without_GST'."""
+    if company_id == 2:
+        return "GST"
+    if doc_number:
+        clean = str(doc_number).upper()
+        if clean.startswith(("SJ/S", "SJ_S", "SJ/P", "SJ_P", "SJ/E", "SJ_E", "PG/S", "PG_S", "PG/P", "PG_P", "PG/E", "PG_E")):
+            return "GST"
+        if "/S/" in clean or "/P/" in clean or "/E/" in clean:
+            return "GST"
+    return "Without_GST"
+
 def _sanitize_name(name: Optional[str], default: str = "Unknown") -> str:
-
     """Sanitizes names for Windows folder and file naming."""
-
     if not name or not str(name).strip():
-
         return default
-
-    clean = re.sub(r'[\\/*?:"<>|]', '_', str(name).strip())
-
+    raw = str(name).strip()
+    if re.fullmatch(r'walk[\s_-]*in(?:[\s_-]*customer)?s?', raw, flags=re.IGNORECASE):
+        return "Walkin_Customer"
+    clean = re.sub(r'[\\/*?:"<>|]', '_', raw)
     clean = re.sub(r'\s+', '_', clean)
-
     return clean[:60]
 
 def remove_archived_document(category: str, folder_name: Optional[str], doc_number: str, doc_date: Optional[str] = None) -> bool:
@@ -203,15 +218,15 @@ def _get_store_header(db: Session, store_id: int = 1) -> Dict[str, str]:
 
     store = db.query(Store).filter(Store.id == store_id).first() if store_id else None
 
-    name = (store.name if store and store.name else None) or s_map.get("business_name") or s_map.get("store_name") or "SAIDEEP JEWELLERS"
+    name = (store.name if store and store.name else None) or s_map.get("business_name") or s_map.get("store_name") or "Jewellery Store"
 
-    address = (store.address if store and store.address else None) or s_map.get("address") or s_map.get("store_address") or "Takhatgarh, Rajasthan"
+    address = (store.address if store and store.address else None) or s_map.get("address") or s_map.get("store_address") or ""
 
-    phone = (store.phone if store and store.phone else None) or s_map.get("phone") or s_map.get("store_phone") or "8504837854"
+    phone = (store.phone if store and store.phone else None) or s_map.get("phone") or s_map.get("store_phone") or ""
 
     gstin = (store.gstin if store and store.gstin else None) or s_map.get("gstin") or s_map.get("store_gstin") or ""
 
-    tagline = (store.tagline if store and store.tagline else None) or s_map.get("tagline") or "Trust. Purity. Elegance."
+    tagline = (store.tagline if store and store.tagline else None) or s_map.get("tagline") or ""
 
     return {
 
@@ -378,8 +393,10 @@ def generate_invoice_pdf(invoice: Invoice, store_info: Dict[str, str], output_fi
     elements = []
 
     date_str = invoice.invoice_date.strftime("%d-%b-%Y") if invoice.invoice_date else "N/A"
+    is_gst_doc = (getattr(invoice, "company_id", None) == 2) or ("/S/" in str(getattr(invoice, "invoice_number", "")))
+    doc_title = "TAX INVOICE" if is_gst_doc else "RETAIL INVOICE"
 
-    elements.extend(_build_header_flowables(store_info, "TAX INVOICE", f"No: {invoice.invoice_number}<br/>Date: {date_str}"))
+    elements.extend(_build_header_flowables(store_info, doc_title, f"No: {invoice.invoice_number}<br/>Date: {date_str}"))
 
     cust_name = f"{invoice.customer.first_name} {invoice.customer.last_name or ''}".strip() if invoice.customer else "Walk-in Customer"
 
@@ -1317,523 +1334,650 @@ def generate_supplier_statement_pdf(seller: Seller, db: Session, store_info: Dic
 
 # -------------------------------------------------------------
 
-def archive_all_store_documents(db: Session, store_id: int, base_dir: Path, force_refresh: bool = False) -> Dict[str, Any]:
+def _collect_statement_targets(
+    archive_root: Path,
+    category: str,
+    folder_name: str,
+    active_dirs: set,
+    has_ledger: bool,
+) -> List[str]:
+    """Return active GST/Without_GST subfolders needing a party statement."""
+    targets: List[str] = []
+    for g_sub in ["GST", "Without_GST"]:
+        d = archive_root / g_sub / category / folder_name
+        has_docs = d.exists() and any(not f.name.startswith("Statement_") for f in d.glob("*.pdf"))
+        if (g_sub, folder_name) in active_dirs or has_docs:
+            targets.append(g_sub)
+    if not targets and has_ledger:
+        targets.append("Without_GST")
+    return targets
 
+
+_ARCHIVE_LOCK = threading.Lock()
+
+
+def _load_statement_state(archive_root: Path) -> Dict[str, str]:
+    state_file = archive_root / ".statement_state.json"
+    if not state_file.exists():
+        return {}
+    try:
+        data = json.loads(state_file.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _save_statement_state(archive_root: Path, state: Dict[str, str]):
+    state_file = archive_root / ".statement_state.json"
+    tmp_file = archive_root / f".statement_state_{os.getpid()}.tmp"
+    try:
+        tmp_file.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        os.replace(tmp_file, state_file)
+    except Exception:
+        if tmp_file.exists():
+            try:
+                tmp_file.unlink()
+            except Exception:
+                pass
+
+
+def _bill_needs_refresh(
+    prev_state: Dict[str, str],
+    next_state: Dict[str, str],
+    bill_key: str,
+    bill_sig: str,
+    pdf_path: Path,
+    force_refresh: bool,
+) -> bool:
+    """Only generate when missing, forced, or an already-tracked bill changed."""
+    prev_sig = prev_state.get(bill_key)
+    next_state[bill_key] = bill_sig
+    if force_refresh or not pdf_path.exists():
+        return True
+    return prev_sig is not None and prev_sig != bill_sig
+
+
+def _cleanup_legacy_duplicates(archive_root: Path):
+    """Remove obsolete *_new.pdf duplicates and duplicate space-named Walk-in Customer folders."""
+    try:
+        for dup in archive_root.rglob("*_new.pdf"):
+            clean_peer = dup.with_name(f"{dup.stem[:-4]}.pdf")
+            if clean_peer.exists():
+                try:
+                    dup.unlink()
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    for g_sub in ("GST", "Without_GST"):
+        for cat in ("Sales", "Purchases", "Exchanges"):
+            cat_dir = archive_root / g_sub / cat
+            walkin_clean = cat_dir / "Walkin_Customer"
+            walkin_space = cat_dir / "Walk-in Customer"
+            if walkin_space.exists() and walkin_space.is_dir():
+                try:
+                    for item in list(walkin_space.iterdir()):
+                        if item.is_file():
+                            dest_peer = walkin_clean / item.name
+                            if not dest_peer.exists():
+                                walkin_clean.mkdir(parents=True, exist_ok=True)
+                                shutil.move(str(item), str(dest_peer))
+                            else:
+                                item.unlink()
+                    if not any(walkin_space.iterdir()):
+                        walkin_space.rmdir()
+                except Exception:
+                    pass
+
+
+def archive_all_store_documents(
+    db: Session,
+    store_id: int,
+    base_dir: Path,
+    force_refresh: bool = False,
+    refresh_statements: bool = False,
+) -> Dict[str, Any]:
+    """Thread-safe wrapper preventing concurrent archive jobs from colliding on PDFs or Edge processes."""
+    with _ARCHIVE_LOCK:
+        return _archive_all_store_documents_impl(
+            db,
+            store_id=store_id,
+            base_dir=base_dir,
+            force_refresh=force_refresh,
+            refresh_statements=refresh_statements,
+        )
+
+
+def _archive_all_store_documents_impl(
+    db: Session,
+    store_id: int,
+    base_dir: Path,
+    force_refresh: bool = False,
+    refresh_statements: bool = False,
+) -> Dict[str, Any]:
     """
-
     Scans the database and exports all documents into:
-
     base_dir / "Archived_PDFs" /
-
-        Purchases / [Supplier_Name] / (Purchases + Statement)
-
-        Sales / [Customer_Name] / (Invoices + Exchanges + Statement)
-
-        Sales / Walkin_Customers /
-
+        GST /
+            Purchases / [Supplier_Name] / ([Purchase_No].pdf + Statement)
+            Sales / [Customer_Name] / ([Invoice_No].pdf + Statement)
+            Exchanges / [Customer_Name] / ([Exchange_No].pdf)
+        Without_GST /
+            Purchases / [Supplier_Name] / ([Purchase_No].pdf + Statement)
+            Sales / [Customer_Name] / ([Invoice_No].pdf + Statement)
+            Exchanges / [Customer_Name] / ([Exchange_No].pdf)
     """
-
     store_info = _get_store_header(db, store_id)
-
     archive_root = base_dir / "Archived_PDFs"
 
-    sales_root = archive_root / "Sales"
-
-    purchases_root = archive_root / "Purchases"
-
-    sales_root.mkdir(parents=True, exist_ok=True)
-
-    purchases_root.mkdir(parents=True, exist_ok=True)
+    for g_sub in ["GST", "Without_GST"]:
+        for cat in ["Sales", "Purchases", "Exchanges"]:
+            (archive_root / g_sub / cat).mkdir(parents=True, exist_ok=True)
 
     counts = {
-
         "sales_invoices": 0,
-
         "exchanges": 0,
-
         "customer_statements": 0,
-
         "purchases": 0,
-
         "supplier_statements": 0,
-
-        "total_files": 0
-
+        "total_files": 0,
     }
 
     from app.services.invoice_pdf_service import InvoicePDFService
-
     from app.services.luxury_pdf_service import (
-
         generate_luxury_bill_html,
-
         generate_luxury_statement_html,
-
-        render_html_to_pdf
-
+        render_html_to_pdf,
     )
-
-    # 1. PROCESS PURCHASES & SUPPLIER STATEMENTS
+    from app.services.gst_pdf_template import generate_gst_tax_invoice_html
+    from app.models.purchase import PurchaseStatus
+    from app.models.invoice import InvoiceStatus
+    from app.models.company import Company
 
     sellers = db.query(Seller).filter(Seller.store_id == store_id).all()
-
     seller_map = {s.id: s for s in sellers}
+    customers = db.query(Customer).filter(Customer.store_id == store_id).all()
+    cust_map = {c.id: c for c in customers}
+    comp_map = {c.id: c for c in db.query(Company).all()}
 
-    for s in sellers:
+    prev_stmt_state = _load_statement_state(archive_root)
+    next_stmt_state = dict(prev_stmt_state)
 
-        folder_name = _sanitize_name(f"{s.name}_{s.mobile}", default=f"Supplier_{s.id}")
+    # Build HTML strings & pending render jobs on the main thread (SQLAlchemy Session is not thread-safe).
+    render_jobs: List[Dict[str, Any]] = []
+    mirror_items: List[tuple[Path, Path]] = []
+    active_seller_dirs = set()
+    active_customer_dirs = set()
 
-        s_dir = purchases_root / folder_name
-
-        s_dir.mkdir(parents=True, exist_ok=True)
-
-        stmt_pdf = s_dir / f"Statement_{_sanitize_name(s.name)}.pdf"
-
-        try:
-
-            entries = []
-
-            ledgers = db.query(SupplierLedger).filter(SupplierLedger.seller_id == s.id).order_by(SupplierLedger.date.asc()).all()
-
-            for l in ledgers:
-
-                entries.append({
-
-                    "date": (l.date.strftime("%d-%b-%Y") if getattr(l, "date", None) else ""),
-
-                    "type": l.voucher_type or "Ledger",
-
-                    "number": l.voucher_number or "-",
-
-                    "description": l.description or "-",
-
-                    "debit": float(l.debit or 0.0),
-
-                    "credit": float(l.credit or 0.0),
-
-                    "balance": float(l.balance or 0.0),
-
-                    "gold_debit": float(getattr(l, "gold_debit", 0.0) or 0.0),
-
-                    "gold_credit": float(getattr(l, "gold_credit", 0.0) or 0.0),
-
-                })
-
-            s_html = generate_luxury_statement_html(
-
-                s.name, s.mobile or "", "Supplier", entries, store_info,
-
-                float(s.current_balance or 0.0), float(getattr(s, "fine_gold_balance", 0.0) or 0.0), float(getattr(s, "fine_silver_balance", 0.0) or 0.0)
-
-            )
-
-            if not render_html_to_pdf(s_html, stmt_pdf):
-
-                generate_supplier_statement_pdf(s, db, store_info, stmt_pdf)
-
-            counts["supplier_statements"] += 1
-
-            counts["total_files"] += 1
-
-        except Exception as e:
-
-            try:
-
-                generate_supplier_statement_pdf(s, db, store_info, stmt_pdf)
-
-                counts["supplier_statements"] += 1
-
-                counts["total_files"] += 1
-
-            except Exception as e2:
-
-                print(f"[Archive] Error generating supplier statement for {s.name}: {e2}")
-
-    from app.models.purchase import PurchaseStatus
+    # 1. PROCESS PURCHASES
     all_purchases = db.query(Purchase).filter(
         Purchase.store_id == store_id,
         Purchase.status != PurchaseStatus.CANCELLED,
-        Purchase.status != "CANCELLED"
+        Purchase.status != "CANCELLED",
     ).all()
 
     for pur in all_purchases:
-
         s_obj = seller_map.get(pur.seller_id) if pur.seller_id else None
+        folder_name = _sanitize_name(s_obj.name, default=f"Supplier_{pur.seller_id}") if s_obj else "Suppliers"
+        is_gst = (
+            (pur.company_id == 2)
+            or bool(str(getattr(pur, "purchase_number", "")).startswith(("SJ/P", "PG/P", "SJ_", "PG_")))
+            or ("/P/" in str(getattr(pur, "purchase_number", "")))
+        )
+        gst_folder = "GST" if is_gst else "Without_GST"
+        active_seller_dirs.add((gst_folder, folder_name))
 
-        folder_name = _sanitize_name(f"{s_obj.name}_{s_obj.mobile}", default=f"Supplier_{pur.seller_id}") if s_obj else "Unassigned_Suppliers"
-
-        target_dir = purchases_root / folder_name
-
+        target_dir = archive_root / gst_folder / "Purchases" / folder_name
         target_dir.mkdir(parents=True, exist_ok=True)
+        p_no = _sanitize_name(getattr(pur, "purchase_number", None) or f"PUR-{pur.id}")
+        pur_pdf = target_dir / f"{p_no}.pdf"
+        rel_path = Path(gst_folder) / "Purchases" / folder_name / f"{p_no}.pdf"
 
-        p_no = _sanitize_name(pur.purchase_number or f"PUR-{pur.id}")
-
-        p_date = pur.created_at.strftime("%Y-%m-%d") if pur.created_at else "date"
-
-        p_d_str = pur.purchase_date.strftime("%d-%m-%Y") if getattr(pur, "purchase_date", None) else (pur.created_at.strftime("%d-%m-%Y") if getattr(pur, "created_at", None) else datetime.now().strftime("%d-%m-%Y"))
-        pur_pdf = target_dir / f"{p_d_str}.pdf"
-
-        if force_refresh or not pur_pdf.exists():
-
+        pur_key = f"pur:{pur.id}"
+        pur_sig = (
+            f"{p_no}|{float(getattr(pur, 'grand_total', 0.0) or 0.0):.2f}"
+            f"|{float(getattr(pur, 'cash_paid', 0.0) or 0.0):.2f}"
+            f"|{float(getattr(pur, 'metal_given_value', 0.0) or 0.0):.2f}"
+            f"|{float(getattr(pur, 'balance_amount', 0.0) or 0.0):.2f}"
+            f"|{float(getattr(pur, 'gold_balance_metal_weight', 0.0) or 0.0):.3f}"
+            f"|{float(getattr(pur, 'silver_balance_metal_weight', 0.0) or 0.0):.3f}"
+            f"|{getattr(pur, 'status', '')}|{folder_name}|{gst_folder}"
+        )
+        if _bill_needs_refresh(prev_stmt_state, next_stmt_state, pur_key, pur_sig, pur_pdf, force_refresh):
             try:
-
                 p_data = InvoicePDFService.get_purchase_pdf_data(pur.id, db)
-
-                p_html = generate_luxury_bill_html(p_data)
-
-                if not render_html_to_pdf(p_html, pur_pdf):
-
-                    generate_purchase_pdf(pur, store_info, pur_pdf)
-
-                counts["purchases"] += 1
-
-                counts["total_files"] += 1
-
-            except Exception as e:
-
-                try:
-
-                    generate_purchase_pdf(pur, store_info, pur_pdf)
-
-                    counts["purchases"] += 1
-
-                    counts["total_files"] += 1
-
-                except Exception as e2:
-
-                    print(f"[Archive] Error generating purchase PDF {p_no}: {e2}")
-
-        else:
-
-            counts["purchases"] += 1
-
-    # 2. PROCESS SALES (INVOICES + EXCHANGES) & CUSTOMER STATEMENTS
-
-    customers = db.query(Customer).filter(Customer.store_id == store_id).all()
-
-    cust_map = {c.id: c for c in customers}
-
-    for c in customers:
-
-        c_full = f"{c.first_name} {c.last_name or ''}".strip()
-
-        folder_name = _sanitize_name(f"{c_full}_{c.phone_number}", default=f"Customer_{c.id}")
-
-        c_dir = sales_root / folder_name
-
-        c_dir.mkdir(parents=True, exist_ok=True)
-
-        stmt_pdf = c_dir / f"Statement_{_sanitize_name(c_full)}.pdf"
-
-        try:
-
-            entries = []
-
-            ledgers = db.query(CustomerLedger).filter(CustomerLedger.customer_id == c.id).order_by(CustomerLedger.date.asc()).all()
-
-            for l in ledgers:
-
-                entries.append({
-
-                    "date": (l.date.strftime("%d-%b-%Y") if getattr(l, "date", None) else ""),
-
-                    "type": l.voucher_type or "Ledger",
-
-                    "number": l.voucher_number or "-",
-
-                    "description": l.description or "-",
-
-                    "debit": float(l.debit or 0.0),
-
-                    "credit": float(l.credit or 0.0),
-
-                    "balance": float(l.balance or 0.0),
-
-                    "gold_debit": float(l.gold_debit or 0.0),
-
-                    "gold_credit": float(l.gold_credit or 0.0),
-
+                p_html = generate_gst_tax_invoice_html(p_data) if is_gst else generate_luxury_bill_html(p_data)
+                render_jobs.append({
+                    "html": p_html,
+                    "primary_pdf": pur_pdf,
+                    "extra_copies": [],
+                    "mirror_pairs": [(pur_pdf, rel_path)],
+                    "count_key": "purchases",
+                    "state_key": pur_key,
+                    "fallback": lambda p=pur, path=pur_pdf: generate_purchase_pdf(p, store_info, path),
+                    "label": p_no,
                 })
+            except Exception as e:
+                try:
+                    generate_purchase_pdf(pur, store_info, pur_pdf)
+                    counts["purchases"] += 1
+                    mirror_items.append((pur_pdf, rel_path))
+                except Exception as e2:
+                    print(f"[Archive] Error generating purchase PDF {p_no}: {e} / {e2}")
+        else:
+            counts["purchases"] += 1
+            mirror_items.append((pur_pdf, rel_path))
 
-            c_html = generate_luxury_statement_html(
+    # 2. PROCESS SUPPLIER STATEMENTS (render HTML once per supplier, copy to active folders)
+    for s in sellers:
+        folder_name = _sanitize_name(s.name, default=f"Supplier_{s.id}")
+        try:
+            ledgers = db.query(SupplierLedger).filter(SupplierLedger.seller_id == s.id).order_by(SupplierLedger.date.asc()).all()
+            target_gsubs = _collect_statement_targets(archive_root, "Purchases", folder_name, active_seller_dirs, bool(ledgers))
+            if not target_gsubs:
+                continue
 
-                c_full, c.phone_number or "", "Customer", entries, store_info,
-
-                float(c.outstanding_balance or 0.0), float(c.fine_gold_balance or 0.0), float(c.fine_silver_balance or 0.0)
-
+            stmt_name = f"Statement_{_sanitize_name(s.name)}.pdf"
+            target_pdfs = [
+                (archive_root / g_sub / "Purchases" / folder_name / stmt_name, Path(g_sub) / "Purchases" / folder_name / stmt_name)
+                for g_sub in target_gsubs
+            ]
+            cash_val = float(getattr(s, "outstanding_balance", 0.0) or getattr(s, "current_balance", 0.0) or 0.0)
+            gold_val = float(getattr(s, "fine_gold_balance", 0.0) or 0.0)
+            silver_val = float(getattr(s, "fine_silver_balance", 0.0) or 0.0)
+            max_lid = max((int(getattr(l, "id", 0) or 0) for l in ledgers), default=0)
+            sum_d = sum(float(getattr(l, "debit", 0.0) or 0.0) for l in ledgers)
+            sum_c = sum(float(getattr(l, "credit", 0.0) or 0.0) for l in ledgers)
+            sum_gd = sum(float(getattr(l, "gold_debit", 0.0) or 0.0) for l in ledgers)
+            sum_gc = sum(float(getattr(l, "gold_credit", 0.0) or 0.0) for l in ledgers)
+            stmt_key = f"sup:{s.id}"
+            stmt_sig = (
+                f"{s.name}|{s.mobile or ''}|{cash_val:.2f}|{gold_val:.3f}|{silver_val:.3f}"
+                f"|{len(ledgers)}|{max_lid}|{sum_d:.2f}|{sum_c:.2f}|{sum_gd:.3f}|{sum_gc:.3f}|{','.join(sorted(target_gsubs))}"
             )
 
-            if not render_html_to_pdf(c_html, stmt_pdf):
+            missing_file = any(not p.exists() for p, _ in target_pdfs)
+            sig_changed = refresh_statements and (prev_stmt_state.get(stmt_key) != stmt_sig)
+            needs_render = force_refresh or missing_file or sig_changed
+            next_stmt_state[stmt_key] = stmt_sig
+            if not needs_render:
+                counts["supplier_statements"] += len(target_pdfs)
+                mirror_items.extend(target_pdfs)
+                continue
 
-                generate_customer_statement_pdf(c, db, store_info, stmt_pdf)
-
-            counts["customer_statements"] += 1
-
-            counts["total_files"] += 1
-
+            entries = [{
+                "date": (l.date.strftime("%d-%b-%Y") if getattr(l, "date", None) else ""),
+                "type": l.voucher_type or "Ledger",
+                "number": l.voucher_number or "-",
+                "description": l.description or "-",
+                "debit": float(l.debit or 0.0),
+                "credit": float(l.credit or 0.0),
+                "balance": float(l.balance or 0.0),
+                "gold_debit": float(getattr(l, "gold_debit", 0.0) or 0.0),
+                "gold_credit": float(getattr(l, "gold_credit", 0.0) or 0.0),
+            } for l in ledgers]
+            s_html = generate_luxury_statement_html(
+                s.name,
+                s.mobile or "",
+                "Supplier",
+                entries,
+                store_info,
+                float(getattr(s, "outstanding_balance", 0.0) or getattr(s, "current_balance", 0.0) or 0.0),
+                float(getattr(s, "fine_gold_balance", 0.0) or 0.0),
+                float(getattr(s, "fine_silver_balance", 0.0) or 0.0),
+            )
+            primary_pdf, _ = target_pdfs[0]
+            primary_pdf.parent.mkdir(parents=True, exist_ok=True)
+            render_jobs.append({
+                "html": s_html,
+                "primary_pdf": primary_pdf,
+                "extra_copies": [p for p, _ in target_pdfs[1:]],
+                "mirror_pairs": target_pdfs,
+                "count_key": "supplier_statements",
+                "fallback": lambda sel=s, path=primary_pdf: generate_supplier_statement_pdf(sel, db, store_info, path),
+                "label": stmt_name,
+            })
         except Exception as e:
+            print(f"[Archive] Error preparing supplier statement for {s.name}: {e}")
 
-            try:
-
-                generate_customer_statement_pdf(c, db, store_info, stmt_pdf)
-
-                counts["customer_statements"] += 1
-
-                counts["total_files"] += 1
-
-            except Exception as e2:
-
-                print(f"[Archive] Error generating customer statement for {c_full}: {e2}")
-
-    from app.models.invoice import InvoiceStatus
+    # 3. PROCESS SALES INVOICES
     all_invoices = db.query(Invoice).filter(
         Invoice.store_id == store_id,
         Invoice.status != InvoiceStatus.CANCELLED,
-        Invoice.status != "Cancelled"
+        Invoice.status != "Cancelled",
     ).all()
 
     for inv in all_invoices:
-
         c_obj = cust_map.get(inv.customer_id) if inv.customer_id else None
-
         if c_obj:
-
             c_full = f"{c_obj.first_name} {c_obj.last_name or ''}".strip()
-
-            folder_name = _sanitize_name(f"{c_full}_{c_obj.phone_number}", default=f"Customer_{inv.customer_id}")
-
+            folder_name = _sanitize_name(c_full, default=f"Customer_{inv.customer_id}")
         else:
+            b_name = getattr(inv, "buyer_name", None) or "Walkin_Customer"
+            folder_name = _sanitize_name(b_name, default="Walkin_Customer")
 
-            folder_name = "Walkin_Customers"
+        co_obj = comp_map.get(inv.company_id)
+        if co_obj is not None:
+            is_gst = bool(co_obj.gst_enabled)
+        else:
+            is_gst = (
+                (inv.company_id == 2)
+                or bool(str(getattr(inv, "invoice_number", "")).startswith(("SJ/S", "PG/S", "SJ_", "PG_")))
+                or ("/S/" in str(getattr(inv, "invoice_number", "")))
+            )
+        gst_folder = "GST" if is_gst else "Without_GST"
+        active_customer_dirs.add((gst_folder, folder_name))
 
-        target_dir = sales_root / folder_name
-
+        target_dir = archive_root / gst_folder / "Sales" / folder_name
         target_dir.mkdir(parents=True, exist_ok=True)
-
         inv_no = _sanitize_name(inv.invoice_number or f"INV-{inv.id}")
+        inv_pdf = target_dir / f"{inv_no}.pdf"
+        rel_path = Path(gst_folder) / "Sales" / folder_name / f"{inv_no}.pdf"
 
-        inv_date = inv.invoice_date.strftime("%Y-%m-%d") if inv.invoice_date else "date"
-
-        inv_d_str = inv.invoice_date.strftime("%d-%m-%Y") if inv.invoice_date else datetime.now().strftime("%d-%m-%Y")
-        inv_pdf = target_dir / f"{inv_d_str}.pdf"
-        # Also clean up any legacy Invoice_INV-... file if it exists
-        legacy_inv = target_dir / f"Invoice_{inv_no}_{inv_date}.pdf"
-        if legacy_inv.exists():
-            try: legacy_inv.unlink()
-            except Exception: pass
-
-        if force_refresh or not inv_pdf.exists():
-
+        co_sig = f"{co_obj.name}|{co_obj.gstin}|{co_obj.address}|{co_obj.phone}" if co_obj else ""
+        inv_key = f"inv:{inv.id}"
+        inv_sig = (
+            f"{inv_no}|{float(getattr(inv, 'grand_total', 0.0) or 0.0):.2f}"
+            f"|{float(getattr(inv, 'cash_received', 0.0) or 0.0):.2f}"
+            f"|{float(getattr(inv, 'metal_received_value', 0.0) or 0.0):.2f}"
+            f"|{float(getattr(inv, 'balance_amount', 0.0) or 0.0):.2f}"
+            f"|{float(getattr(inv, 'gold_balance_metal_weight', 0.0) or 0.0):.3f}"
+            f"|{float(getattr(inv, 'silver_balance_metal_weight', 0.0) or 0.0):.3f}"
+            f"|{getattr(inv, 'status', '')}|{folder_name}|{gst_folder}|{co_sig}"
+        )
+        if _bill_needs_refresh(prev_stmt_state, next_stmt_state, inv_key, inv_sig, inv_pdf, force_refresh):
             try:
-
                 inv_data = InvoicePDFService.get_invoice_pdf_data(inv.id, db)
-
-                inv_html = generate_luxury_bill_html(inv_data)
-
-                if not render_html_to_pdf(inv_html, inv_pdf):
-
-                    generate_invoice_pdf(inv, store_info, inv_pdf)
-
-                counts["sales_invoices"] += 1
-
-                counts["total_files"] += 1
-
+                inv_html = generate_gst_tax_invoice_html(inv_data) if is_gst else generate_luxury_bill_html(inv_data)
+                render_jobs.append({
+                    "html": inv_html,
+                    "primary_pdf": inv_pdf,
+                    "extra_copies": [],
+                    "mirror_pairs": [(inv_pdf, rel_path)],
+                    "count_key": "sales_invoices",
+                    "state_key": inv_key,
+                    "fallback": lambda i=inv, path=inv_pdf: generate_invoice_pdf(i, store_info, path),
+                    "label": inv_no,
+                })
             except Exception as e:
-
                 try:
-
                     generate_invoice_pdf(inv, store_info, inv_pdf)
-
                     counts["sales_invoices"] += 1
-
-                    counts["total_files"] += 1
-
+                    mirror_items.append((inv_pdf, rel_path))
                 except Exception as e2:
-
-                    print(f"[Archive] Error generating invoice PDF {inv_no}: {e2}")
-
+                    print(f"[Archive] Error generating invoice PDF {inv_no}: {e} / {e2}")
         else:
-
             counts["sales_invoices"] += 1
+            mirror_items.append((inv_pdf, rel_path))
 
+    # 4. PROCESS EXCHANGES
     all_exchanges = db.query(Exchange).filter(
         Exchange.store_id == store_id,
-        getattr(Exchange, 'status', None) != "Cancelled"
+        getattr(Exchange, "status", None) != "Cancelled",
     ).all()
 
     for exc in all_exchanges:
-
         c_obj = cust_map.get(exc.customer_id) if exc.customer_id else None
-
         if c_obj:
-
             c_full = f"{c_obj.first_name} {c_obj.last_name or ''}".strip()
-
-            folder_name = _sanitize_name(f"{c_full}_{c_obj.phone_number}", default=f"Customer_{exc.customer_id}")
-
+            folder_name = _sanitize_name(c_full, default=f"Customer_{exc.customer_id}")
         else:
+            folder_name = "Walkin_Customer"
 
-            folder_name = "Walkin_Customers"
+        is_gst = (
+            (exc.company_id == 2)
+            or bool(str(getattr(exc, "exchange_number", "")).startswith(("SJ/E", "PG/E", "SJ_", "PG_")))
+            or ("/E/" in str(getattr(exc, "exchange_number", "")))
+        )
+        gst_folder = "GST" if is_gst else "Without_GST"
 
-        target_dir = sales_root / folder_name
-
+        target_dir = archive_root / gst_folder / "Exchanges" / folder_name
         target_dir.mkdir(parents=True, exist_ok=True)
+        exc_no = _sanitize_name(getattr(exc, "exchange_number", None) or f"EXC-{exc.id}")
+        exc_pdf = target_dir / f"{exc_no}.pdf"
+        rel_path = Path(gst_folder) / "Exchanges" / folder_name / f"{exc_no}.pdf"
 
-        exc_no = _sanitize_name(f"EXC-{exc.id}")
-
-        exc_date = exc.exchange_date.strftime("%Y-%m-%d") if exc.exchange_date else "date"
-
-        exc_d_str = exc.exchange_date.strftime("%d-%m-%Y") if exc.exchange_date else datetime.now().strftime("%d-%m-%Y")
-        exc_pdf = target_dir / f"{exc_d_str}.pdf"
-        legacy_exc = target_dir / f"Exchange_{exc_no}_{exc_date}.pdf"
-        if legacy_exc.exists():
-            try: legacy_exc.unlink()
-            except Exception: pass
-
-        if force_refresh or not exc_pdf.exists():
-
+        exc_key = f"exc:{exc.id}"
+        exc_sig = (
+            f"{exc_no}|{float(getattr(exc, 'grand_total', 0.0) or 0.0):.2f}"
+            f"|{float(getattr(exc, 'difference_amount', 0.0) or 0.0):.2f}"
+            f"|{float(getattr(exc, 'amount_paid', 0.0) or 0.0):.2f}"
+            f"|{float(getattr(exc, 'balance_amount', 0.0) or 0.0):.2f}"
+            f"|{float(getattr(exc, 'gold_balance_metal_weight', 0.0) or 0.0):.3f}"
+            f"|{float(getattr(exc, 'silver_balance_metal_weight', 0.0) or 0.0):.3f}"
+            f"|{getattr(exc, 'status', '')}|{folder_name}|{gst_folder}"
+        )
+        if _bill_needs_refresh(prev_stmt_state, next_stmt_state, exc_key, exc_sig, exc_pdf, force_refresh):
             try:
-
                 exc_data = InvoicePDFService.get_exchange_pdf_data(exc.id, db)
-
                 exc_html = generate_luxury_bill_html(exc_data)
-
-                if not render_html_to_pdf(exc_html, exc_pdf):
-
-                    generate_exchange_pdf(exc, store_info, exc_pdf)
-
-                counts["exchanges"] += 1
-
-                counts["total_files"] += 1
-
+                render_jobs.append({
+                    "html": exc_html,
+                    "primary_pdf": exc_pdf,
+                    "extra_copies": [],
+                    "mirror_pairs": [(exc_pdf, rel_path)],
+                    "count_key": "exchanges",
+                    "state_key": exc_key,
+                    "fallback": lambda x=exc, path=exc_pdf: generate_exchange_pdf(x, store_info, path),
+                    "label": exc_no,
+                })
             except Exception as e:
-
                 try:
-
                     generate_exchange_pdf(exc, store_info, exc_pdf)
-
                     counts["exchanges"] += 1
-
-                    counts["total_files"] += 1
-
+                    mirror_items.append((exc_pdf, rel_path))
                 except Exception as e2:
-
-                    print(f"[Archive] Error generating exchange PDF {exc_no}: {e2}")
-
+                    print(f"[Archive] Error generating exchange PDF {exc_no}: {e} / {e2}")
         else:
-
             counts["exchanges"] += 1
+            mirror_items.append((exc_pdf, rel_path))
 
-    # Clean up orphan customer & supplier directories across PC AND USB
-    valid_sales = {_sanitize_name(f"{(c.first_name + ' ' + (c.last_name or '')).strip()}_{c.phone_number}", default=f"Customer_{c.id}") for c in customers}
-    valid_sales.add("Walkin_Customers")
+    # 5. PROCESS CUSTOMER STATEMENTS (render HTML once per customer, copy to active folders)
+    for c in customers:
+        c_full = f"{c.first_name} {c.last_name or ''}".strip()
+        folder_name = _sanitize_name(c_full, default=f"Customer_{c.id}")
+        try:
+            ledgers = db.query(CustomerLedger).filter(CustomerLedger.customer_id == c.id).order_by(CustomerLedger.date.asc()).all()
+            target_gsubs = _collect_statement_targets(archive_root, "Sales", folder_name, active_customer_dirs, bool(ledgers))
+            if not target_gsubs:
+                continue
 
-    valid_purchases = {_sanitize_name(f"{s.name}_{s.mobile}", default=f"Supplier_{s.id}") for s in sellers}
-    valid_purchases.add("Unknown_Suppliers")
+            stmt_name = f"Statement_{_sanitize_name(c_full)}.pdf"
+            target_pdfs = [
+                (archive_root / g_sub / "Sales" / folder_name / stmt_name, Path(g_sub) / "Sales" / folder_name / stmt_name)
+                for g_sub in target_gsubs
+            ]
+            cash_val = float(c.outstanding_balance or 0.0)
+            gold_val = float(c.fine_gold_balance or 0.0)
+            silver_val = float(c.fine_silver_balance or 0.0)
+            max_lid = max((int(getattr(l, "id", 0) or 0) for l in ledgers), default=0)
+            sum_d = sum(float(getattr(l, "debit", 0.0) or 0.0) for l in ledgers)
+            sum_c = sum(float(getattr(l, "credit", 0.0) or 0.0) for l in ledgers)
+            sum_gd = sum(float(getattr(l, "gold_debit", 0.0) or 0.0) for l in ledgers)
+            sum_gc = sum(float(getattr(l, "gold_credit", 0.0) or 0.0) for l in ledgers)
+            stmt_key = f"cust:{c.id}"
+            stmt_sig = (
+                f"{c_full}|{c.phone_number or ''}|{cash_val:.2f}|{gold_val:.3f}|{silver_val:.3f}"
+                f"|{len(ledgers)}|{max_lid}|{sum_d:.2f}|{sum_c:.2f}|{sum_gd:.3f}|{sum_gc:.3f}|{','.join(sorted(target_gsubs))}"
+            )
 
-    all_roots = get_all_archive_roots()
-    for rt in all_roots:
-        r_sales = rt / "Archived_PDFs" / "Sales"
-        if r_sales.exists():
-            for d in list(r_sales.iterdir()):
-                if d.is_dir() and d.name not in valid_sales:
+            missing_file = any(not p.exists() for p, _ in target_pdfs)
+            sig_changed = refresh_statements and (prev_stmt_state.get(stmt_key) != stmt_sig)
+            needs_render = force_refresh or missing_file or sig_changed
+            next_stmt_state[stmt_key] = stmt_sig
+            if not needs_render:
+                counts["customer_statements"] += len(target_pdfs)
+                mirror_items.extend(target_pdfs)
+                continue
+
+            entries = [{
+                "date": (l.date.strftime("%d-%b-%Y") if getattr(l, "date", None) else ""),
+                "type": l.voucher_type or "Ledger",
+                "number": l.voucher_number or "-",
+                "description": l.description or "-",
+                "debit": float(l.debit or 0.0),
+                "credit": float(l.credit or 0.0),
+                "balance": float(l.balance or 0.0),
+                "gold_debit": float(l.gold_debit or 0.0),
+                "gold_credit": float(l.gold_credit or 0.0),
+            } for l in ledgers]
+            c_html = generate_luxury_statement_html(
+                c_full,
+                c.phone_number or "",
+                "Customer",
+                entries,
+                store_info,
+                float(c.outstanding_balance or 0.0),
+                float(c.fine_gold_balance or 0.0),
+                float(c.fine_silver_balance or 0.0),
+            )
+            primary_pdf, _ = target_pdfs[0]
+            primary_pdf.parent.mkdir(parents=True, exist_ok=True)
+            render_jobs.append({
+                "html": c_html,
+                "primary_pdf": primary_pdf,
+                "extra_copies": [p for p, _ in target_pdfs[1:]],
+                "mirror_pairs": target_pdfs,
+                "count_key": "customer_statements",
+                "fallback": lambda cust=c, path=primary_pdf: generate_customer_statement_pdf(cust, db, store_info, path),
+                "label": stmt_name,
+            })
+        except Exception as e:
+            print(f"[Archive] Error preparing customer statement for {c_full}: {e}")
+
+    # 6. RUN CONCURRENT EDGE RENDERS (up to 4 isolated headless profiles in parallel)
+    if render_jobs:
+        workers = min(4, len(render_jobs))
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            future_map = {
+                executor.submit(render_html_to_pdf, job["html"], job["primary_pdf"]): job
+                for job in render_jobs
+            }
+            for future in as_completed(future_map):
+                job = future_map[future]
+                rendered_ok = False
+                try:
+                    rendered_ok = bool(future.result())
+                except Exception as e:
+                    print(f"[Archive] Parallel render failed for {job['label']}: {e}")
+
+                if not rendered_ok and job["fallback"]:
                     try:
-                        shutil.rmtree(d, ignore_errors=True)
-                        print(f"[Archive Prune] Removed orphan sales directory {d}")
-                    except Exception:
-                        pass
-                elif d.is_dir():
-                    # Purge non-date PDFs in valid directories
-                    for f in list(d.glob("*.pdf")):
-                        stem = f.stem
-                        is_date_only = len(stem) == 10 and stem[2] == '-' and stem[5] == '-'
-                        if not is_date_only and not f.name.startswith("Statement_"):
-                            try:
-                                f.unlink()
-                                print(f"[Archive Purge Legacy] Removed old layout {f}")
-                            except Exception:
-                                pass
+                        job["fallback"]()
+                        rendered_ok = job["primary_pdf"].exists()
+                    except Exception as e2:
+                        print(f"[Archive] Fallback render failed for {job['label']}: {e2}")
 
-        r_pur = rt / "Archived_PDFs" / "Purchases"
-        if r_pur.exists():
-            for d in list(r_pur.iterdir()):
-                if d.is_dir() and d.name not in valid_purchases:
-                    try:
-                        shutil.rmtree(d, ignore_errors=True)
-                        print(f"[Archive Prune] Removed orphan purchases directory {d}")
-                    except Exception:
-                        pass
-                elif d.is_dir():
-                    for f in list(d.glob("*.pdf")):
-                        stem = f.stem
-                        is_date_only = len(stem) == 10 and stem[2] == '-' and stem[5] == '-'
-                        if not is_date_only and not f.name.startswith("Statement_"):
-                            try:
-                                f.unlink()
-                                print(f"[Archive Purge Legacy] Removed old layout {f}")
-                            except Exception:
-                                pass
+                if rendered_ok:
+                    for extra_path in job["extra_copies"]:
+                        try:
+                            extra_path.parent.mkdir(parents=True, exist_ok=True)
+                            shutil.copy2(job["primary_pdf"], extra_path)
+                        except Exception as copy_err:
+                            print(f"[Archive] Copy error for {extra_path}: {copy_err}")
+                    counts[job["count_key"]] += len(job["mirror_pairs"])
+                    mirror_items.extend(job["mirror_pairs"])
+
+    _cleanup_legacy_duplicates(archive_root)
+
+    # Persist updated party statement signatures so subsequent backups skip unchanged parties cleanly
+    if render_jobs or force_refresh or next_stmt_state != prev_stmt_state:
+        _save_statement_state(archive_root, next_stmt_state)
+
+    # 7. MIRROR TO EXTERNAL ROOTS (Downloads backup + USB + custom folders, skipping unchanged files)
+    roots = get_all_archive_roots()
+    for src_pdf, rel_path in mirror_items:
+        _save_pdf_to_roots(src_pdf, rel_path, roots=roots)
+
+    counts["total_files"] = (
+        counts["sales_invoices"]
+        + counts["exchanges"]
+        + counts["customer_statements"]
+        + counts["purchases"]
+        + counts["supplier_statements"]
+    )
 
     return {
-
         "status": "success",
-
         "counts": counts,
-
-        "archive_dir": str(archive_root)
-
+        "archive_dir": str(archive_root),
     }
 
-import threading
-
-import shutil
-
-import string
-
 def get_all_archive_roots() -> List[Path]:
-
-    """Return all target roots for archiving (PC local storage + any connected pendrive)."""
-
+    """Return all target roots for archiving (PC local storage, Downloads/custom backups, and any connected pendrive)."""
     from app.core.config import DATA_DIR
 
     roots = [DATA_DIR]
-
     seen = {str(DATA_DIR).lower()}
 
-    
+    def _add_root(candidate: Path):
+        try:
+            key = str(candidate).lower()
+            if key not in seen:
+                roots.append(candidate)
+                seen.add(key)
+        except Exception:
+            pass
+
+    # Mirror to Downloads backup vault if Downloads\JewelleryERP_Backups exists
+    downloads_backup_parent = Path.home() / "Downloads" / "JewelleryERP_Backups"
+    if downloads_backup_parent.exists():
+        _add_root(downloads_backup_parent / "JewelleryERP_Data")
+
+    # Mirror to any user-chosen backup folders saved by Electron in storage_config.json
+    cfg_path = DATA_DIR / "storage_config.json"
+    if cfg_path.exists():
+        try:
+            cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+            for custom_dir in cfg.get("customBackupDirs", []) or []:
+                c_path = Path(custom_dir)
+                if c_path.exists():
+                    target = c_path if c_path.name.lower() == "jewelleryerp_data" else (c_path / "JewelleryERP_Data")
+                    _add_root(target)
+        except Exception:
+            pass
 
     for letter in string.ascii_uppercase:
-
         p = Path(f"{letter}:/JewelleryERP_Data")
-
-        if p.exists() and str(p).lower() not in seen:
-
-            roots.append(p)
-
-            seen.add(str(p).lower())
+        if p.exists():
+            _add_root(p)
 
     return roots
 
-def _save_pdf_to_roots(source_pdf: Path, relative_dest_path: Path):
 
-    """Mirror a generated PDF to all archive roots (PC and USB)."""
+def _save_pdf_to_roots(source_pdf: Path, relative_dest_path: Path, roots: Optional[List[Path]] = None):
+    """Mirror a generated PDF to all archive roots (PC, custom backups, and USB)."""
+    if not source_pdf.exists():
+        return
 
-    roots = get_all_archive_roots()
+    target_roots = roots if roots is not None else get_all_archive_roots()
+    try:
+        src_stat = source_pdf.stat()
+        src_resolved = source_pdf.resolve()
+    except Exception:
+        return
 
-    for root in roots:
-
+    for root in target_roots:
         dest = root / "Archived_PDFs" / relative_dest_path
-
-        dest.parent.mkdir(parents=True, exist_ok=True)
-
         try:
-
-            if source_pdf.resolve() != dest.resolve():
-
-                shutil.copy2(source_pdf, dest)
-
+            if src_resolved == dest.resolve():
+                continue
+            if dest.exists():
+                d_stat = dest.stat()
+                if d_stat.st_size == src_stat.st_size and abs(d_stat.st_mtime - src_stat.st_mtime) <= 2:
+                    continue
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            for attempt in range(2):
+                try:
+                    shutil.copy2(source_pdf, dest)
+                    break
+                except PermissionError:
+                    if attempt == 0:
+                        time.sleep(0.15)
+                    else:
+                        raise
         except Exception as e:
-
             print(f"[Archive Mirror] Error copying to {dest}: {e}")
 
 def archive_single_invoice(invoice_id: int, db: Session = None):
@@ -1853,30 +1997,31 @@ def archive_single_invoice(invoice_id: int, db: Session = None):
         c_obj = db.query(Customer).filter(Customer.id == inv.customer_id).first() if inv.customer_id else None
         if c_obj:
             c_full = f"{c_obj.first_name} {c_obj.last_name or ''}".strip()
-            folder_name = _sanitize_name(f"{c_full}_{c_obj.phone_number}", default=f"Customer_{inv.customer_id}")
+            folder_name = _sanitize_name(c_full, default=f"Customer_{inv.customer_id}")
         else:
-            folder_name = "Walkin_Customers"
-
-        inv_d_str = inv.invoice_date.strftime("%d-%m-%Y") if inv.invoice_date else datetime.now().strftime("%d-%m-%Y")
-        rel_path = Path("Sales") / folder_name / f"{inv_d_str}.pdf"
-        primary_pdf = DATA_DIR / "Archived_PDFs" / rel_path
-        primary_pdf.parent.mkdir(parents=True, exist_ok=True)
+            b_name = getattr(inv, 'buyer_name', None) or "Walkin_Customer"
+            folder_name = _sanitize_name(b_name, default="Walkin_Customers")
 
         inv_data = InvoicePDFService.get_invoice_pdf_data(inv.id, db)
-        inv_html = generate_luxury_bill_html(inv_data)
-        render_html_to_pdf(inv_html, primary_pdf)
-        _save_pdf_to_roots(primary_pdf, rel_path)
+        is_gst = bool(inv_data.get("company", {}).get("gst_enabled"))
+        gst_folder = "GST" if is_gst else "Without_GST"
 
-        # Purge any old name variants in that folder across all roots
-        for rt in get_all_archive_roots():
-            target_f = rt / "Archived_PDFs" / "Sales" / folder_name
-            if target_f.exists():
-                for old_f in target_f.glob("*.pdf"):
-                    stem = old_f.stem
-                    is_date_only = len(stem) == 10 and stem[2] == '-' and stem[5] == '-'
-                    if not is_date_only and not old_f.name.startswith("Statement_"):
-                        try: old_f.unlink()
-                        except Exception: pass
+        inv_no = _sanitize_name(inv.invoice_number or f"INV-{inv.id}")
+        file_name = f"{inv_no}.pdf"
+        rel_path = Path(gst_folder) / "Sales" / folder_name / file_name
+
+        primary_pdf = DATA_DIR / "Archived_PDFs" / rel_path
+        primary_pdf.parent.mkdir(parents=True, exist_ok=True)
+        if is_gst:
+            from app.services.gst_pdf_template import generate_gst_tax_invoice_html
+            inv_html = generate_gst_tax_invoice_html(inv_data)
+        else:
+            inv_html = generate_luxury_bill_html(inv_data)
+
+        if not render_html_to_pdf(inv_html, primary_pdf):
+            generate_invoice_pdf(inv, store_info, primary_pdf)
+
+        _save_pdf_to_roots(primary_pdf, rel_path)
 
         if inv.customer_id:
             archive_single_customer_statement(inv.customer_id, db)
@@ -1903,29 +2048,26 @@ def archive_single_exchange(exchange_id: int, db: Session = None):
         c_obj = db.query(Customer).filter(Customer.id == exc.customer_id).first() if exc.customer_id else None
         if c_obj:
             c_full = f"{c_obj.first_name} {c_obj.last_name or ''}".strip()
-            folder_name = _sanitize_name(f"{c_full}_{c_obj.phone_number}", default=f"Customer_{exc.customer_id}")
+            folder_name = _sanitize_name(c_full, default=f"Customer_{exc.customer_id}")
         else:
             folder_name = "Walkin_Customers"
 
-        exc_d_str = exc.date.strftime("%d-%m-%Y") if getattr(exc, 'date', None) else datetime.now().strftime("%d-%m-%Y")
-        rel_path = Path("Sales") / folder_name / f"{exc_d_str}.pdf"
+        is_gst = (exc.company_id == 2) or bool(str(getattr(exc, 'exchange_number', '')).startswith(('SJ/E', 'PG/E', 'SJ_', 'PG_'))) or ('/E/' in str(getattr(exc, 'exchange_number', '')))
+        gst_folder = "GST" if is_gst else "Without_GST"
+
+        exc_no = _sanitize_name(getattr(exc, 'exchange_number', None) or f"EXC-{exc.id}")
+        file_name = f"{exc_no}.pdf"
+        rel_path = Path(gst_folder) / "Exchanges" / folder_name / file_name
+
         primary_pdf = DATA_DIR / "Archived_PDFs" / rel_path
         primary_pdf.parent.mkdir(parents=True, exist_ok=True)
 
         exc_data = InvoicePDFService.get_exchange_pdf_data(exc.id, db)
         exc_html = generate_luxury_bill_html(exc_data)
-        render_html_to_pdf(exc_html, primary_pdf)
-        _save_pdf_to_roots(primary_pdf, rel_path)
+        if not render_html_to_pdf(exc_html, primary_pdf):
+            generate_exchange_pdf(exc, store_info, primary_pdf)
 
-        for rt in get_all_archive_roots():
-            target_f = rt / "Archived_PDFs" / "Sales" / folder_name
-            if target_f.exists():
-                for old_f in target_f.glob("*.pdf"):
-                    stem = old_f.stem
-                    is_date_only = len(stem) == 10 and stem[2] == '-' and stem[5] == '-'
-                    if not is_date_only and not old_f.name.startswith("Statement_"):
-                        try: old_f.unlink()
-                        except Exception: pass
+        _save_pdf_to_roots(primary_pdf, rel_path)
 
         if exc.customer_id:
             archive_single_customer_statement(exc.customer_id, db)
@@ -1950,27 +2092,31 @@ def archive_single_purchase(purchase_id: int, db: Session = None):
             return
         store_info = _get_store_header(db, pur.store_id or 1)
         s_obj = db.query(Seller).filter(Seller.id == pur.seller_id).first() if pur.seller_id else None
-        folder_name = _sanitize_name(f"{s_obj.name}_{s_obj.mobile}", default=f"Supplier_{pur.seller_id}") if s_obj else "Unassigned_Suppliers"
+        if s_obj:
+            folder_name = _sanitize_name(s_obj.name, default=f"Supplier_{pur.seller_id}")
+        else:
+            folder_name = "Suppliers"
 
-        pur_d_str = pur.purchase_date.strftime("%d-%m-%Y") if getattr(pur, "purchase_date", None) else (pur.created_at.strftime("%d-%m-%Y") if getattr(pur, "created_at", None) else datetime.now().strftime("%d-%m-%Y"))
-        rel_path = Path("Purchases") / folder_name / f"{pur_d_str}.pdf"
+        is_gst = (pur.company_id == 2) or bool(str(getattr(pur, 'purchase_number', '')).startswith(('SJ/P', 'PG/P', 'SJ_', 'PG_'))) or ('/P/' in str(getattr(pur, 'purchase_number', '')))
+        gst_folder = "GST" if is_gst else "Without_GST"
+
+        p_no = _sanitize_name(getattr(pur, 'purchase_number', None) or f"PUR-{pur.id}")
+        file_name = f"{p_no}.pdf"
+        rel_path = Path(gst_folder) / "Purchases" / folder_name / file_name
+
         primary_pdf = DATA_DIR / "Archived_PDFs" / rel_path
         primary_pdf.parent.mkdir(parents=True, exist_ok=True)
 
         pur_data = InvoicePDFService.get_purchase_pdf_data(pur.id, db)
-        pur_html = generate_luxury_bill_html(pur_data)
-        render_html_to_pdf(pur_html, primary_pdf)
-        _save_pdf_to_roots(primary_pdf, rel_path)
+        if is_gst:
+            from app.services.gst_pdf_template import generate_gst_tax_invoice_html
+            pur_html = generate_gst_tax_invoice_html(pur_data)
+        else:
+            pur_html = generate_luxury_bill_html(pur_data)
+        if not render_html_to_pdf(pur_html, primary_pdf):
+            generate_purchase_pdf(pur, store_info, primary_pdf)
 
-        for rt in get_all_archive_roots():
-            target_f = rt / "Archived_PDFs" / "Purchases" / folder_name
-            if target_f.exists():
-                for old_f in target_f.glob("*.pdf"):
-                    stem = old_f.stem
-                    is_date_only = len(stem) == 10 and stem[2] == '-' and stem[5] == '-'
-                    if not is_date_only and not old_f.name.startswith("Statement_"):
-                        try: old_f.unlink()
-                        except Exception: pass
+        _save_pdf_to_roots(primary_pdf, rel_path)
 
         if pur.seller_id:
             archive_single_supplier_statement(pur.seller_id, db)
@@ -1981,177 +2127,102 @@ def archive_single_purchase(purchase_id: int, db: Session = None):
             db.close()
 
 def archive_single_customer_statement(customer_id: int, db: Session = None):
-
     close_db = False
-
     if db is None:
-
         from app.db.database import SessionLocal
-
         db = SessionLocal()
-
         close_db = True
-
     try:
-
         from app.services.luxury_pdf_service import generate_luxury_statement_html, render_html_to_pdf
-
         from app.core.config import DATA_DIR
-
         c = db.query(Customer).filter(Customer.id == customer_id).first()
-
         if not c:
-
             return
-
         store_info = _get_store_header(db, c.store_id or 1)
-
         c_full = f"{c.first_name} {c.last_name or ''}".strip()
-
-        folder_name = _sanitize_name(f"{c_full}_{c.phone_number}", default=f"Customer_{c.id}")
-
-        rel_path = Path("Sales") / folder_name / f"Statement_{_sanitize_name(c_full)}.pdf"
-
-        primary_pdf = DATA_DIR / "Archived_PDFs" / rel_path
-
-        primary_pdf.parent.mkdir(parents=True, exist_ok=True)
+        folder_name = _sanitize_name(c_full, default=f"Customer_{c.id}")
 
         entries = []
-
         ledgers = db.query(CustomerLedger).filter(CustomerLedger.customer_id == c.id).order_by(CustomerLedger.date.asc()).all()
-
         for l in ledgers:
-
             entries.append({
-
                 "date": (l.date.strftime("%d-%b-%Y") if getattr(l, "date", None) else ""),
-
                 "type": l.voucher_type or "Ledger",
-
                 "number": l.voucher_number or "-",
-
                 "description": l.description or "-",
-
                 "debit": float(l.debit or 0.0),
-
                 "credit": float(l.credit or 0.0),
-
                 "balance": float(l.balance or 0.0),
-
                 "gold_debit": float(l.gold_debit or 0.0),
-
                 "gold_credit": float(l.gold_credit or 0.0),
-
             })
 
         c_html = generate_luxury_statement_html(
-
             c_full, c.phone_number or "", "Customer", entries, store_info,
-
             float(c.outstanding_balance or 0.0), float(c.fine_gold_balance or 0.0), float(c.fine_silver_balance or 0.0)
-
         )
 
-        if not render_html_to_pdf(c_html, primary_pdf):
-
-            generate_customer_statement_pdf(c, db, store_info, primary_pdf)
-
-        _save_pdf_to_roots(primary_pdf, rel_path)
+        for g_sub in ["GST", "Without_GST"]:
+            rel_path = Path(g_sub) / "Sales" / folder_name / f"Statement_{_sanitize_name(c_full)}.pdf"
+            primary_pdf = DATA_DIR / "Archived_PDFs" / rel_path
+            primary_pdf.parent.mkdir(parents=True, exist_ok=True)
+            if not render_html_to_pdf(c_html, primary_pdf):
+                generate_customer_statement_pdf(c, db, store_info, primary_pdf)
+            _save_pdf_to_roots(primary_pdf, rel_path)
 
     except Exception as e:
-
         print(f"[Archive Customer Statement Error] {e}")
-
     finally:
-
         if close_db:
-
             db.close()
 
 def archive_single_supplier_statement(seller_id: int, db: Session = None):
-
     close_db = False
-
     if db is None:
-
         from app.db.database import SessionLocal
-
         db = SessionLocal()
-
         close_db = True
-
     try:
-
         from app.services.luxury_pdf_service import generate_luxury_statement_html, render_html_to_pdf
-
         from app.core.config import DATA_DIR
-
         s = db.query(Seller).filter(Seller.id == seller_id).first()
-
         if not s:
-
             return
-
         store_info = _get_store_header(db, s.store_id or 1)
-
-        folder_name = _sanitize_name(f"{s.name}_{s.mobile}", default=f"Supplier_{s.id}")
-
-        rel_path = Path("Purchases") / folder_name / f"Statement_{_sanitize_name(s.name)}.pdf"
-
-        primary_pdf = DATA_DIR / "Archived_PDFs" / rel_path
-
-        primary_pdf.parent.mkdir(parents=True, exist_ok=True)
+        folder_name = _sanitize_name(s.name, default=f"Supplier_{s.id}")
 
         entries = []
-
         ledgers = db.query(SupplierLedger).filter(SupplierLedger.seller_id == s.id).order_by(SupplierLedger.date.asc()).all()
-
         for l in ledgers:
-
             entries.append({
-
                 "date": (l.date.strftime("%d-%b-%Y") if getattr(l, "date", None) else ""),
-
                 "type": l.voucher_type or "Ledger",
-
                 "number": l.voucher_number or "-",
-
                 "description": l.description or "-",
-
                 "debit": float(l.debit or 0.0),
-
                 "credit": float(l.credit or 0.0),
-
                 "balance": float(l.balance or 0.0),
-
-                "gold_debit": float(l.gold_debit or 0.0),
-
-                "gold_credit": float(l.gold_credit or 0.0),
-
+                "gold_debit": float(getattr(l, "gold_debit", 0.0) or 0.0),
+                "gold_credit": float(getattr(l, "gold_credit", 0.0) or 0.0),
             })
 
         s_html = generate_luxury_statement_html(
-
             s.name, s.mobile or "", "Supplier", entries, store_info,
-
-            float(s.outstanding_balance or 0.0), float(s.fine_gold_balance or 0.0), float(s.fine_silver_balance or 0.0)
-
+            float(getattr(s, "outstanding_balance", 0.0) or getattr(s, "current_balance", 0.0) or 0.0), float(getattr(s, "fine_gold_balance", 0.0) or 0.0), float(getattr(s, "fine_silver_balance", 0.0) or 0.0)
         )
 
-        if not render_html_to_pdf(s_html, primary_pdf):
-
-            generate_supplier_statement_pdf(s, db, store_info, primary_pdf)
-
-        _save_pdf_to_roots(primary_pdf, rel_path)
+        for g_sub in ["GST", "Without_GST"]:
+            rel_path = Path(g_sub) / "Purchases" / folder_name / f"Statement_{_sanitize_name(s.name)}.pdf"
+            primary_pdf = DATA_DIR / "Archived_PDFs" / rel_path
+            primary_pdf.parent.mkdir(parents=True, exist_ok=True)
+            if not render_html_to_pdf(s_html, primary_pdf):
+                generate_supplier_statement_pdf(s, db, store_info, primary_pdf)
+            _save_pdf_to_roots(primary_pdf, rel_path)
 
     except Exception as e:
-
         print(f"[Archive Supplier Statement Error] {e}")
-
     finally:
-
         if close_db:
-
             db.close()
 
 def dispatch_async_archive(fn, *args):

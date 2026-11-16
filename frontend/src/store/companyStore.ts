@@ -36,11 +36,13 @@ export interface Company {
 interface CompanyState {
   currentCompanyId: number;
   currentCompany: Company | null;
+  activeCompany: Company | null;
   companies: Company[];
   isLoading: boolean;
   fetchCompanies: () => Promise<void>;
   selectCompany: (companyId: number) => void;
   updateCurrentCompany: (partial: Partial<Company>) => void;
+  upsertCompany: (company: Company) => void;
 }
 
 const DEFAULT_COMPANY_ID = 1;
@@ -48,6 +50,7 @@ const DEFAULT_COMPANY_ID = 1;
 export const useCompanyStore = create<CompanyState>((set, get) => ({
   currentCompanyId: Number(localStorage.getItem('erp_company_id')) || DEFAULT_COMPANY_ID,
   currentCompany: null,
+  activeCompany: null,
   companies: [],
   isLoading: false,
 
@@ -65,6 +68,7 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
         companies: list,
         currentCompanyId: activeId,
         currentCompany: matched,
+        activeCompany: matched,
         isLoading: false
       });
     } catch (err) {
@@ -82,7 +86,8 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     localStorage.setItem('erp_company_id', String(companyId));
     set({
       currentCompanyId: companyId,
-      currentCompany: target
+      currentCompany: target,
+      activeCompany: target
     });
 
     // Optional event dispatch for listeners to refresh their local states
@@ -96,6 +101,23 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
     if (!currentCompany) return;
     const updated = { ...currentCompany, ...partial };
     const updatedList = companies.map((c) => (c.id === updated.id ? updated : c));
-    set({ currentCompany: updated, companies: updatedList });
+    set({ currentCompany: updated, activeCompany: updated, companies: updatedList });
+  },
+
+  upsertCompany: (company) => {
+    const { currentCompanyId, currentCompany, companies } = get();
+    const exists = companies.some((c) => c.id === company.id);
+    const updatedList = exists
+      ? companies.map((c) => (c.id === company.id ? company : c))
+      : [...companies, company];
+    const nextCurrent =
+      currentCompanyId === company.id || currentCompany?.id === company.id
+        ? company
+        : currentCompany;
+    set({
+      companies: updatedList,
+      currentCompany: nextCurrent,
+      activeCompany: nextCurrent,
+    });
   }
 }));

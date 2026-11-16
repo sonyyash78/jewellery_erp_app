@@ -1,10 +1,11 @@
 import { handleEnterKeyNavigation } from '../../utils/keyboardNavigation';
 import { useCompanyStore } from '../../store/companyStore';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { axiosClient } from '../../api/axiosClient';
 import toast from 'react-hot-toast';
 import { Check, X, Calculator, UserPlus } from 'lucide-react';
 import { useBillingStore } from '../../store/billingStore';
+import { useExchangeStore } from '../../store/exchangeStore';
 import { getErrorMessage } from '../../utils/errorUtils';
 
 
@@ -13,12 +14,24 @@ export default function ExchangeCheckoutModal({ payload, differenceAmount: _diff
   const { currentCompanyId } = useCompanyStore();
   const [loading, setLoading] = useState(false);
   const [customers, setCustomers] = useState<any[]>([]);
-  const initialCustomerId = useBillingStore.getState().selectedCustomerId;
+  const initialCustomerId = useExchangeStore.getState().customerId || useBillingStore.getState().selectedCustomerId;
   const [selectedCustomer, setSelectedCustomer] = useState<number | ''>(initialCustomerId || '');
   const [mode, setMode] = useState<'checkout' | 'new_customer'>('checkout');
   const [newCustomer, setNewCustomer] = useState({ first_name: '', last_name: '', phone: '', city: '' });
 
-  const [cashReceived, setCashReceived] = useState<number>(0);
+  const [cashReceived, setCashReceived] = useState<number>(() => {
+    return Math.round((payload?.net_amount_due || payload?.grand_total || _differenceAmount || 0) * 100) / 100;
+  });
+  const cashInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (cashInputRef.current) {
+        cashInputRef.current.focus();
+        cashInputRef.current.select();
+      }
+    }, 100);
+    return () => clearTimeout(timer);
+  }, []);
   const [goldDeposited, setGoldDeposited] = useState<number>(0);
   const [goldDepositTanch, setGoldDepositTanch] = useState<number>(100);
   const [silverDeposited, setSilverDeposited] = useState<number>(0);
@@ -163,10 +176,24 @@ export default function ExchangeCheckoutModal({ payload, differenceAmount: _diff
     }, 0);
   }, [payload.old_items]);
 
+  const totalNewDiamondValue = useMemo(() => {
+    return (payload.new_items || [])
+      .filter((i: any) => (i.metal || '').toLowerCase() === 'diamond')
+      .reduce((acc: number, item: any) => acc + Number(item.final_price || item.finalPrice || 0), 0);
+  }, [payload.new_items]);
+
+  const totalOldDiamondValue = useMemo(() => {
+    return (payload.old_items || [])
+      .filter((i: any) => (i.metal || '').toLowerCase() === 'diamond')
+      .reduce((acc: number, item: any) => acc + Number(item.calculated_value || item.calculatedValue || 0), 0);
+  }, [payload.old_items]);
+
+  const netDiamondDue = totalNewDiamondValue - totalOldDiamondValue;
+
   const totalGst = Number(payload.gst_amount || 0);
 
-  // Non-metal charges MUST always remain in amount payable (cash/money)
-  const nonMetalCharges = totalMakingCharges + totalOtherCharges + totalGst - totalNewDiscounts + totalOldNetDeductions;
+  // Non-metal charges + Diamond value MUST always remain in amount payable (cash/money)
+  const nonMetalCharges = totalMakingCharges + totalOtherCharges + totalGst - totalNewDiscounts + totalOldNetDeductions + netDiamondDue;
 
   // STEP 3: Counter metal deposit & Net metal left
   const fineGoldDeposited = goldDeposited * (goldDepositTanch / 100);
@@ -278,15 +305,16 @@ export default function ExchangeCheckoutModal({ payload, differenceAmount: _diff
   }, []);
 
   const handleGenerate = async (shouldPrint: boolean) => {
-    if (!isFullySettled && !selectedCustomer) {
-      toast.error('A customer must be selected for outstanding balances.');
-      return;
-    }
     if (cashReceived < 0 || goldDeposited < 0 || silverDeposited < 0) {
       toast.error('Deposits cannot be negative.');
       return;
     }
     setLoading(true);
+
+    let effectiveCustomerId = selectedCustomer || null;
+    if (!effectiveCustomerId && customers && customers.length > 0) {
+      effectiveCustomerId = customers[0].id;
+    }
 
     let updatedOldItems = [...(payload.old_items || [])];
     if (goldDeposited > 0) {
@@ -354,7 +382,7 @@ export default function ExchangeCheckoutModal({ payload, differenceAmount: _diff
       gst_amount: isPureMetal && nonMetalCharges === 0 ? 0 : payload.gst_amount,
       grand_total: isPureMetal && nonMetalCharges === 0 ? 0 : payload.grand_total,
       old_items: updatedOldItems, 
-      customer_id: selectedCustomer || null,
+      customer_id: effectiveCustomerId,
       amount_paid: isPureMetal && nonMetalCharges === 0 ? 0 : cashReceived, 
       payment_method: paymentMethod,
       settlement_type: backendSettlementType,
@@ -372,11 +400,11 @@ export default function ExchangeCheckoutModal({ payload, differenceAmount: _diff
       });
       toast.success(`Exchange ${res.data.exchange_number || res.data.id} generated!`);
       
-      try {
+      const runPdfJob = async () => {
         const pdfRes = await axiosClient.get(`/exchanges/${res.data.id}/pdf-data`);
         const pdfData = pdfRes.data;
-        pdfData.invoice.amount_paid    = Number(cashReceived) || 0;
-        pdfData.invoice.balance_due    = finalBalanceAmount;
+        pdfData.invoice.amount_paid = Number(cashReceived) || 0;
+        pdfData.invoice.balance_due = finalBalanceAmount;
         pdfData.invoice.payment_method = paymentMethod;
         pdfData.invoice.transaction_id = paymentMethod === 'UPI' ? upiId : paymentMethod === 'Cheque' ? `${chequeNo} | ${bankName} | ${chequeDate}` : '-';
         pdfData.invoice.bill_type = 'Exchange';
@@ -384,13 +412,24 @@ export default function ExchangeCheckoutModal({ payload, differenceAmount: _diff
         pdfData.invoice.settlement_metal_type = cashBalanceAction === 'metal_gold' ? 'Gold' : cashBalanceAction === 'metal_silver' ? 'Silver' : cashBalanceAction === 'metal_both' ? 'Both' : null;
         pdfData.invoice.gold_balance_metal_weight = goldBalMetal;
         pdfData.invoice.silver_balance_metal_weight = silverBalMetal;
+
         const { generateInvoicePDF, printInvoiceDirect } = await import('../../utils/invoicePdfUtils');
-        await generateInvoicePDF(pdfData);
+        void generateInvoicePDF(pdfData).catch((e) => console.warn('Exchange background PDF archive error:', e));
         if (shouldPrint) {
           await printInvoiceDirect(pdfData);
         }
-      } catch (pdfErr) { console.error('Auto PDF generation failed', pdfErr); }
-      
+      };
+
+      if (shouldPrint) {
+        try {
+          await runPdfJob();
+        } catch (pdfErr) {
+          console.error('Auto PDF generation failed', pdfErr);
+        }
+      } else {
+        void runPdfJob().catch((pdfErr) => console.warn('Exchange background PDF failed', pdfErr));
+      }
+
       onSuccess(res.data.id);
     } catch (e: any) {
       toast.error(getErrorMessage(e, 'Failed to generate exchange'));
@@ -406,12 +445,49 @@ export default function ExchangeCheckoutModal({ payload, differenceAmount: _diff
     } catch (e: any) { toast.error(getErrorMessage(e, 'Failed to save customer')); } finally { setLoading(false); }
   };
 
+  useEffect(() => {
+    const handleModalKeys = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (mode === 'new_customer') {
+          setMode('checkout');
+        } else {
+          onClose();
+        }
+        return;
+      }
+
+      if (e.key === 'F12') {
+        e.preventDefault();
+        if (!loading) {
+          handleGenerate(true);
+        }
+        return;
+      }
+
+      if (e.key === 'Enter') {
+        const target = e.target as HTMLElement;
+        if (target?.tagName === 'TEXTAREA' && !e.ctrlKey) return;
+        if (target?.tagName === 'BUTTON' && target.getAttribute('data-save-only') !== 'true') return;
+        if (target?.getAttribute('data-counter-metal') === 'true') return;
+
+        e.preventDefault();
+        if (!loading) {
+          handleGenerate(false);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleModalKeys);
+    return () => window.removeEventListener('keydown', handleModalKeys);
+  }, [mode, onClose, loading, isFullySettled, selectedCustomer, cashReceived, goldDeposited, silverDeposited, customers, currentCompanyId]);
+
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4 overflow-hidden">
       <div 
         data-enter-container="true"
         onKeyDown={(e) => handleEnterKeyNavigation(e, '[data-enter-container]', () => {
-          if (!loading && (isFullySettled || selectedCustomer)) {
+          if (!loading) {
             handleGenerate(false);
           }
         })}
@@ -601,7 +677,22 @@ export default function ExchangeCheckoutModal({ payload, differenceAmount: _diff
                           </button>
                         </div>
                       </div>
-                      <input type="number" min="0" value={cashReceived === 0 ? '' : cashReceived} onChange={e => setCashReceived(Number(e.target.value))} placeholder="0" className="w-full bg-background border border-green-900 rounded p-2 text-lg font-mono text-green-400 outline-none focus:border-green-500" />
+                      <input 
+                        ref={cashInputRef}
+                        type="number" 
+                        min="0" 
+                        value={cashReceived === 0 ? '' : cashReceived} 
+                        onChange={e => setCashReceived(Number(e.target.value))} 
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (!loading) handleGenerate(false);
+                          }
+                        }}
+                        placeholder="0" 
+                        className="w-full bg-background border border-green-900 rounded p-2 text-lg font-mono text-green-400 outline-none focus:border-green-500" 
+                      />
                       <div className="flex gap-3 mt-2">
                         {(['Cash', 'UPI', 'Cheque'] as const).map(m => (
                           <label key={m} className="flex items-center gap-1 cursor-pointer">
@@ -790,11 +881,11 @@ export default function ExchangeCheckoutModal({ payload, differenceAmount: _diff
 
               <div className="flex flex-col sm:flex-row gap-2 mt-4 pt-3 border-t border-gray-800 bg-surface sticky bottom-0 z-10 shrink-0">
                 <button data-nav-button="true" onClick={onClose} className="py-2.5 sm:py-3 px-4 border border-gray-700 rounded-lg text-gray-400 hover:bg-gray-800 font-bold transition-colors order-3 sm:order-1 sm:flex-1 text-xs sm:text-sm">Cancel</button>
-                <button data-nav-button="true" onClick={() => handleGenerate(false)} disabled={loading || (!isFullySettled && !selectedCustomer)} className="py-2.5 sm:py-3 px-4 bg-gray-700 text-white font-bold rounded-lg hover:bg-gray-600 disabled:opacity-50 transition-all order-2 sm:order-2 sm:flex-1 text-xs sm:text-sm">
-                  {loading ? 'Saving...' : 'SAVE ONLY'}
+                <button data-nav-button="true" data-save-only="true" onClick={() => handleGenerate(false)} disabled={loading} className="py-2.5 sm:py-3 px-4 bg-emerald-700 text-white font-bold rounded-lg hover:bg-emerald-600 disabled:opacity-50 transition-all order-2 sm:order-2 sm:flex-1 text-xs sm:text-sm cursor-pointer">
+                  {loading ? 'Saving...' : '💾 SAVE ONLY (Enter)'}
                 </button>
-                <button data-nav-button="true" onClick={() => handleGenerate(true)} disabled={loading || (!isFullySettled && !selectedCustomer)} className="py-2.5 sm:py-3 px-4 bg-primary text-black font-black rounded-lg hover:bg-primary-dark disabled:opacity-50 flex justify-center items-center shadow-[0_0_15px_rgba(212,175,55,0.3)] transition-all order-1 sm:order-3 sm:flex-1 text-xs sm:text-sm">
-                  {loading ? 'Processing...' : <><Check size={18} className="mr-2" /> SAVE &amp; PRINT</>}
+                <button data-nav-button="true" onClick={() => handleGenerate(true)} disabled={loading} className="py-2.5 sm:py-3 px-4 bg-primary text-black font-black rounded-lg hover:bg-primary-dark disabled:opacity-50 flex justify-center items-center shadow-[0_0_15px_rgba(212,175,55,0.3)] transition-all order-1 sm:order-3 sm:flex-1 text-xs sm:text-sm cursor-pointer">
+                  {loading ? 'Processing...' : <><Check size={18} className="mr-2" /> SAVE &amp; PRINT (F12)</>}
                 </button>
               </div>
             </div>

@@ -76,6 +76,9 @@ def get_all_settings(
         if "upi_name" not in res or not res["upi_name"]:
             res["upi_name"] = store.name
 
+    if "app_name" not in res or not res["app_name"]:
+        res["app_name"] = (store.name if (store and store.name) else None) or res.get("business_name") or "Jewellery ERP"
+
     return res
 
 @router.post("/")
@@ -135,10 +138,18 @@ def update_settings(
     db.commit()
     if store:
         db.refresh(store)
+    app_setting_key = f"store_{store_id}_app_name" if store_id != 1 else "app_name"
+    app_setting_row = db.query(Setting).filter(Setting.key == app_setting_key).first()
+    app_name_val = (
+        app_setting_row.value
+        if (app_setting_row and app_setting_row.value)
+        else (store.name if store and store.name else "Jewellery ERP")
+    )
     return {
         "message": "Settings updated",
         "store_name": store.name if store else "Jewellery ERP",
         "business_name": store.name if store else "Jewellery ERP",
+        "app_name": app_name_val,
         "logo_url": store.logo_url if store and store.logo_url else "/static/logo.png"
     }
 

@@ -1,5 +1,5 @@
 import { handleEnterKeyNavigation } from '../../utils/keyboardNavigation';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { axiosClient } from '../../api/axiosClient';
 import toast from 'react-hot-toast';
 import { Check, X, Calculator, UserPlus, Users, MapPin } from 'lucide-react';
@@ -27,7 +27,7 @@ export default function CheckoutModal({ payload, grandTotal, onClose, onSuccess 
     name: 'Walk-in Customer',
     phone: '',
     address: '',
-    city: 'Takhatgarh',
+    city: '',
     state: 'Rajasthan',
     state_code: '08',
     place_of_supply: 'Rajasthan',
@@ -43,7 +43,7 @@ export default function CheckoutModal({ payload, grandTotal, onClose, onSuccess 
           name: `${c.first_name || ''} ${c.last_name || ''}`.trim() || 'Customer',
           phone: c.phone_number || '',
           address: c.address || '',
-          city: c.city || 'Takhatgarh',
+          city: c.city || '',
           state: c.state || 'Rajasthan',
           state_code: c.state_code || '08',
           place_of_supply: c.place_of_supply || c.state || 'Rajasthan',
@@ -56,7 +56,7 @@ export default function CheckoutModal({ payload, grandTotal, onClose, onSuccess 
         name: 'Walk-in Customer',
         phone: '',
         address: '',
-        city: 'Takhatgarh',
+        city: '',
         state: 'Rajasthan',
         state_code: '08',
         place_of_supply: 'Rajasthan',
@@ -66,7 +66,19 @@ export default function CheckoutModal({ payload, grandTotal, onClose, onSuccess 
     }
   }, [selectedCustomer, customers]);
 
-  const [cashReceived, setCashReceived] = useState<number>(0);
+  const [cashReceived, setCashReceived] = useState<number>(() => {
+    return Math.round((payload?.grand_total || grandTotal || 0) * 100) / 100;
+  });
+  const cashInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (cashInputRef.current) {
+        cashInputRef.current.focus();
+        cashInputRef.current.select();
+      }
+    }, 100);
+    return () => clearTimeout(timer);
+  }, []);
   const [goldDeposited, setGoldDeposited] = useState<number>(0);
   const [goldDepositTanch, setGoldDepositTanch] = useState<number>(100);
   const [silverDeposited, setSilverDeposited] = useState<number>(0);
@@ -76,20 +88,7 @@ export default function CheckoutModal({ payload, grandTotal, onClose, onSuccess 
   const [upiId, setUpiId] = useState('');
   const [cardRef, setCardRef] = useState('');
   const [chequeNo, setChequeNo] = useState('');
-  useEffect(() => {
-    const handleModalEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        if (mode === 'new_customer') {
-          setMode('checkout');
-        } else {
-          onClose();
-        }
-      }
-    };
-    window.addEventListener('keydown', handleModalEsc);
-    return () => window.removeEventListener('keydown', handleModalEsc);
-  }, [mode, onClose]);
+
   const [bankName, setBankName] = useState('');
   const [chequeDate, setChequeDate] = useState('');
 
@@ -291,15 +290,19 @@ export default function CheckoutModal({ payload, grandTotal, onClose, onSuccess 
   }, []);
 
   const handleGenerate = async (shouldPrint: boolean) => {
-    if (!isFullySettled && !selectedCustomer) {
-      toast.error('A customer must be selected for outstanding balances.');
-      return;
-    }
     if (cashReceived < 0 || goldDeposited < 0 || silverDeposited < 0) {
       toast.error('Deposits cannot be negative.');
       return;
     }
     setLoading(true);
+
+    let effectiveCustomerId = selectedCustomer || null;
+    if (!effectiveCustomerId && customers && customers.length > 0) {
+      const match = customers.find(c => c.phone_number && c.phone_number === buyerDetails.phone);
+      if (match) {
+        effectiveCustomerId = match.id;
+      }
+    }
 
     let updatedItems = [...(payload.items || [])];
     if (goldDeposited > 0) {
@@ -357,7 +360,7 @@ export default function CheckoutModal({ payload, grandTotal, onClose, onSuccess 
       discount_amount: isPureMetal ? 0 : payload.discount_amount,
       grand_total: isPureMetal ? 0 : payload.grand_total,
       items: updatedItems,
-      customer_id: selectedCustomer || null,
+      customer_id: effectiveCustomerId,
       buyer_name: buyerDetails.name,
       buyer_phone: buyerDetails.phone,
       buyer_address: buyerDetails.address,
@@ -392,14 +395,17 @@ export default function CheckoutModal({ payload, grandTotal, onClose, onSuccess 
         }
       });
       toast.success(`Invoice ${res.data.invoice_number} generated!`);
-      
-      try {
-        const pdfRes = await axiosClient.get(`/invoices/${res.data.id}/pdf-data`);
-        const { generateInvoicePDF } = await import('../../utils/invoicePdfUtils');
-        await generateInvoicePDF(pdfRes.data);
-      } catch (pdfErr) {
-        console.warn('Auto invoice PDF download failed', pdfErr);
-      }
+
+      // Archive PDF into Vault in background using fast native Chromium printToPDF without blocking UI
+      void (async () => {
+        try {
+          const pdfRes = await axiosClient.get(`/invoices/${res.data.id}/pdf-data`);
+          const { generateInvoicePDF } = await import('../../utils/invoicePdfUtils');
+          await generateInvoicePDF(pdfRes.data);
+        } catch (pdfErr) {
+          console.warn('Auto invoice PDF archive failed', pdfErr);
+        }
+      })();
 
       onSuccess(res.data.id, shouldPrint);
     } catch (e: any) {
@@ -408,7 +414,7 @@ export default function CheckoutModal({ payload, grandTotal, onClose, onSuccess 
   };
 
   const handleSaveNewCustomer = async () => {
-    if (!newCustomer.first_name || (newCustomer.phone.length !== 10 && newCustomer.phone.length !== 12)) {
+    if (!newCustomer.first_name || !newCustomer.phone || (newCustomer.phone.length !== 10 && newCustomer.phone.length !== 12)) {
       toast.error('First name and 10 or 12-digit phone number are required');
       return;
     }
@@ -416,19 +422,40 @@ export default function CheckoutModal({ payload, grandTotal, onClose, onSuccess 
     try {
       const res = await axiosClient.post('/customers/', {
         first_name: newCustomer.first_name,
-        last_name: newCustomer.last_name,
+        last_name: newCustomer.last_name || '',
         phone_number: newCustomer.phone,
         email: null,
         address: newCustomer.address || '',
-        city: newCustomer.city || 'Takhatgarh',
+        city: newCustomer.city || '',
         state: 'Rajasthan',
         gst_number: newCustomer.gst_number || null,
         aadhaar_pan: newCustomer.aadhaar_pan || null
       });
-      setCustomers([...customers, res.data]);
-      setSelectedCustomer(res.data.id);
+      const saved = res.data;
+      setCustomers(prev => {
+        const idx = prev.findIndex(c => c.id === saved.id);
+        if (idx >= 0) {
+          const updated = [...prev];
+          updated[idx] = saved;
+          return updated;
+        }
+        return [...prev, saved];
+      });
+      setSelectedCustomer(saved.id);
+      useBillingStore.getState().setSelectedCustomerId(saved.id);
+      setBuyerDetails({
+        name: `${saved.first_name || ''} ${saved.last_name || ''}`.trim() || 'Customer',
+        phone: saved.phone_number || '',
+        address: saved.address || '',
+        city: saved.city || '',
+        state: saved.state || 'Rajasthan',
+        state_code: saved.state_code || '08',
+        place_of_supply: saved.place_of_supply || saved.state || 'Rajasthan',
+        gstin: saved.gst_number || '',
+        pan: saved.aadhaar_pan || ''
+      });
       setMode('checkout');
-      toast.success('Customer added');
+      toast.success('Customer saved & selected for bill');
     } catch (e: any) {
       toast.error(getErrorMessage(e, 'Failed to save customer'));
     } finally {
@@ -436,12 +463,49 @@ export default function CheckoutModal({ payload, grandTotal, onClose, onSuccess 
     }
   };
 
+  useEffect(() => {
+    const handleModalKeys = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (mode === 'new_customer') {
+          setMode('checkout');
+        } else {
+          onClose();
+        }
+        return;
+      }
+
+      if (e.key === 'F12') {
+        e.preventDefault();
+        if (!loading) {
+          handleGenerate(true);
+        }
+        return;
+      }
+
+      if (e.key === 'Enter') {
+        const target = e.target as HTMLElement;
+        if (target?.tagName === 'TEXTAREA' && !e.ctrlKey) return;
+        if (target?.tagName === 'BUTTON' && target.getAttribute('data-save-only') !== 'true') return;
+        if (target?.getAttribute('data-counter-metal') === 'true') return;
+
+        e.preventDefault();
+        if (!loading) {
+          handleGenerate(false);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleModalKeys);
+    return () => window.removeEventListener('keydown', handleModalKeys);
+  }, [mode, onClose, loading, isFullySettled, selectedCustomer, cashReceived, goldDeposited, silverDeposited, buyerDetails, customers, currentCompanyId]);
+
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4 overflow-hidden">
       <div 
         data-enter-container="true"
         onKeyDown={(e) => handleEnterKeyNavigation(e, '[data-enter-container]', () => {
-          if (!loading && (isFullySettled || selectedCustomer)) {
+          if (!loading) {
             handleGenerate(false);
           }
         })}
@@ -517,11 +581,11 @@ export default function CheckoutModal({ payload, grandTotal, onClose, onSuccess 
                       </div>
                       <div>
                         <label className="block text-[9px] text-gray-500 uppercase tracking-widest mb-1">Gross Given</label>
-                        <input type="number" min="0" step="0.001" value={goldDeposited === 0 ? '' : goldDeposited} onChange={e => setGoldDeposited(Number(e.target.value))} placeholder="0.000" className="w-full bg-background border border-gray-700 rounded px-1 py-1 text-sm font-mono text-yellow-400 outline-none focus:border-yellow-500" />
+                        <input data-counter-metal="true" type="number" min="0" step="0.001" value={goldDeposited === 0 ? '' : goldDeposited} onChange={e => setGoldDeposited(Number(e.target.value))} placeholder="0.000" className="w-full bg-background border border-gray-700 rounded px-1 py-1 text-sm font-mono text-yellow-400 outline-none focus:border-yellow-500" />
                       </div>
                       <div>
                         <label className="block text-[9px] text-gray-500 uppercase tracking-widest mb-1">Tanch</label>
-                        <input type="number" min="0" max="100" step="0.01" value={goldDepositTanch} onChange={e => setGoldDepositTanch(Number(e.target.value))} className="w-full bg-background border border-gray-700 rounded px-1 py-1 text-sm font-mono text-yellow-400 outline-none focus:border-yellow-500" />
+                        <input data-counter-metal="true" type="number" min="0" max="100" step="0.01" value={goldDepositTanch} onChange={e => setGoldDepositTanch(Number(e.target.value))} className="w-full bg-background border border-gray-700 rounded px-1 py-1 text-sm font-mono text-yellow-400 outline-none focus:border-yellow-500" />
                       </div>
                       <div>
                         <label className="block text-[9px] text-gray-500 uppercase tracking-widest mb-1">Fine Received</label>
@@ -551,11 +615,11 @@ export default function CheckoutModal({ payload, grandTotal, onClose, onSuccess 
                       </div>
                       <div>
                         <label className="block text-[9px] text-gray-500 uppercase tracking-widest mb-1">Gross Given</label>
-                        <input type="number" min="0" step="0.001" value={silverDeposited === 0 ? '' : silverDeposited} onChange={e => setSilverDeposited(Number(e.target.value))} placeholder="0.000" className="w-full bg-background border border-gray-700 rounded px-1 py-1 text-sm font-mono text-gray-300 outline-none focus:border-gray-400" />
+                        <input data-counter-metal="true" type="number" min="0" step="0.001" value={silverDeposited === 0 ? '' : silverDeposited} onChange={e => setSilverDeposited(Number(e.target.value))} placeholder="0.000" className="w-full bg-background border border-gray-700 rounded px-1 py-1 text-sm font-mono text-gray-300 outline-none focus:border-gray-400" />
                       </div>
                       <div>
                         <label className="block text-[9px] text-gray-500 uppercase tracking-widest mb-1">Tanch</label>
-                        <input type="number" min="0" max="100" step="0.01" value={silverDepositTanch} onChange={e => setSilverDepositTanch(Number(e.target.value))} className="w-full bg-background border border-gray-700 rounded px-1 py-1 text-sm font-mono text-gray-300 outline-none focus:border-gray-400" />
+                        <input data-counter-metal="true" type="number" min="0" max="100" step="0.01" value={silverDepositTanch} onChange={e => setSilverDepositTanch(Number(e.target.value))} className="w-full bg-background border border-gray-700 rounded px-1 py-1 text-sm font-mono text-gray-300 outline-none focus:border-gray-400" />
                       </div>
                       <div>
                         <label className="block text-[9px] text-gray-500 uppercase tracking-widest mb-1">Fine Received</label>
@@ -658,7 +722,22 @@ export default function CheckoutModal({ payload, grandTotal, onClose, onSuccess 
                           </button>
                         </div>
                       </div>
-                      <input type="number" min="0" value={cashReceived === 0 ? '' : cashReceived} onChange={e => setCashReceived(Number(e.target.value))} placeholder="0" className="w-full bg-background border border-green-900 rounded p-2 text-lg font-mono text-green-400 outline-none focus:border-green-500" />
+                      <input 
+                        ref={cashInputRef}
+                        type="number" 
+                        min="0" 
+                        value={cashReceived === 0 ? '' : cashReceived} 
+                        onChange={e => setCashReceived(Number(e.target.value))} 
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (!loading) handleGenerate(false);
+                          }
+                        }}
+                        placeholder="0" 
+                        className="w-full bg-background border border-green-900 rounded p-2 text-lg font-mono text-green-400 outline-none focus:border-green-500" 
+                      />
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
                         {(['Cash', 'Card', 'UPI', 'Cheque'] as const).map(m => (
                           <label key={m} className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded border cursor-pointer transition-colors ${paymentMethod === m ? 'border-green-500 bg-green-500/10 text-white font-bold' : 'border-gray-700 text-gray-400 hover:border-gray-600'}`}>
@@ -844,9 +923,41 @@ export default function CheckoutModal({ payload, grandTotal, onClose, onSuccess 
                 </div>
                 
                 <select 
-                  className="w-full bg-background border border-gray-700 rounded p-2.5 text-sm text-white outline-none focus:border-primary transition-colors mb-3" 
+                  className="w-full bg-background border border-gray-700 rounded p-2.5 text-sm text-white outline-none focus:border-primary transition-colors mb-3 cursor-pointer" 
                   value={selectedCustomer} 
-                  onChange={e => setSelectedCustomer(e.target.value ? Number(e.target.value) : '')}
+                  onChange={e => {
+                    const id = e.target.value ? Number(e.target.value) : '';
+                    setSelectedCustomer(id);
+                    useBillingStore.getState().setSelectedCustomerId(id ? Number(id) : null);
+                    if (id) {
+                      const c = customers.find(x => x.id === id);
+                      if (c) {
+                        setBuyerDetails({
+                          name: `${c.first_name || ''} ${c.last_name || ''}`.trim() || 'Customer',
+                          phone: c.phone_number || '',
+                          address: c.address || '',
+                          city: c.city || '',
+                          state: c.state || 'Rajasthan',
+                          state_code: c.state_code || '08',
+                          place_of_supply: c.place_of_supply || c.state || 'Rajasthan',
+                          gstin: c.gst_number || '',
+                          pan: c.aadhaar_pan || ''
+                        });
+                      }
+                    } else {
+                      setBuyerDetails({
+                        name: 'Walk-in Customer',
+                        phone: '',
+                        address: '',
+                        city: '',
+                        state: 'Rajasthan',
+                        state_code: '08',
+                        place_of_supply: 'Rajasthan',
+                        gstin: '',
+                        pan: ''
+                      });
+                    }
+                  }}
                 >
                   <option value="">-- Walk-in / Cash Customer --</option>
                   {customers.map(c => <option key={c.id} value={c.id}>{c.first_name} {c.last_name || ''} ({c.phone_number})</option>)}
@@ -900,7 +1011,7 @@ export default function CheckoutModal({ payload, grandTotal, onClose, onSuccess 
                           saveBtn?.focus();
                         }
                       }}
-                      placeholder="e.g. 167, Ward No. 3, Khedawas, Takhatgarh, Pali (Raj.)-306912"
+                      placeholder="e.g. Shop / House No., Street, City, State - Pincode"
                       className="w-full bg-background border border-gray-700 rounded px-2.5 py-1.5 text-xs text-white outline-none focus:border-primary font-medium"
                     />
                   </div>
@@ -958,8 +1069,8 @@ export default function CheckoutModal({ payload, grandTotal, onClose, onSuccess 
                   data-nav-button="true" 
                   data-save-only="true"
                   onClick={() => handleGenerate(false)} 
-                  disabled={loading || (!isFullySettled && !selectedCustomer)} 
-                  className="py-2.5 sm:py-3 px-4 bg-emerald-700 hover:bg-emerald-600 focus:ring-2 focus:ring-emerald-400 text-white font-bold rounded-lg disabled:opacity-50 transition-all flex-1 text-xs sm:text-sm shadow-md flex items-center justify-center gap-1.5"
+                  disabled={loading} 
+                  className="py-2.5 sm:py-3 px-4 bg-emerald-700 hover:bg-emerald-600 focus:ring-2 focus:ring-emerald-400 text-white font-bold rounded-lg disabled:opacity-50 transition-all flex-1 text-xs sm:text-sm shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   {loading ? 'Saving...' : '💾 SAVE ONLY (Enter)'}
                 </button>
@@ -967,8 +1078,8 @@ export default function CheckoutModal({ payload, grandTotal, onClose, onSuccess 
                   type="button"
                   data-nav-button="true" 
                   onClick={() => handleGenerate(true)} 
-                  disabled={loading || (!isFullySettled && !selectedCustomer)} 
-                  className="py-2.5 sm:py-3 px-4 bg-primary hover:bg-primary-dark focus:ring-2 focus:ring-primary text-black font-black rounded-lg disabled:opacity-50 flex justify-center items-center shadow-[0_0_15px_rgba(212,175,55,0.3)] transition-all flex-1 text-xs sm:text-sm"
+                  disabled={loading} 
+                  className="py-2.5 sm:py-3 px-4 bg-primary hover:bg-primary-dark focus:ring-2 focus:ring-primary text-black font-black rounded-lg disabled:opacity-50 flex justify-center items-center shadow-[0_0_15px_rgba(212,175,55,0.3)] transition-all flex-1 text-xs sm:text-sm cursor-pointer"
                 >
                   {loading ? 'Processing...' : <><Check size={18} className="mr-1.5" /> SAVE &amp; PRINT (F12)</>}
                 </button>

@@ -6,15 +6,14 @@ const fs = require('fs');
 
 const http = require('http');
 
-const { spawn, exec, execSync } = require('child_process');
+const { spawn, exec, execFile, execSync } = require('child_process');
 
 
 
 // 1. Strict Single-Instance Lock — prevents infinite windows!
 
-// Enable Chromium Print Preview
-
-app.commandLine.appendSwitch('enable-print-preview');
+// Native OS print dialog is used instead of Chromium's --enable-print-preview,
+// which freezes Electron renderer processes (no chrome://print WebUI in Electron).
 
 
 
@@ -37,6 +36,9 @@ let mainWindow = null;
 let pythonProcess = null;
 
 let isStartingWindow = false;
+let isAppQuitting = false;
+let pdfBridgeServer = null;
+let pdfBridgeUrl = '';
 
 
 
@@ -123,58 +125,88 @@ const standaloneBinary = app.isPackaged
 
 
 
-/**
+const USB_SCAN_PS_CMD = `[System.IO.DriveInfo]::GetDrives() | Where-Object { $_.DriveType -eq 'Removable' -or ($_.DriveType -eq 'Fixed' -and $_.Name -notlike 'C:*') } | ForEach-Object { @{ Letter = $_.Name.TrimEnd('\\'); Label = $_.VolumeLabel; TotalSize = $_.TotalSize; FreeSpace = $_.AvailableFreeSpace; DriveType = $_.DriveType.ToString() } } | ConvertTo-Json`;
 
- * Scan Windows for connected USB / Removable Drives using .NET DriveInfo
+let cachedUsbDrives = [];
+let lastDriveScanAt = 0;
+let driveScanPromise = null;
+let isStorageSyncRunning = false;
+let lastSyncedDbMtime = 0;
+let lastSyncedArchiveSig = '';
 
- */
-
-function getUsbDrives() {
-
+function parseUsbDriveOutput(output) {
   const drives = [];
-
+  if (!output || !output.trim()) return drives;
   try {
-
-    if (process.platform === 'win32') {
-
-      const psCmd = `powershell -NoProfile -Command "[System.IO.DriveInfo]::GetDrives() | Where-Object { $_.DriveType -eq 'Removable' -or ($_.DriveType -eq 'Fixed' -and $_.Name -notlike 'C:*') } | ForEach-Object { @{ Letter = $_.Name.TrimEnd('\\'); Label = $_.VolumeLabel; TotalSize = $_.TotalSize; FreeSpace = $_.AvailableFreeSpace; DriveType = $_.DriveType.ToString() } } | ConvertTo-Json"`;
-
-      const output = execSync(psCmd, { encoding: 'utf8', timeout: 4000 });
-
-      if (output && output.trim()) {
-
-        const parsed = JSON.parse(output.trim());
-
-        const list = Array.isArray(parsed) ? parsed : [parsed];
-
-        for (const item of list) {
-
-          if (item && item.Letter) {
-
-            drives.push({
-
-              letter: item.Letter,
-
-              name: item.Label ? `${item.Letter} (${item.Label})` : `${item.Letter} (USB Pendrive)`,
-
-              freeSpace: item.FreeSpace,
-
-              driveType: item.DriveType
-
-            });
-
-          }
-
-        }
-
+    const parsed = JSON.parse(output.trim());
+    const list = Array.isArray(parsed) ? parsed : [parsed];
+    for (const item of list) {
+      if (item && item.Letter) {
+        drives.push({
+          letter: item.Letter,
+          name: item.Label ? `${item.Letter} (${item.Label})` : `${item.Letter} (USB Pendrive)`,
+          freeSpace: item.FreeSpace,
+          driveType: item.DriveType
+        });
       }
-
     }
-
-  } catch (e) {}
-
+  } catch {}
   return drives;
+}
 
+/**
+ * Synchronous drive scan used ONCE at startup before UI window creation.
+ */
+function scanUsbDrivesSyncOnce() {
+  try {
+    if (process.platform === 'win32') {
+      const output = execSync(`powershell -NoProfile -NonInteractive -Command "${USB_SCAN_PS_CMD}"`, {
+        encoding: 'utf8',
+        timeout: 4000,
+        windowsHide: true
+      });
+      cachedUsbDrives = parseUsbDriveOutput(output);
+      lastDriveScanAt = Date.now();
+    }
+  } catch {}
+  return cachedUsbDrives;
+}
+
+/**
+ * Non-blocking async drive scan so UI rendering and IPC never freeze on PowerShell/WMI calls.
+ */
+function refreshUsbDrivesAsync(force = false) {
+  if (process.platform !== 'win32') return Promise.resolve([]);
+  if (!force && Date.now() - lastDriveScanAt < 8000) {
+    return Promise.resolve(cachedUsbDrives);
+  }
+  if (driveScanPromise) return driveScanPromise;
+
+  driveScanPromise = new Promise((resolve) => {
+    execFile(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-Command', USB_SCAN_PS_CMD],
+      { encoding: 'utf8', timeout: 4000, windowsHide: true },
+      (err, stdout) => {
+        if (!err && stdout) {
+          cachedUsbDrives = parseUsbDriveOutput(stdout);
+        } else if (!err) {
+          cachedUsbDrives = [];
+        }
+        lastDriveScanAt = Date.now();
+        driveScanPromise = null;
+        resolve(cachedUsbDrives);
+      }
+    );
+  });
+  return driveScanPromise;
+}
+
+/**
+ * Fast non-blocking cached accessor (never invokes execSync at runtime).
+ */
+function getUsbDrives() {
+  return cachedUsbDrives;
 }
 
 
@@ -274,53 +306,238 @@ function triggerCheckpoint() {
 
 
 /**
-
- * Trigger backend to archive all latest bills, exchanges, purchases, and statements to PDF
-
+ * Helpers for consistent Vault sanitization, persistent backup roots, and external archive sync
  */
+function sanitizeVaultName(name, fallback = 'Unknown') {
+  const raw = String(name || '').trim();
+  if (!raw) return fallback;
+  if (/^walk[\s_-]*in(?:[\s_-]*customer)?s?$/i.test(raw)) {
+    return 'Walkin_Customer';
+  }
+  return raw.replace(/[\\/*?:"<>|]/g, '_').replace(/\s+/g, '_').slice(0, 60);
+}
 
-function triggerPdfArchive() {
+function getStorageConfigPath() {
+  return path.join(pcDir, 'storage_config.json');
+}
 
-  return new Promise((resolve) => {
+function loadCustomBackupDirs() {
+  try {
+    const cfgPath = getStorageConfigPath();
+    if (!fs.existsSync(cfgPath)) return [];
+    const parsed = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+    return Array.isArray(parsed.customBackupDirs) ? parsed.customBackupDirs : [];
+  } catch {
+    return [];
+  }
+}
 
-    const req = http.request(
+function rememberCustomBackupDir(dirPath) {
+  if (!dirPath) return;
+  try {
+    const resolved = path.resolve(String(dirPath));
+    const existing = loadCustomBackupDirs();
+    const next = [resolved, ...existing.filter((d) => path.resolve(d).toLowerCase() !== resolved.toLowerCase())].slice(0, 5);
+    if (!fs.existsSync(pcDir)) fs.mkdirSync(pcDir, { recursive: true });
+    fs.writeFileSync(getStorageConfigPath(), JSON.stringify({ customBackupDirs: next }, null, 2), 'utf8');
+  } catch {}
+}
 
-      {
+function getAllExternalArchiveDirs() {
+  const pcArchiveResolved = path.resolve(path.join(pcDir, 'Archived_PDFs')).toLowerCase();
+  const result = [];
+  const seen = new Set([pcArchiveResolved]);
 
-        hostname: '127.0.0.1',
-
-        port: BACKEND_PORT,
-
-        path: '/api/v1/archive-pdfs',
-
-        method: 'POST',
-
-        timeout: 10000
-
-      },
-
-      (res) => {
-
-        resolve(res.statusCode === 200);
-
+  const addCandidate = (candidateDir) => {
+    try {
+      const resolved = path.resolve(candidateDir);
+      const key = resolved.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        result.push(resolved);
       }
+    } catch {}
+  };
 
-    );
+  for (const d of getUsbDrives()) {
+    addCandidate(path.join(d.letter, 'JewelleryERP_Data', 'Archived_PDFs'));
+  }
 
-    req.on('error', () => resolve(false));
+  try {
+    const downloadsBackup = path.join(app.getPath('downloads'), 'JewelleryERP_Backups');
+    if (fs.existsSync(downloadsBackup)) {
+      addCandidate(path.join(downloadsBackup, 'JewelleryERP_Data', 'Archived_PDFs'));
+    }
+  } catch {}
 
-    req.on('timeout', () => {
+  for (const customDir of loadCustomBackupDirs()) {
+    try {
+      if (fs.existsSync(customDir)) {
+        const base = path.basename(customDir).toLowerCase();
+        const archiveDir = base === 'jewelleryerp_data'
+          ? path.join(customDir, 'Archived_PDFs')
+          : path.join(customDir, 'JewelleryERP_Data', 'Archived_PDFs');
+        addCandidate(archiveDir);
+      }
+    } catch {}
+  }
 
-      req.abort();
+  return result;
+}
 
-      resolve(false);
+async function getDirChangeSignatureAsync(dirPath) {
+  let fileCount = 0;
+  let maxMtime = 0;
+  const walk = async (cur) => {
+    let entries;
+    try {
+      entries = await fs.promises.readdir(cur, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = path.join(cur, entry.name);
+      if (entry.isDirectory()) {
+        await walk(full);
+      } else if (entry.isFile()) {
+        fileCount += 1;
+        try {
+          const st = await fs.promises.stat(full);
+          if (st.mtimeMs > maxMtime) maxMtime = st.mtimeMs;
+        } catch {}
+      }
+    }
+  };
+  await walk(dirPath);
+  return `${fileCount}:${Math.round(maxMtime)}`;
+}
 
+async function syncDirectoryAsync(srcDir, destDir) {
+  if (!fs.existsSync(srcDir)) return;
+  try {
+    await fs.promises.mkdir(destDir, { recursive: true });
+  } catch {}
+
+  try {
+    const entries = await fs.promises.readdir(srcDir, { withFileTypes: true });
+    const srcNames = new Set(entries.map((e) => e.name));
+
+    try {
+      const destEntries = await fs.promises.readdir(destDir, { withFileTypes: true });
+      for (const dEntry of destEntries) {
+        if (!srcNames.has(dEntry.name)) {
+          await fs.promises.rm(path.join(destDir, dEntry.name), { recursive: true, force: true }).catch(() => {});
+        }
+      }
+    } catch {}
+
+    for (const entry of entries) {
+      const srcPath = path.join(srcDir, entry.name);
+      const destPath = path.join(destDir, entry.name);
+      if (entry.isDirectory()) {
+        await syncDirectoryAsync(srcPath, destPath);
+      } else if (entry.isFile()) {
+        let shouldCopy = false;
+        try {
+          const sStat = await fs.promises.stat(srcPath);
+          try {
+            const dStat = await fs.promises.stat(destPath);
+            if (sStat.mtimeMs > dStat.mtimeMs + 1000 || sStat.size !== dStat.size) {
+              shouldCopy = true;
+            }
+          } catch {
+            shouldCopy = true;
+          }
+        } catch {}
+
+        if (shouldCopy) {
+          try {
+            await fs.promises.copyFile(srcPath, destPath);
+          } catch {}
+        }
+      }
+    }
+  } catch (err) {
+    console.error(`[Storage] syncDirectoryAsync error: ${err.message}`);
+  }
+}
+
+async function syncPcArchiveToExternalRootsAsync(extraAlreadySyncedDirs = []) {
+  const pcArchiveDir = path.join(pcDir, 'Archived_PDFs');
+  if (!fs.existsSync(pcArchiveDir)) return;
+  const skipSet = new Set(extraAlreadySyncedDirs.map((d) => path.resolve(d).toLowerCase()));
+  for (const targetArchiveDir of getAllExternalArchiveDirs()) {
+    if (skipSet.has(path.resolve(targetArchiveDir).toLowerCase())) continue;
+    try {
+      await syncDirectoryAsync(pcArchiveDir, targetArchiveDir);
+    } catch (e) {
+      console.warn('[Archive Sync Error]', targetArchiveDir, e.message);
+    }
+  }
+}
+
+async function safeCopySqliteDbAsync(srcPath, destPath) {
+  if (!fs.existsSync(srcPath)) return false;
+  try {
+    await fs.promises.mkdir(path.dirname(destPath), { recursive: true });
+    await fs.promises.copyFile(srcPath, destPath);
+
+    const srcWal = `${srcPath}-wal`;
+    const destWal = `${destPath}-wal`;
+    if (fs.existsSync(srcWal)) {
+      await fs.promises.copyFile(srcWal, destWal).catch(() => {});
+    } else if (fs.existsSync(destWal)) {
+      await fs.promises.unlink(destWal).catch(() => {});
+    }
+
+    const srcShm = `${srcPath}-shm`;
+    const destShm = `${destPath}-shm`;
+    if (fs.existsSync(srcShm)) {
+      await fs.promises.copyFile(srcShm, destShm).catch(() => {});
+    } else if (fs.existsSync(destShm)) {
+      await fs.promises.unlink(destShm).catch(() => {});
+    }
+    return true;
+  } catch (err) {
+    console.error(`[Storage] safeCopySqliteDbAsync error: ${err.message}`);
+    return false;
+  }
+}
+
+/**
+ * Trigger backend to archive missing/updated bills, exchanges, purchases, and statements to PDF
+ */
+function triggerPdfArchive(options = {}) {
+  return new Promise((resolve) => {
+    const postData = JSON.stringify({
+      force_refresh: Boolean(options && options.forceRefresh),
+      refresh_statements: options && options.refreshStatements !== undefined ? Boolean(options.refreshStatements) : true,
     });
-
+    const req = http.request(
+      {
+        hostname: '127.0.0.1',
+        port: BACKEND_PORT,
+        path: '/api/v1/archive-pdfs',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(postData),
+        },
+        timeout: 120000,
+      },
+      (res) => {
+        res.resume();
+        resolve(res.statusCode === 200);
+      }
+    );
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(false);
+    });
+    req.write(postData);
     req.end();
-
   });
-
 }
 
 
@@ -491,75 +708,53 @@ function safeCopySqliteDb(srcPath, destPath) {
 
  */
 
-async function syncPcToUsb(usbLetter) {
-
+async function syncPcToUsb(usbLetter, force = false) {
+  if (isStorageSyncRunning) return false;
+  isStorageSyncRunning = true;
   try {
-
     const usbDir = path.join(usbLetter, 'JewelleryERP_Data');
-
-    if (!fs.existsSync(usbDir)) fs.mkdirSync(usbDir, { recursive: true });
-
     const usbDbPath = path.join(usbDir, 'jewellery_erp.db');
+    const pcArchiveDir = path.join(pcDir, 'Archived_PDFs');
+    const usbArchiveDir = path.join(usbDir, 'Archived_PDFs');
 
+    const dbMtime = getDbMtime(pcDbPath);
+    const archSig = fs.existsSync(pcArchiveDir) ? await getDirChangeSignatureAsync(pcArchiveDir) : 'none';
+    const usbDbMissing = !fs.existsSync(usbDbPath);
 
-
-    // Flush WAL into .db file first
-
-    await triggerCheckpoint();
-
-
-
-    if (fs.existsSync(pcDbPath)) {
-
-      safeCopySqliteDb(pcDbPath, usbDbPath);
-
-
-
-      // Auto-archive & mirror PDF Vault (Invoices, Purchases, Statements)
-
-      triggerPdfArchive().catch(() => {});
-
-      const pcArchiveDir = path.join(pcDir, 'Archived_PDFs');
-
-      const usbArchiveDir = path.join(usbDir, 'Archived_PDFs');
-
-      if (fs.existsSync(pcArchiveDir)) {
-
-        syncDirectory(pcArchiveDir, usbArchiveDir);
-
-      }
-
-
-
-      lastSyncTimestamp = new Date().toISOString();
-
+    // Skip all checkpoint/IO churn if nothing changed since last background mirror
+    if (!force && !usbDbMissing && dbMtime === lastSyncedDbMtime && archSig === lastSyncedArchiveSig) {
       return true;
-
     }
 
+    await fs.promises.mkdir(usbDir, { recursive: true });
+    await triggerCheckpoint();
+
+    if (fs.existsSync(pcDbPath)) {
+      await safeCopySqliteDbAsync(pcDbPath, usbDbPath);
+      lastSyncedDbMtime = getDbMtime(pcDbPath);
+    }
+
+    if (fs.existsSync(pcArchiveDir)) {
+      await syncDirectoryAsync(pcArchiveDir, usbArchiveDir);
+      lastSyncedArchiveSig = archSig;
+    }
+
+    lastSyncTimestamp = new Date().toISOString();
+    return true;
   } catch (e) {
-
     console.error('[Storage] syncPcToUsb error:', e.message);
-
+    return false;
+  } finally {
+    isStorageSyncRunning = false;
   }
-
-  return false;
-
 }
 
-
-
 /**
-
  * Startup synchronization between PC and Pendrive:
-
  * Whichever has newer transactions updates the other!
-
  */
-
 function resolveDatabaseAtStartup() {
-
-  const usbDrives = getUsbDrives();
+  const usbDrives = scanUsbDrivesSyncOnce();
 
   if (usbDrives.length > 0) {
 
@@ -700,77 +895,43 @@ function notifyStorageStatusChanged() {
  */
 
 function startStorageEngine() {
-
-  // 1. Periodic auto-sync every 10 seconds
-
+  // 1. Periodic non-blocking auto-mirror every 20 seconds when DB or PDFs changed
   mirrorInterval = setInterval(async () => {
-
+    if (isStorageSyncRunning || isAppQuitting) return;
     try {
-
-      const drives = getUsbDrives();
-
+      const drives = await refreshUsbDrivesAsync(false);
       if (drives.length > 0) {
-
         currentUsb = drives[0];
-
-        await syncPcToUsb(currentUsb.letter);
-
+        await syncPcToUsb(currentUsb.letter, false);
       } else {
-
         currentUsb = null;
-
       }
-
     } catch (err) {
-
       console.error('[Storage Engine] Auto-sync notice:', err.message);
-
     }
+  }, 20000);
 
-  }, 10000);
-
-
-
-  // 2. USB insertion / removal detector every 3 seconds
-
+  // 2. Non-blocking USB insertion / removal detector every 8 seconds
   usbDetectionInterval = setInterval(async () => {
-
+    if (isAppQuitting) return;
     try {
-
-      const drives = getUsbDrives();
-
+      const drives = await refreshUsbDrivesAsync(true);
       const detected = drives.length > 0 ? drives[0] : null;
-
       const prevLetter = currentUsb ? currentUsb.letter : null;
-
       const newLetter = detected ? detected.letter : null;
 
-
-
       if (prevLetter !== newLetter) {
-
         console.log(`[Storage] USB drive change: ${prevLetter} -> ${newLetter}`);
-
         currentUsb = detected;
 
-
-
         if (currentUsb && fs.existsSync(pcDbPath)) {
-
           console.log(`[Storage] USB inserted! Immediately syncing PC -> ${currentUsb.letter}...`);
-
-          await syncPcToUsb(currentUsb.letter);
-
+          await syncPcToUsb(currentUsb.letter, true);
         }
-
         notifyStorageStatusChanged();
-
       }
-
-    } catch (e) {}
-
-  }, 3000);
-
+    } catch {}
+  }, 8000);
 }
 
 
@@ -815,180 +976,126 @@ function flushStorageSync() {
 
  */
 
-async function backupToUsb(parentWin) {
+async function backupToUsb(parentWin, options = {}) {
+  // Wait briefly if a background auto-sync cycle is mid-flight to avoid WinError 32 contention
+  const lockWaitStart = Date.now();
+  while (isStorageSyncRunning && Date.now() - lockWaitStart < 5000) {
+    await new Promise((r) => setTimeout(r, 80));
+  }
+  isStorageSyncRunning = true;
 
   try {
-
-    const drives = getUsbDrives();
-
+    const drives = await refreshUsbDrivesAsync(true);
     let targetLetter = null;
-
     let targetName = '';
-
-
+    let isCustomFolder = false;
 
     if (drives.length === 1) {
-
       targetLetter = drives[0].letter;
-
       targetName = drives[0].name;
-
     } else if (drives.length > 1) {
-
       const buttons = drives.map(d => d.name);
-
       buttons.push('Cancel');
-
       const res = await dialog.showMessageBox(parentWin, {
-
         type: 'question',
-
         title: 'Select USB Pendrive',
-
         message: 'Multiple USB drives detected. Choose destination drive:',
-
         buttons,
-
         defaultId: 0
-
       });
-
       if (res.response < drives.length) {
-
         targetLetter = drives[res.response].letter;
-
         targetName = drives[res.response].name;
-
       } else {
-
         return { success: false, cancelled: true };
-
       }
-
     } else {
-
+      const defaultBackupDir = path.join(app.getPath('downloads'), 'JewelleryERP_Backups');
       const res = await dialog.showOpenDialog(parentWin, {
-
         title: 'Select USB Pendrive or Backup Folder',
-
+        defaultPath: fs.existsSync(defaultBackupDir) ? defaultBackupDir : app.getPath('downloads'),
         properties: ['openDirectory', 'createDirectory']
-
       });
-
       if (!res.canceled && res.filePaths.length > 0) {
-
         targetLetter = res.filePaths[0];
-
         targetName = res.filePaths[0];
-
+        isCustomFolder = true;
       } else {
-
         return { success: false, cancelled: true };
-
       }
-
     }
 
+    const baseFolderName = path.basename(targetLetter).toLowerCase();
+    const isDataDir = baseFolderName === 'jewelleryerp_data';
+    const isBackupNamedDir = baseFolderName === 'jewelleryerp_backups';
 
+    const liveDir = isDataDir ? targetLetter : path.join(targetLetter, 'JewelleryERP_Data');
+    const backupDir = isBackupNamedDir
+      ? targetLetter
+      : (isDataDir ? path.join(path.dirname(targetLetter), 'JewelleryERP_Backups') : path.join(targetLetter, 'JewelleryERP_Backups'));
 
-    const liveDir = path.join(targetLetter, 'JewelleryERP_Data');
+    await fs.promises.mkdir(liveDir, { recursive: true });
+    await fs.promises.mkdir(backupDir, { recursive: true });
 
-    const backupDir = path.join(targetLetter, 'JewelleryERP_Backups');
-
-    if (!fs.existsSync(liveDir)) fs.mkdirSync(liveDir, { recursive: true });
-
-    if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
-
-
+    if (isCustomFolder) {
+      rememberCustomBackupDir(isDataDir ? path.dirname(targetLetter) : targetLetter);
+    }
 
     // Flush WAL checkpoint first
-
     await triggerCheckpoint();
 
-
-
     const now = new Date();
-
     const pad = (n) => String(n).padStart(2, '0');
-
-    const timestamp = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-
-
+    const timestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
 
     const liveUsbDb = path.join(liveDir, 'jewellery_erp.db');
-
     const snapshotDb = path.join(backupDir, `jewellery_erp_backup_${timestamp}.db`);
 
+    await safeCopySqliteDbAsync(pcDbPath, liveUsbDb);
+    await safeCopySqliteDbAsync(pcDbPath, snapshotDb);
 
-
-    safeCopySqliteDb(pcDbPath, liveUsbDb);
-
-    safeCopySqliteDb(pcDbPath, snapshotDb);
-
-
-
-    // Ensure all customer & supplier PDF folders are generated and mirrored to USB
-
-    await triggerPdfArchive();
+    // Generate/refresh PDFs unless caller already ran /backup/archive-pdfs in this action
+    if (!options || !options.skipArchive) {
+      await triggerPdfArchive({ forceRefresh: false, refreshStatements: true });
+    }
 
     const pcArchiveDir = path.join(pcDir, 'Archived_PDFs');
-
     const usbArchiveDir = path.join(liveDir, 'Archived_PDFs');
-
     if (fs.existsSync(pcArchiveDir)) {
-
-      syncDirectory(pcArchiveDir, usbArchiveDir);
-
+      await syncDirectoryAsync(pcArchiveDir, usbArchiveDir);
     }
+    // Sync any remaining external roots (e.g. Downloads\JewelleryERP_Backups) without syncing usbArchiveDir twice
+    await syncPcArchiveToExternalRootsAsync([usbArchiveDir]);
 
+    lastSyncedDbMtime = getDbMtime(pcDbPath);
+    lastSyncedArchiveSig = fs.existsSync(pcArchiveDir) ? await getDirChangeSignatureAsync(pcArchiveDir) : 'none';
     lastSyncTimestamp = new Date().toISOString();
-
     notifyStorageStatusChanged();
 
-
-
-    if (parentWin) {
-
+    if (parentWin && (!options || options.showDialog !== false)) {
       await dialog.showMessageBox(parentWin, {
-
         type: 'info',
-
-        title: 'USB Pendrive Backup Successful',
-
-        message: `All store data safely saved to Pendrive!\n\nDestination: ${targetName}\nLive DB: ${liveUsbDb}\nSnapshot Backup: ${snapshotDb}\n\nYour data is 100% crash-proof and portable.`
-
+        title: 'Store Backup Successful',
+        message: `All store data & PDFs safely saved!\n\nDestination: ${targetName}\nLive DB: ${liveUsbDb}\nPDF Vault: ${usbArchiveDir}\nSnapshot Backup: ${snapshotDb}\n\nYour data is 100% crash-proof and portable.`
       });
-
     }
-
-
 
     return {
-
       success: true,
-
       usbName: targetName,
-
       livePath: liveUsbDb,
-
+      archivePath: usbArchiveDir,
       snapshotPath: snapshotDb,
-
       timestamp
-
     };
-
   } catch (err) {
-
-    if (parentWin) {
-
+    if (parentWin && (!options || options.showDialog !== false)) {
       dialog.showErrorBox('Backup Error', `Failed to copy database: ${err.message}`);
-
     }
-
     return { success: false, error: err.message };
-
+  } finally {
+    isStorageSyncRunning = false;
   }
-
 }
 
 
@@ -1136,6 +1243,15 @@ function getPythonExecutable() {
 }
 
 function startBackend() {
+  if (pythonProcess && !pythonProcess.killed) {
+    try {
+      process.kill(pythonProcess.pid, 0);
+      console.log(`[Desktop] Backend already running on PID ${pythonProcess.pid}`);
+      return;
+    } catch (e) {
+      pythonProcess = null;
+    }
+  }
 
   killOrphanedPortProcess(BACKEND_PORT);
 
@@ -1163,7 +1279,9 @@ function startBackend() {
 
     BACKEND_PORT: String(BACKEND_PORT),
 
-    BACKEND_HOST: '127.0.0.1'
+    BACKEND_HOST: '127.0.0.1',
+
+    ...(pdfBridgeUrl ? { ELECTRON_PDF_BRIDGE_URL: pdfBridgeUrl } : {}),
 
   };
 
@@ -1174,25 +1292,26 @@ function startBackend() {
 
 
   const scriptPath = path.join(backendDir, 'run_server.py');
-  if (fs.existsSync(scriptPath)) {
-    const pythonCmd = getPythonExecutable();
-    console.log(`[Desktop] Spawning Python interpreter with latest backend: ${scriptPath}`);
-    pythonProcess = spawn(pythonCmd, [scriptPath], {
-      cwd: backendDir,
-      env,
-      stdio: ['ignore', 'pipe', 'pipe']
-    });
-  } else if (fs.existsSync(standaloneBinary)) {
-    console.log(`[Desktop] Spawning Standalone Backend: ${standaloneBinary}`);
+  const pythonCmd = getPythonExecutable();
+
+  // Priority 1: Standalone bundled executable (100% Zero-Dependency for any new laptop)
+  if (fs.existsSync(standaloneBinary)) {
+    console.log('[Desktop] Spawning Standalone Backend (Zero-Dependency): ' + standaloneBinary);
     pythonProcess = spawn(standaloneBinary, [], {
       cwd: path.dirname(standaloneBinary),
       env,
       stdio: ['ignore', 'pipe', 'pipe']
     });
-
+  } else if (fs.existsSync(scriptPath) && pythonCmd) {
+    console.log('[Desktop] Spawning Python interpreter with latest backend: ' + scriptPath + ' using ' + pythonCmd);
+    pythonProcess = spawn(pythonCmd, [scriptPath], {
+      cwd: backendDir,
+      env,
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+  } else {
+    console.error('[Desktop] No valid backend found! Checked standalone: ' + standaloneBinary + ', script: ' + scriptPath);
   }
-
-
 
   pythonProcess.stdout.on('data', (d) => console.log(`[Backend] ${d.toString().trim()}`));
 
@@ -1327,37 +1446,37 @@ function createMenu() {
         },
 
         {
-
           label: '💾 Save Backup Database As...',
-
           accelerator: 'CmdOrCtrl+B',
-
           click: async () => {
-
+            const defaultBackupDir = path.join(app.getPath('downloads'), 'JewelleryERP_Backups');
+            const defaultDir = fs.existsSync(defaultBackupDir) ? defaultBackupDir : app.getPath('downloads');
             const { filePath } = await dialog.showSaveDialog(mainWindow, {
-
               title: 'Backup Jewellery ERP Database',
-
-              defaultPath: `jewellery_erp_backup_${new Date().toISOString().slice(0, 10)}.db`,
-
+              defaultPath: path.join(defaultDir, `jewellery_erp_backup_${new Date().toISOString().slice(0, 10)}.db`),
               filters: [{ name: 'SQLite Database', extensions: ['db', 'sqlite'] }]
-
             });
-
             if (filePath && fs.existsSync(pcDbPath)) {
-
               await triggerCheckpoint();
-
-              safeCopySqliteDb(pcDbPath, filePath);
-
+              await safeCopySqliteDbAsync(pcDbPath, filePath);
+              const destParent = path.dirname(filePath);
+              const genericDirs = new Set([
+                app.getPath('downloads').toLowerCase(),
+                app.getPath('desktop').toLowerCase(),
+                app.getPath('documents').toLowerCase(),
+              ]);
+              if (!genericDirs.has(path.resolve(destParent).toLowerCase())) {
+                rememberCustomBackupDir(destParent);
+                const pcArchiveDir = path.join(pcDir, 'Archived_PDFs');
+                const backupArchiveDir = path.basename(destParent).toLowerCase() === 'jewelleryerp_backups'
+                  ? path.join(destParent, 'JewelleryERP_Data', 'Archived_PDFs')
+                  : path.join(destParent, 'Archived_PDFs');
+                if (fs.existsSync(pcArchiveDir)) await syncDirectoryAsync(pcArchiveDir, backupArchiveDir);
+              }
               dialog.showMessageBox(mainWindow, {
-
                 type: 'info',
-
                 title: 'Backup Successful',
-
                 message: `Database successfully backed up to:\n${filePath}`
-
               });
 
             }
@@ -1464,13 +1583,14 @@ function createMenu() {
 
           click: () => {
 
+            const currentTitle = (mainWindow && !mainWindow.isDestroyed()) ? mainWindow.getTitle() : 'Jewellery ERP';
             dialog.showMessageBox(mainWindow, {
 
               type: 'info',
 
-              title: 'Jewellery ERP Desktop',
+              title: currentTitle || 'Jewellery ERP Desktop',
 
-              message: 'Jewellery ERP - Offline Edition v1.0\nSaideep Jewellers\n\n100% Offline Standalone PC Application\nEmbedded SQLite Database with Continuous USB Pendrive Auto-Sync.'
+              message: `${currentTitle || 'Jewellery ERP'} - Offline Edition v1.0\n\n100% Offline Standalone PC Application\nEmbedded SQLite Database with Continuous USB Pendrive Auto-Sync.`
 
             });
 
@@ -1532,7 +1652,7 @@ function createWindow() {
 
     show: true,
 
-    title: 'Jewellery ERP - Saideep Jewellers (Offline Edition)',
+    title: 'Jewellery ERP',
 
     icon: path.join(__dirname, 'assets/icon.png'),
 
@@ -1564,21 +1684,21 @@ function createWindow() {
 
 
 
-  mainWindow.on('page-title-updated', (e) => e.preventDefault());
+  // Allow dynamic title updates from renderer settings (page-title-updated not blocked)
 
-  // Intercept all downloads to silently save PDFs directly into Archived_PDFs without showing the "Save As" location popup
-  mainWindow.webContents.session.on('will-download', (event, item, webContents) => {
+  // Save browser downloads cleanly into the user's Downloads folder without cluttering Archived_PDFs
+  mainWindow.webContents.session.on('will-download', (_event, item) => {
     try {
       const fileName = item.getFilename();
-      const saveDir = path.join(pcDir, 'Archived_PDFs', 'Downloads');
-      if (!fs.existsSync(saveDir)) {
-        fs.mkdirSync(saveDir, { recursive: true });
+      const downloadsDir = app.getPath('downloads');
+      if (!fs.existsSync(downloadsDir)) {
+        fs.mkdirSync(downloadsDir, { recursive: true });
       }
-      const finalSavePath = path.join(saveDir, fileName);
+      const finalSavePath = path.join(downloadsDir, fileName);
       item.setSavePath(finalSavePath);
-      console.log(`[Silent-Save] Download saved to ${finalSavePath}`);
+      console.log(`[Download] Saved to ${finalSavePath}`);
     } catch (e) {
-      console.error(`[Silent-Save Error] ${e ? e.message : ''}`);
+      console.error(`[Download Error] ${e ? e.message : ''}`);
     }
   });
 
@@ -1633,7 +1753,7 @@ function createWindow() {
  */
 
 function killBackend() {
-
+  isAppQuitting = true;
   if (pythonProcess && pythonProcess.pid) {
 
     console.log(`[Desktop] Terminating backend PID ${pythonProcess.pid}...`);
@@ -1783,166 +1903,115 @@ ipcMain.handle('delete-party-folder', async (_, { category, folderName }) => {
   }
 });
 
-ipcMain.handle('save-vault-pdf', async (_, { category, folderName, fileName, base64Data }) => {
-
+ipcMain.handle('save-vault-pdf', async (_, { category, folderName, fileName, base64Data, isGst, companyId }) => {
   try {
+    const rawFile = String(fileName || 'document.pdf').trim();
+    const rawStem = rawFile.toLowerCase().endsWith('.pdf') ? rawFile.slice(0, -4) : rawFile;
+    const cleanStem = sanitizeVaultName(rawStem, 'document');
+    const cleanFileName = `${cleanStem}.pdf`;
+    const cleanFolderName = sanitizeVaultName(folderName, 'Unknown');
 
-    const pcArchiveDir = path.join(pcDir, 'Archived_PDFs', category || 'Sales', folderName || 'Unknown');
+    const rawCat = String(category || 'Sales').trim().toLowerCase();
+    const cleanCategory = rawCat.startsWith('purch') ? 'Purchases' : (rawCat.startsWith('exch') ? 'Exchanges' : 'Sales');
 
-    if (!fs.existsSync(pcArchiveDir)) {
+    const fnUpper = cleanFileName.toUpperCase();
+    const isGstDoc = Boolean(isGst || companyId === 2 || (
+      fnUpper.startsWith('SJ_S') || fnUpper.startsWith('SJ_P') || fnUpper.startsWith('SJ_E') ||
+      fnUpper.startsWith('PG_S') || fnUpper.startsWith('PG_P') || fnUpper.startsWith('PG_E') ||
+      fnUpper.includes('_S_') || fnUpper.includes('_P_') || fnUpper.includes('_E_')
+    ));
+    const gstSubfolder = isGstDoc ? 'GST' : 'Without_GST';
 
-      fs.mkdirSync(pcArchiveDir, { recursive: true });
+    const pcArchiveDir = path.join(pcDir, 'Archived_PDFs', gstSubfolder, cleanCategory, cleanFolderName);
+    await fs.promises.mkdir(pcArchiveDir, { recursive: true });
 
-    }
-
-    const pcFilePath = path.join(pcArchiveDir, fileName);
-
+    const pcFilePath = path.join(pcArchiveDir, cleanFileName);
     const buffer = Buffer.from(base64Data, 'base64');
+    await fs.promises.writeFile(pcFilePath, buffer);
 
-    fs.writeFileSync(pcFilePath, buffer);
-
-
-
-    try {
-
-      const docBase = fileName.replace('.pdf', '');
-
-      const files = fs.readdirSync(pcArchiveDir);
-
-      for (const f of files) {
-
-        if (f !== fileName && f.includes(docBase) && f.endsWith('.pdf')) {
-
-          fs.unlinkSync(path.join(pcArchiveDir, f));
-
-        }
-
-      }
-
-    } catch (e) {}
-
-
-
-    const drives = getUsbDrives();
-    for (const drive of drives) {
+    const cleanupObsolete = async (dirPath) => {
       try {
-        const usbArchiveDir = path.join(drive.letter, 'JewelleryERP_Data', 'Archived_PDFs', category || 'Sales', folderName || 'Unknown');
-        if (!fs.existsSync(usbArchiveDir)) {
-          fs.mkdirSync(usbArchiveDir, { recursive: true });
-        }
-        const usbFilePath = path.join(usbArchiveDir, fileName);
-        fs.writeFileSync(usbFilePath, buffer);
-
-        try {
-          const docBase = fileName.replace('.pdf', '');
-          const uFiles = fs.readdirSync(usbArchiveDir);
-          for (const f of uFiles) {
-            if (f !== fileName && f.includes(docBase) && f.endsWith('.pdf')) {
-              fs.unlinkSync(path.join(usbArchiveDir, f));
-            }
+        const files = await fs.promises.readdir(dirPath);
+        for (const f of files) {
+          if (f !== cleanFileName && f.toLowerCase().endsWith('.pdf') && f.startsWith(`${cleanStem}_`)) {
+            await fs.promises.unlink(path.join(dirPath, f)).catch(() => {});
           }
-        } catch (e) {}
-      } catch (usbErr) {
-        console.warn(`[Vault USB Save Error on ${drive.letter}]`, usbErr.message);
-      }
-    }
+        }
+      } catch {}
+    };
+    await cleanupObsolete(pcArchiveDir);
+
+    // Mirror asynchronously across USB, Downloads backup, and remembered backup dirs without freezing UI
+    await Promise.all(
+      getAllExternalArchiveDirs().map(async (extArchiveRoot) => {
+        try {
+          const extDir = path.join(extArchiveRoot, gstSubfolder, cleanCategory, cleanFolderName);
+          await fs.promises.mkdir(extDir, { recursive: true });
+          await fs.promises.writeFile(path.join(extDir, cleanFileName), buffer);
+          await cleanupObsolete(extDir);
+        } catch (extErr) {
+          console.warn(`[Vault Mirror Error on ${extArchiveRoot}]`, extErr.message);
+        }
+      })
+    );
 
     return { success: true, path: pcFilePath };
-
   } catch (err) {
-
     console.error('[SaveVaultPdf Error]', err);
-
     return { success: false, error: err.message };
-
   }
-
 });
 
-
-
-ipcMain.handle('archive-pdfs-now', async () => {
-
-  const ok = await triggerPdfArchive();
-
-  const drives = getUsbDrives();
-
-  if (drives.length > 0) {
-
-    const pcArchiveDir = path.join(pcDir, 'Archived_PDFs');
-
-    const usbArchiveDir = path.join(drives[0].letter, 'JewelleryERP_Data', 'Archived_PDFs');
-
-    if (fs.existsSync(pcArchiveDir)) {
-
-      syncDirectory(pcArchiveDir, usbArchiveDir);
-
-    }
-
-  }
-
+ipcMain.handle('archive-pdfs-now', async (_, options = {}) => {
+  const ok = await triggerPdfArchive(options);
+  await syncPcArchiveToExternalRootsAsync();
   return { success: ok };
-
 });
-
-
 
 ipcMain.handle('open-database-folder', () => {
-
   shell.openPath(pcDir);
-
   return true;
-
 });
-
-
 
 ipcMain.handle('sync-now', async () => {
-
   if (!mainWindow) return { success: false };
-
   return await backupToUsb(mainWindow);
-
 });
-
-
 
 ipcMain.handle('backup-database', async () => {
-
   if (!mainWindow) return { success: false };
-
+  const defaultBackupDir = path.join(app.getPath('downloads'), 'JewelleryERP_Backups');
+  const defaultDir = fs.existsSync(defaultBackupDir) ? defaultBackupDir : app.getPath('downloads');
   const { filePath } = await dialog.showSaveDialog(mainWindow, {
-
     title: 'Backup Jewellery ERP Database',
-
-    defaultPath: `jewellery_erp_backup_${new Date().toISOString().slice(0, 10)}.db`,
-
+    defaultPath: path.join(defaultDir, `jewellery_erp_backup_${new Date().toISOString().slice(0, 10)}.db`),
     filters: [{ name: 'SQLite Database', extensions: ['db', 'sqlite'] }]
-
   });
-
   if (filePath && fs.existsSync(pcDbPath)) {
-
     await triggerCheckpoint();
-
-    safeCopySqliteDb(pcDbPath, filePath);
-
+    await safeCopySqliteDbAsync(pcDbPath, filePath);
+    const destParent = path.dirname(filePath);
+    const genericDirs = new Set([
+      app.getPath('downloads').toLowerCase(),
+      app.getPath('desktop').toLowerCase(),
+      app.getPath('documents').toLowerCase(),
+    ]);
+    if (!genericDirs.has(path.resolve(destParent).toLowerCase())) {
+      rememberCustomBackupDir(destParent);
+      const pcArchiveDir = path.join(pcDir, 'Archived_PDFs');
+      const backupArchiveDir = path.basename(destParent).toLowerCase() === 'jewelleryerp_backups'
+        ? path.join(destParent, 'JewelleryERP_Data', 'Archived_PDFs')
+        : path.join(destParent, 'Archived_PDFs');
+      if (fs.existsSync(pcArchiveDir)) await syncDirectoryAsync(pcArchiveDir, backupArchiveDir);
+    }
     return { success: true, path: filePath };
-
   }
-
   return { success: false };
-
 });
 
-
-
-ipcMain.handle('backup-to-usb', async () => {
-
+ipcMain.handle('backup-to-usb', async (_, options) => {
   if (!mainWindow) return { success: false };
-
-  return await backupToUsb(mainWindow);
-
+  return await backupToUsb(mainWindow, options);
 });
 
 
@@ -1958,16 +2027,255 @@ ipcMain.handle('restore-database', async () => {
 
 
 ipcMain.handle('open-external', (_, url) => {
-
   shell.openExternal(url);
+});
 
+async function withHiddenHtmlWindow(html, { width = 900, height = 1100, title = 'Document', restoreFocus = false } = {}, workFn) {
+  if (!html || typeof html !== 'string') {
+    return { success: false, error: 'Invalid HTML content' };
+  }
+
+  const tmpHtmlPath = path.join(
+    app.getPath('temp'),
+    `jewellery_erp_doc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.html`
+  );
+
+  let hiddenWin = null;
+  const cleanup = () => {
+    try {
+      if (hiddenWin && !hiddenWin.isDestroyed()) {
+        hiddenWin.destroy();
+      }
+    } catch {}
+    try {
+      if (fs.existsSync(tmpHtmlPath)) {
+        fs.unlinkSync(tmpHtmlPath);
+      }
+    } catch {}
+    if (restoreFocus && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.focus();
+    }
+  };
+
+  try {
+    // Strip remote Google Fonts stylesheet links so offline/slow network never stalls Chromium PDF/Print loading
+    const localSafeHtml = html.replace(/<link[^>]*fonts\.googleapis\.com[^>]*>/gi, '');
+    await fs.promises.writeFile(tmpHtmlPath, localSafeHtml, 'utf8');
+
+    hiddenWin = new BrowserWindow({
+      show: false,
+      width,
+      height,
+      title,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: false,
+      },
+    });
+
+    const loaded = await new Promise((resolve) => {
+      let done = false;
+      let capTimer = null;
+      const finishLoad = (ok, errMsg) => {
+        if (done) return;
+        done = true;
+        if (capTimer) clearTimeout(capTimer);
+        resolve({ ok, errMsg });
+      };
+
+      hiddenWin.webContents.once('did-fail-load', (_e, errorCode, errorDesc) => {
+        finishLoad(false, `${errorDesc} (${errorCode})`);
+      });
+
+      hiddenWin.webContents.once('dom-ready', () => {
+        // Never hang longer than 1.2s after DOM ready waiting for external resources
+        capTimer = setTimeout(() => finishLoad(true), 1200);
+      });
+
+      hiddenWin.webContents.once('did-finish-load', async () => {
+        try {
+          await hiddenWin.webContents.executeJavaScript(`
+            (async () => {
+              if (document.fonts && document.fonts.ready) {
+                await Promise.race([document.fonts.ready, new Promise(r => setTimeout(r, 150))]);
+              }
+              const imgs = Array.from(document.images || []);
+              await Promise.race([
+                Promise.all(imgs.map(img => img.complete ? Promise.resolve() : new Promise(res => {
+                  img.addEventListener('load', res, { once: true });
+                  img.addEventListener('error', res, { once: true });
+                }))),
+                new Promise(r => setTimeout(r, 350))
+              ]);
+            })();
+          `);
+        } catch {}
+        finishLoad(true);
+      });
+
+      hiddenWin.loadFile(tmpHtmlPath).catch((err) => {
+        finishLoad(false, err?.message || 'Failed to load HTML');
+      });
+    });
+
+    if (!loaded.ok) {
+      return { success: false, error: loaded.errMsg };
+    }
+    if (!hiddenWin || hiddenWin.isDestroyed()) {
+      return { success: false, error: 'Render window closed prematurely' };
+    }
+
+    return await workFn(hiddenWin);
+  } catch (err) {
+    return { success: false, error: err?.message || 'Document processing failed' };
+  } finally {
+    cleanup();
+  }
+}
+
+ipcMain.handle('print-html', async (_, { html, title } = {}) => {
+  return await withHiddenHtmlWindow(
+    html,
+    { width: 900, height: 1100, title: title || 'Print Document', restoreFocus: true },
+    (printWin) => new Promise((resolve) => {
+      printWin.webContents.print(
+        { silent: false, printBackground: true },
+        (success, failureReason) => {
+          resolve({
+            success: Boolean(success),
+            error: success ? undefined : (failureReason || 'cancelled'),
+          });
+        }
+      );
+    })
+  );
+});
+
+async function renderHtmlToPdfBuffer(html, landscape = false) {
+  return await withHiddenHtmlWindow(
+    html,
+    { width: landscape ? 1123 : 794, height: landscape ? 794 : 1123, title: 'PDF Export', restoreFocus: false },
+    async (pdfWin) => {
+      const pdfBuffer = await pdfWin.webContents.printToPDF({
+        printBackground: true,
+        pageSize: 'A4',
+        landscape: Boolean(landscape),
+        margins: { marginType: 'none' },
+      });
+      return {
+        success: true,
+        buffer: Buffer.from(pdfBuffer),
+      };
+    }
+  );
+}
+
+function startPdfBridgeServer() {
+  if (pdfBridgeServer && pdfBridgeUrl) {
+    return Promise.resolve(pdfBridgeUrl);
+  }
+  return new Promise((resolve) => {
+    const server = http.createServer((req, res) => {
+      if (req.method !== 'POST' || req.url !== '/render-pdf') {
+        res.writeHead(404);
+        res.end();
+        return;
+      }
+      const chunks = [];
+      let totalBytes = 0;
+      const MAX_BODY = 8 * 1024 * 1024;
+      req.on('data', (chunk) => {
+        totalBytes += chunk.length;
+        if (totalBytes <= MAX_BODY) {
+          chunks.push(chunk);
+        }
+      });
+      req.on('end', async () => {
+        if (totalBytes > MAX_BODY) {
+          res.writeHead(413, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: 'Payload too large' }));
+          return;
+        }
+        try {
+          const payload = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+          const result = await renderHtmlToPdfBuffer(payload?.html, Boolean(payload?.landscape));
+          if (result?.success && result.buffer) {
+            res.writeHead(200, {
+              'Content-Type': 'application/pdf',
+              'Content-Length': result.buffer.length,
+            });
+            res.end(result.buffer);
+          } else {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: false, error: result?.error || 'PDF render failed' }));
+          }
+        } catch (err) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: err?.message || 'Invalid request' }));
+        }
+      });
+    });
+
+    server.on('error', (err) => {
+      console.error('[Desktop] PDF Bridge error:', err.message);
+      resolve('');
+    });
+
+    server.listen(0, '127.0.0.1', () => {
+      const addr = server.address();
+      pdfBridgeServer = server;
+      pdfBridgeUrl = addr && typeof addr === 'object' ? `http://127.0.0.1:${addr.port}/render-pdf` : '';
+      console.log(`[Desktop] Internal Chromium PDF Bridge listening at ${pdfBridgeUrl}`);
+      resolve(pdfBridgeUrl);
+    });
+  });
+}
+
+ipcMain.handle('set-app-title', async (_, title) => {
+  if (mainWindow && !mainWindow.isDestroyed() && title && String(title).trim()) {
+    mainWindow.setTitle(String(title).trim());
+    return { success: true };
+  }
+  return { success: false };
+});
+
+ipcMain.handle('html-to-pdf', async (_, { html, landscape = false } = {}) => {
+  const result = await renderHtmlToPdfBuffer(html, landscape);
+  if (result?.success && result.buffer) {
+    return {
+      success: true,
+      base64: result.buffer.toString('base64'),
+    };
+  }
+  return { success: false, error: result?.error || 'PDF export failed' };
+});
+
+ipcMain.handle('print-current-page', async () => {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return { success: false, error: 'Main window unavailable' };
+  }
+  return await new Promise((resolve) => {
+    mainWindow.webContents.print(
+      { silent: false, printBackground: true },
+      (success, failureReason) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.focus();
+        }
+        resolve({
+          success: Boolean(success),
+          error: success ? undefined : (failureReason || 'cancelled'),
+        });
+      }
+    );
+  });
 });
 
 
 
 // App Lifecycle
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
 
   // 1. Resolve startup storage: syncs PC <-> Pendrive if USB connected
 
@@ -1975,19 +2283,25 @@ app.whenReady().then(() => {
 
 
 
-  // 2. Start Backend
+  // 2. Start in-process Chromium PDF Bridge before backend so Python uses fast Electron rendering
+
+  await startPdfBridgeServer();
+
+
+
+  // 3. Start Backend
 
   startBackend();
 
 
 
-  // 3. Start Storage Engine: 10s auto-mirror + 3s USB insertion detection
+  // 4. Start Storage Engine: non-blocking auto-mirror + USB insertion detection
 
   startStorageEngine();
 
 
 
-  // 4. Open Single Desktop Window Immediately
+  // 5. Open Single Desktop Window Immediately
 
   createWindow();
 
@@ -1996,21 +2310,35 @@ app.whenReady().then(() => {
 
 
 app.on('second-instance', () => {
-
   if (mainWindow) {
-
     if (mainWindow.isMinimized()) mainWindow.restore();
-
     if (!mainWindow.isVisible()) mainWindow.show();
-
     mainWindow.focus();
 
+    try {
+      const pingReq = http.get(`${BACKEND_URL}/ping`, (res) => {
+        if (res.statusCode !== 200) {
+          console.log('[Desktop] Backend unhealthy on second-instance. Reviving...');
+          startBackend();
+        }
+      });
+      pingReq.on('error', () => {
+        console.log('[Desktop] Backend unreachable on second-instance. Reviving...');
+        startBackend();
+      });
+      pingReq.setTimeout(1000, () => {
+        pingReq.abort();
+        console.log('[Desktop] Backend ping timed out on second-instance. Reviving...');
+        startBackend();
+      });
+    } catch (e) {}
   } else {
-
     createWindow();
-
   }
+});
 
+app.on('before-quit', () => {
+  isAppQuitting = true;
 });
 
 
@@ -2033,6 +2361,11 @@ app.on('will-quit', () => {
 
   if (usbDetectionInterval) clearInterval(usbDetectionInterval);
 
+  if (pdfBridgeServer) {
+    try { pdfBridgeServer.close(); } catch (e) {}
+    pdfBridgeServer = null;
+  }
+
   flushStorageSync();
 
   killBackend();
@@ -2046,6 +2379,11 @@ app.on('window-all-closed', () => {
   if (mirrorInterval) clearInterval(mirrorInterval);
 
   if (usbDetectionInterval) clearInterval(usbDetectionInterval);
+
+  if (pdfBridgeServer) {
+    try { pdfBridgeServer.close(); } catch (e) {}
+    pdfBridgeServer = null;
+  }
 
   flushStorageSync();
 

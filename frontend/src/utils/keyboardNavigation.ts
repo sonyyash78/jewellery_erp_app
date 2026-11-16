@@ -63,6 +63,8 @@ export function handleFormKeyNavigation(
 
   // Container lookup: closest matching container -> form -> main -> body
   const container = target.closest(containerSelector) || 
+                    target.closest('[role="dialog"]') ||
+                    target.closest('.fixed.inset-0') ||
                     target.closest('form') || 
                     target.closest('main') || 
                     target.closest('[role="main"]') || 
@@ -86,7 +88,6 @@ export function handleFormKeyNavigation(
 
   const currentIndex = focusables.indexOf(target);
   if (currentIndex === -1) {
-    // If target itself wasn't strictly in focusables (e.g. inner element of button), focus first
     if (isEnter && onComplete) {
       onComplete();
     }
@@ -96,7 +97,7 @@ export function handleFormKeyNavigation(
   const isButton = target.tagName === 'BUTTON';
   const isNumberInput = target instanceof HTMLInputElement && target.type === 'number';
 
-  // For buttons: Left and Right arrow keys move between adjacent buttons (Cancel <-> Save Only <-> Save & Print)
+  // For buttons: Left and Right arrow keys move between adjacent buttons
   if (isButton && (isLeft || isRight)) {
     e.preventDefault();
     const step = isRight ? 1 : -1;
@@ -114,21 +115,20 @@ export function handleFormKeyNavigation(
       if (isRight) {
         const isAtEnd = target.selectionStart === len && target.selectionEnd === len;
         const isAllSelected = target.selectionStart === 0 && target.selectionEnd === len && len > 0;
-        if (!isAtEnd && !isAllSelected) return; // Keep cursor navigation inside word
+        if (!isAtEnd && !isAllSelected) return;
       }
       if (isLeft) {
         const isAtStart = target.selectionStart === 0 && target.selectionEnd === 0;
         const isAllSelected = target.selectionStart === 0 && target.selectionEnd === len && len > 0;
-        if (!isAtStart && !isAllSelected) return; // Keep cursor navigation inside word
+        if (!isAtStart && !isAllSelected) return;
       }
     } catch (_) {}
   }
 
   // FORWARD NAVIGATION (Enter, Down, Right)
   if (isEnter || isDown || (isRight && !isNumberInput)) {
-    e.preventDefault(); // Prevent default so ArrowDown doesn't decrement number inputs!
+    e.preventDefault();
 
-    // If currently on a button and user presses Enter, activate the button
     if (isEnter && isButton) {
       (target as HTMLButtonElement).click();
       return;
@@ -141,7 +141,6 @@ export function handleFormKeyNavigation(
         try { nextEl.select(); } catch (_) {}
       }
     } else if (currentIndex === focusables.length - 1) {
-      // Reached the end of navigable elements
       if (isEnter) {
         if (onComplete) {
           onComplete();
@@ -160,7 +159,7 @@ export function handleFormKeyNavigation(
 
   // BACKWARD NAVIGATION (Up, Left)
   if (isUp || (isLeft && !isNumberInput)) {
-    e.preventDefault(); // Prevent default so ArrowUp doesn't increment number inputs!
+    e.preventDefault();
     if (currentIndex > 0) {
       const prevEl = focusables[currentIndex - 1];
       prevEl.focus();
@@ -190,4 +189,106 @@ export function focusFirstInput(containerSelector: string = '[data-enter-contain
       }
     }
   }, 60);
+}
+
+/**
+ * Global Enter Key Navigation across the ENTIRE ERP application.
+ * Pressing Enter on any input/select automatically advances focus to the next field.
+ * Pressing Shift+Enter moves focus to the previous field.
+ * Scoped automatically to modals, drawers, or current page.
+ */
+let isGlobalEnterInstalled = false;
+
+export function initGlobalEnterNavigation() {
+  if (typeof window === 'undefined' || isGlobalEnterInstalled) return;
+  isGlobalEnterInstalled = true;
+
+  window.addEventListener('keydown', (e: globalThis.KeyboardEvent) => {
+    // Only capture Enter key without modifiers (except Shift for reverse)
+    if (e.key !== 'Enter' || e.altKey || e.ctrlKey || e.metaKey) return;
+    
+    // If an element already handled Enter explicitly (e.g. dropdown item click / barcode scanner), ignore
+    if (e.defaultPrevented) return;
+
+    const target = e.target as HTMLElement;
+    if (!target) return;
+
+    const isInput = target instanceof HTMLInputElement;
+    const isSelect = target instanceof HTMLSelectElement;
+    const isTextarea = target instanceof HTMLTextAreaElement;
+    const isButton = target instanceof HTMLButtonElement;
+
+    // Buttons: Enter should execute their normal click
+    if (isButton) return;
+
+    // Textareas: normal Enter produces a newline; Ctrl+Enter submits
+    if (isTextarea && !e.ctrlKey) return;
+
+    // Only process input fields and select elements
+    if (!isInput && !isSelect && !isTextarea) return;
+
+    // Ignore file inputs and checkbox/radio from auto-advancing
+    if (isInput && (target.type === 'file' || target.type === 'checkbox' || target.type === 'radio')) return;
+
+    // Determine current active container (modal / form / main / body)
+    const container = target.closest('[role="dialog"]') ||
+                      target.closest('.fixed.inset-0') ||
+                      target.closest('[data-enter-container]') ||
+                      target.closest('form') ||
+                      target.closest('main') ||
+                      document.body;
+
+    if (!container) return;
+
+    // Query all focusable interactive controls inside this container in DOM order
+    const focusables = Array.from(
+      container.querySelectorAll<HTMLElement>(
+        'input:not([type="hidden"]):not([disabled]):not([readonly]):not([type="checkbox"]):not([type="radio"]), ' +
+        'select:not([disabled]), ' +
+        'textarea:not([disabled]):not([readonly]), ' +
+        'button[data-save-only="true"], ' +
+        'button[data-nav-button="true"], ' +
+        'button[type="submit"], ' +
+        'button[data-action="submit"]'
+      )
+    ).filter(el => {
+      if (el.tabIndex === -1 || el.classList.contains('cursor-not-allowed')) return false;
+      const rects = el.getClientRects();
+      return rects.length > 0 && el.offsetParent !== null;
+    });
+
+    const currentIndex = focusables.indexOf(target);
+    if (currentIndex === -1) return;
+
+    if (e.shiftKey) {
+      // Shift + Enter: Move to previous field
+      e.preventDefault();
+      if (currentIndex > 0) {
+        const prevEl = focusables[currentIndex - 1];
+        prevEl.focus();
+        if (prevEl instanceof HTMLInputElement && prevEl.type !== 'number') {
+          try { prevEl.select(); } catch (_) {}
+        }
+      }
+      return;
+    }
+
+    // Normal Enter: Move to next field
+    e.preventDefault();
+    if (currentIndex < focusables.length - 1) {
+      const nextEl = focusables[currentIndex + 1];
+      nextEl.focus();
+      if (nextEl instanceof HTMLInputElement && nextEl.type !== 'number') {
+        try { nextEl.select(); } catch (_) {}
+      }
+    } else {
+      // Last field reached: Click the primary submit/save button if available
+      const submitBtn = container.querySelector<HTMLButtonElement>(
+        'button[data-save-only="true"], button[type="submit"], button[data-action="submit"], button[data-nav-button="true"]:last-of-type'
+      );
+      if (submitBtn && !submitBtn.disabled) {
+        submitBtn.click();
+      }
+    }
+  }, false);
 }

@@ -27,17 +27,406 @@ export interface InvoicePDFData {
 
 
 export const normalizeMetal = (metalType: string | undefined): string => {
-
   if (!metalType) return '';
-
   const m = metalType.toLowerCase();
-
   if (m.includes('gold')) return 'Gold';
-
   if (m.includes('silver')) return 'Silver';
-
   return metalType;
+};
 
+const PDF_RENDER_SCOPE_CLASS = 'pdf-render-scope';
+
+const splitCssSelectors = (selectorList: string): string[] => {
+  const result: string[] = [];
+  let current = '';
+  let parenDepth = 0;
+  let bracketDepth = 0;
+  let quote: string | null = null;
+
+  for (let i = 0; i < selectorList.length; i++) {
+    const ch = selectorList[i];
+    if (quote) {
+      current += ch;
+      if (ch === quote && selectorList[i - 1] !== '\\') quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      current += ch;
+    } else if (ch === '(') {
+      parenDepth++;
+      current += ch;
+    } else if (ch === ')') {
+      parenDepth = Math.max(0, parenDepth - 1);
+      current += ch;
+    } else if (ch === '[') {
+      bracketDepth++;
+      current += ch;
+    } else if (ch === ']') {
+      bracketDepth = Math.max(0, bracketDepth - 1);
+      current += ch;
+    } else if (ch === ',' && parenDepth === 0 && bracketDepth === 0) {
+      if (current.trim()) result.push(current.trim());
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  if (current.trim()) result.push(current.trim());
+  return result;
+};
+
+const scopeSelectorToken = (rawSelector: string, scopeSelector: string): string => {
+  const s = rawSelector.trim();
+  if (!s) return s;
+  if (s === '*') {
+    return `${scopeSelector}, ${scopeSelector} *`;
+  }
+  if (/^(?:html\s+body|html|body|:root)(?=[\s>+~.#\[:]|$)/i.test(s)) {
+    const replaced = s.replace(/^(?:html\s+body|html|body|:root)(?=[\s>+~.#\[:]|$)/i, scopeSelector);
+    if (replaced.startsWith(`${scopeSelector}.`) || replaced.startsWith(`${scopeSelector}:`)) {
+      return scopeSelector;
+    }
+    return replaced;
+  }
+  return `${scopeSelector} ${s}`;
+};
+
+export const scopePdfCssText = (cssText: string, scopeSelector = `.${PDF_RENDER_SCOPE_CLASS}`): string => {
+  // Strip CSS comments while preserving strings
+  let stripped = '';
+  let quote: string | null = null;
+  for (let i = 0; i < cssText.length; i++) {
+    const ch = cssText[i];
+    if (quote) {
+      stripped += ch;
+      if (ch === quote && cssText[i - 1] !== '\\') quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      stripped += ch;
+    } else if (ch === '/' && cssText[i + 1] === '*') {
+      const end = cssText.indexOf('*/', i + 2);
+      if (end === -1) break;
+      i = end + 1;
+    } else {
+      stripped += ch;
+    }
+  }
+
+  const processBlock = (input: string): string => {
+    let out = '';
+    let i = 0;
+    const len = input.length;
+
+    while (i < len) {
+      while (i < len && /\s/.test(input[i])) i++;
+      if (i >= len) break;
+
+      if (input[i] === '@') {
+        let headerEnd = i;
+        let q: string | null = null;
+        while (headerEnd < len) {
+          const c = input[headerEnd];
+          if (q) {
+            if (c === q && input[headerEnd - 1] !== '\\') q = null;
+          } else if (c === '"' || c === "'") {
+            q = c;
+          } else if (c === '{' || c === ';') {
+            break;
+          }
+          headerEnd++;
+        }
+
+        if (headerEnd >= len) {
+          out += input.slice(i);
+          break;
+        }
+
+        if (input[headerEnd] === ';') {
+          const stmt = input.slice(i, headerEnd + 1);
+          if (!/^@charset\b/i.test(stmt)) {
+            out += `${stmt}\n`;
+          }
+          i = headerEnd + 1;
+          continue;
+        }
+
+        const header = input.slice(i, headerEnd).trim();
+        let depth = 1;
+        let pos = headerEnd + 1;
+        let bq: string | null = null;
+        while (pos < len && depth > 0) {
+          const c = input[pos];
+          if (bq) {
+            if (c === bq && input[pos - 1] !== '\\') bq = null;
+          } else if (c === '"' || c === "'") {
+            bq = c;
+          } else if (c === '{') {
+            depth++;
+          } else if (c === '}') {
+            depth--;
+          }
+          pos++;
+        }
+        const inner = input.slice(headerEnd + 1, Math.max(headerEnd + 1, pos - 1));
+        if (/^@(?:media|supports|layer|container)\b/i.test(header)) {
+          out += `${header} {\n${processBlock(inner)}\n}\n`;
+        } else if (/^@page\b/i.test(header)) {
+          // Skip @page rules when rendering offscreen HTML inside the host app DOM
+        } else {
+          out += `${header} {\n${inner}\n}\n`;
+        }
+        i = pos;
+        continue;
+      }
+
+      const braceOpen = input.indexOf('{', i);
+      if (braceOpen === -1) break;
+      const rawSelector = input.slice(i, braceOpen).trim();
+      let depth = 1;
+      let pos = braceOpen + 1;
+      let bq: string | null = null;
+      while (pos < len && depth > 0) {
+        const c = input[pos];
+        if (bq) {
+          if (c === bq && input[pos - 1] !== '\\') bq = null;
+        } else if (c === '"' || c === "'") {
+          bq = c;
+        } else if (c === '{') {
+          depth++;
+        } else if (c === '}') {
+          depth--;
+        }
+        pos++;
+      }
+      const declarations = input.slice(braceOpen + 1, Math.max(braceOpen + 1, pos - 1));
+      const scopedSelectors = splitCssSelectors(rawSelector)
+        .map((sel) => scopeSelectorToken(sel, scopeSelector))
+        .filter(Boolean);
+      if (scopedSelectors.length > 0) {
+        out += `${scopedSelectors.join(', ')} {${declarations}}\n`;
+      }
+      i = pos;
+    }
+
+    return out;
+  };
+
+  return processBlock(stripped);
+};
+
+/**
+ * Mounts an invoice/receipt/statement HTML document offscreen with all `<style>` rules
+ * isolated to `.pdf-render-scope` so `* { color: #000 }` / `body` rules never leak
+ * onto the dark host React UI even transiently.
+ */
+const mountScopedPdfContainer = (
+  rawHtml: string,
+  background?: string
+): { renderContainer: HTMLDivElement; scopeEl: HTMLDivElement } => {
+  const renderContainer = document.createElement('div');
+  renderContainer.style.position = 'fixed';
+  renderContainer.style.top = '0';
+  renderContainer.style.left = '-3000px'; // Safely offscreen without Chrome paint culling
+  renderContainer.style.width = '210mm';
+  renderContainer.style.color = '#0f172a';
+  renderContainer.style.background = background || '#ffffff';
+
+  const parsed = new DOMParser().parseFromString(rawHtml, 'text/html');
+  const styleTexts: string[] = [];
+  parsed.querySelectorAll('style').forEach((styleNode) => {
+    if (styleNode.textContent) {
+      styleTexts.push(scopePdfCssText(styleNode.textContent));
+    }
+    styleNode.remove();
+  });
+
+  parsed.querySelectorAll('script').forEach((scriptNode) => scriptNode.remove());
+
+  if (styleTexts.length > 0) {
+    const scopedStyleEl = document.createElement('style');
+    scopedStyleEl.textContent = styleTexts.join('\n');
+    renderContainer.appendChild(scopedStyleEl);
+  }
+
+  parsed.querySelectorAll('link[rel="stylesheet"]').forEach((linkEl) => {
+    const href = linkEl.getAttribute('href');
+    if (href) {
+      const clonedLink = document.createElement('link');
+      clonedLink.rel = 'stylesheet';
+      clonedLink.href = href;
+      renderContainer.appendChild(clonedLink);
+    }
+  });
+
+  const scopeEl = document.createElement('div');
+  scopeEl.className = PDF_RENDER_SCOPE_CLASS;
+  scopeEl.innerHTML = parsed.body ? parsed.body.innerHTML : rawHtml;
+  renderContainer.appendChild(scopeEl);
+
+  document.body.appendChild(renderContainer);
+  return { renderContainer, scopeEl };
+};
+
+export const sanitizeVaultSegment = (name?: string | null, fallback = 'Unknown'): string => {
+  const raw = String(name || '').trim();
+  if (!raw) return fallback;
+  if (/^walk[\s_-]*in(?:[\s_-]*customer)?s?$/i.test(raw)) {
+    return 'Walkin_Customer';
+  }
+  return raw.replace(/[\\/*?:"<>|]/g, '_').replace(/\s+/g, '_').slice(0, 60);
+};
+
+const ensureFullHtmlDocument = (rawHtml: string): string => {
+  const localSafe = rawHtml.replace(/<link[^>]*fonts\.googleapis\.com[^>]*>/gi, '');
+  if (/<html[\s>]/i.test(localSafe)) {
+    return localSafe;
+  }
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  @page { size: A4 portrait; margin: 0; }
+  html, body { margin: 0; padding: 0; color: #0f172a; background: #ffffff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+</style>
+</head>
+<body>${localSafe}</body>
+</html>`;
+};
+
+const renderHtmlToBase64Pdf = async (
+  rawHtml: string,
+  opts: {
+    selector?: string;
+    filename: string;
+    scale?: number;
+    margin?: number;
+    background?: string;
+    fitInvoiceWrapper?: boolean;
+  }
+): Promise<{ base64: string; usedNativeElectron: boolean }> => {
+  const electronAPI = (window as any).electronAPI;
+  if (electronAPI?.htmlToPdf) {
+    try {
+      const res = await electronAPI.htmlToPdf({
+        html: ensureFullHtmlDocument(rawHtml),
+        landscape: false,
+      });
+      if (res?.success && res?.base64) {
+        return { base64: res.base64, usedNativeElectron: true };
+      }
+    } catch (nativeErr) {
+      console.warn('Native Electron printToPDF failed, falling back to html2pdf:', nativeErr);
+    }
+  }
+
+  // @ts-ignore
+  const html2pdf = (await import('html2pdf.js')).default;
+  const { renderContainer, scopeEl } = mountScopedPdfContainer(rawHtml, opts.background);
+
+  try {
+    if ((document as any).fonts?.ready) {
+      await Promise.race([(document as any).fonts.ready, new Promise(r => setTimeout(r, 250))]);
+    }
+    await new Promise(r => requestAnimationFrame(() => r(undefined)));
+
+    const targetElement = (
+      (opts.selector ? renderContainer.querySelector(opts.selector) : null) ||
+      scopeEl.firstElementChild ||
+      scopeEl
+    ) as HTMLElement;
+
+    if (opts.fitInvoiceWrapper) {
+      const invoiceWrapper = renderContainer.querySelector('.invoice-wrapper') as HTMLElement;
+      const content = renderContainer.querySelector('.content') as HTMLElement;
+      if (invoiceWrapper && content) {
+        const maxH = invoiceWrapper.clientHeight || 1122;
+        const contentH = content.scrollHeight || 1;
+        if (contentH > maxH) {
+          const scale = Math.max(0.1, maxH / contentH);
+          content.style.transform = `scale(${scale})`;
+          content.style.transformOrigin = 'top center';
+          content.style.height = `${contentH}px`;
+        }
+      }
+    }
+
+    const pdfOpt: any = {
+      margin: opts.margin ?? 0,
+      filename: opts.filename,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: opts.scale ?? 2, useCORS: true, letterRendering: true, windowWidth: 794 },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['css', 'legacy'] },
+    };
+
+    const worker = html2pdf().set(pdfOpt).from(targetElement);
+    const pdfBase64: string = await worker.outputPdf('datauristring');
+    const cleanBase64 = pdfBase64.includes(',') ? pdfBase64.split(',')[1] : pdfBase64;
+    return { base64: cleanBase64, usedNativeElectron: false };
+  } finally {
+    if (renderContainer.parentNode) {
+      renderContainer.parentNode.removeChild(renderContainer);
+    }
+  }
+};
+
+const persistPdfToVault = async (params: {
+  category: 'Sales' | 'Purchases' | 'Exchanges';
+  folderName: string;
+  fileName: string;
+  base64Data: string;
+  isGst: boolean;
+  companyId: number;
+}): Promise<void> => {
+  const electronAPI = (window as any).electronAPI;
+  let electronSaved = false;
+
+  if (electronAPI?.saveVaultPdf) {
+    try {
+      const res = await electronAPI.saveVaultPdf(params);
+      electronSaved = Boolean(res?.success);
+    } catch (e) {
+      console.warn('Electron saveVaultPdf warning:', e);
+    }
+  }
+
+  // Only invoke HTTP backend sync if Electron didn't already write to PC + external roots
+  if (!electronSaved) {
+    try {
+      const { axiosClient } = await import('../api/axiosClient');
+      await axiosClient.post('/backup/save-vault-pdf', {
+        category: params.category,
+        folder_name: params.folderName,
+        file_name: params.fileName,
+        pdf_base64: params.base64Data,
+        is_gst: params.isGst,
+        company_id: params.companyId,
+      });
+    } catch (bkErr) {
+      console.warn('Backend vault sync warning:', bkErr);
+    }
+  }
+};
+
+const triggerBase64Download = (base64Data: string, fileName: string) => {
+  const byteChars = atob(base64Data);
+  const byteNumbers = new Array(byteChars.length);
+  for (let i = 0; i < byteChars.length; i++) {
+    byteNumbers[i] = byteChars.charCodeAt(i);
+  }
+  const blob = new Blob([new Uint8Array(byteNumbers)], { type: 'application/pdf' });
+  const blobUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = blobUrl;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 1500);
 };
 
 
@@ -90,37 +479,44 @@ export const generateInvoiceHtml = async (data: InvoicePDFData): Promise<string>
 
       pan: data.company?.pan || settings.pan || '',
 
-      city: data.company?.city || settings.city || 'Takhatgarh',
+      city: data.company?.city || settings.city || '',
 
-      state: data.company?.state || settings.state || 'Rajasthan',
+      state: data.company?.state || settings.state || '',
 
-      state_code: data.company?.state_code || settings.state_code || '08',
+      state_code: data.company?.state_code || settings.state_code || '',
 
-      jurisdiction_city: data.company?.jurisdiction_city || settings.jurisdiction_city || 'PALI',
+      jurisdiction_city: data.company?.jurisdiction_city || settings.jurisdiction_city || '',
 
       declaration: data.company?.declaration || settings.declaration || '',
 
-      tagline: settings.tagline || data.company?.tagline || 'TIMELESS BEAUTY. TRUSTED FOREVER.'
+      tagline: settings.tagline || data.company?.tagline || ''
 
     };
 
     // --- MULTI-COMPANY TEMPLATE RESOLUTION ---
 
-    // If company has GST enabled (Company 2 - Saideep Jewellers GST), render the GST Tax Invoice layout.
+    // If company has GST enabled (Company 2), render the GST Tax Invoice layout.
 
-    // If Company 1 (Saideep, gst_enabled = false), it continues down to the legacy template UNTOUCHED.
+    // If Company 1 (gst_enabled = false), it continues down to the legacy template UNTOUCHED.
 
     const resolvedCompanyId = Number((data as any).company_id || data.company?.id || (data.invoice as any)?.company_id || 1);
-    const isGstCompany = Boolean(
-      resolvedCompanyId === 2 ||
-      company.gst_enabled === true ||
-      company.gst_enabled === 1 ||
-      data.company?.gst_enabled === true ||
-      data.company?.gst_enabled === 1 ||
-      String(data.invoice?.invoice_number || '').startsWith('SJ/') ||
-      String(data.invoice?.invoice_number || '').startsWith('PG/') ||
-      ((data as any).type === 'purchase' && (resolvedCompanyId === 2 || company.gst_enabled))
-    );
+    const explicitGst =
+      typeof data.company?.gst_enabled === 'boolean'
+        ? data.company.gst_enabled
+        : typeof data.company?.gst_enabled === 'number'
+        ? data.company.gst_enabled === 1
+        : undefined;
+    const isGstCompany =
+      explicitGst !== undefined
+        ? explicitGst
+        : Boolean(
+            resolvedCompanyId === 2 ||
+              company.gst_enabled === true ||
+              company.gst_enabled === 1 ||
+              String(data.invoice?.invoice_number || '').startsWith('SJ/') ||
+              String(data.invoice?.invoice_number || '').startsWith('PG/') ||
+              ((data as any).type === 'purchase' && (resolvedCompanyId === 2 || company.gst_enabled))
+          );
     // GST format active
 
     if (isGstCompany) {
@@ -135,33 +531,32 @@ export const generateInvoiceHtml = async (data: InvoicePDFData): Promise<string>
 
 
 
+      const roundCur = (val: number): number => Math.round((val + Number.EPSILON) * 100) / 100;
+
+      const resolveItemHsn = (it: any): string => {
+        const explicit = String(it.hsn_code || it.hsn || '').trim();
+        if (explicit) return explicit;
+        const itemType = (it.item_type || it.metal_type || '').toUpperCase();
+        const itemName = (it.item_name || it.description || '').toUpperCase();
+        const isBullion = /\b(BAR|BULLION)\b/i.test(itemName) || /\b(BAR|BULLION)\b/i.test(itemType);
+        if (itemType.includes('SILVER') || (!itemType && itemName.includes('SILVER'))) {
+          return isBullion ? '71069120' : '711311';
+        }
+        if (itemType.includes('DIAMOND') || (!itemType && itemName.includes('DIAMOND'))) {
+          return '71049120';
+        }
+        return isBullion ? '71081200' : '711319';
+      };
+
       const gstItems = (data.items || []).map((it: any) => {
 
         const itemType = (it.item_type || it.metal_type || '').toUpperCase();
 
-        let defaultHsn = '711319';
-
-        if (itemType.includes('SILVER')) {
-
-          defaultHsn = it.item_name?.toLowerCase().includes('bar') ? '71069120' : '711311';
-
-        } else if (itemType.includes('DIAMOND')) {
-
-          defaultHsn = '71049120';
-
-        } else if (itemType.includes('GOLD') && it.item_name?.toLowerCase().includes('bar')) {
-
-          defaultHsn = '71081200';
-
-        }
-
-
-
-        const hsn = it.hsn_code || defaultHsn;
+        const hsn = resolveItemHsn(it);
 
         const qty = Number(it.weight || it.net_weight || it.gross_weight || it.quantity || 1);
 
-        const taxable = Number(it.taxable_amount || it.taxable || it.final_price || it.total_price || (qty * (Number(it.rate) || 0)));
+        const taxable = roundCur(Number(it.taxable_amount || it.taxable || it.final_price || it.total_price || (qty * (Number(it.rate) || 0))));
 
         const rate = qty > 0 ? (taxable / qty) : taxable;
 
@@ -181,7 +576,7 @@ export const generateInvoiceHtml = async (data: InvoicePDFData): Promise<string>
 
           taxable_amount: taxable,
 
-          gst_rate: 3.0
+          gst_rate: Number(it.gst_rate ?? 3.0)
 
         };
 
@@ -189,23 +584,87 @@ export const generateInvoiceHtml = async (data: InvoicePDFData): Promise<string>
 
 
 
-      const totalTaxable = gstItems.reduce((acc: number, i: any) => acc + i.taxable_amount, 0);
+      const hsnGroups = new Map<string, { hsn_code: string; taxable_amount: number; gst_rate: number }>();
 
-      const taxRate = 0.03;
+      for (const item of gstItems) {
 
-      const totalTax = Math.round(totalTaxable * taxRate * 100) / 100;
+        const existing = hsnGroups.get(item.hsn_code);
 
-      const preRound = totalTaxable + totalTax;
+        if (existing) {
+
+          existing.taxable_amount = roundCur(existing.taxable_amount + item.taxable_amount);
+
+        } else {
+
+          hsnGroups.set(item.hsn_code, {
+
+            hsn_code: item.hsn_code,
+
+            taxable_amount: item.taxable_amount,
+
+            gst_rate: item.gst_rate
+
+          });
+
+        }
+
+      }
+
+      const hsnTable = Array.from(hsnGroups.values()).map((group) => {
+
+        const gstRate = group.gst_rate;
+
+        const halfRate = isIntraState ? gstRate / 2 : 0;
+
+        const cgstAmt = isIntraState ? roundCur(group.taxable_amount * (halfRate / 100)) : 0;
+
+        const sgstAmt = isIntraState ? roundCur(group.taxable_amount * (halfRate / 100)) : 0;
+
+        const igstRate = isIntraState ? 0 : gstRate;
+
+        const igstAmt = isIntraState ? 0 : roundCur(group.taxable_amount * (igstRate / 100));
+
+        const rowTotalTax = roundCur(cgstAmt + sgstAmt + igstAmt);
+
+        return {
+
+          hsn_code: group.hsn_code,
+
+          taxable_amount: group.taxable_amount,
+
+          cgst_rate: halfRate,
+
+          cgst_amount: cgstAmt,
+
+          sgst_rate: halfRate,
+
+          sgst_amount: sgstAmt,
+
+          igst_rate: igstRate,
+
+          igst_amount: igstAmt,
+
+          total_tax_amount: rowTotalTax
+
+        };
+
+      });
+
+      const totalTaxable = roundCur(hsnTable.reduce((acc, r) => acc + r.taxable_amount, 0));
+
+      const totalCgst = roundCur(hsnTable.reduce((acc, r) => acc + r.cgst_amount, 0));
+
+      const totalSgst = roundCur(hsnTable.reduce((acc, r) => acc + r.sgst_amount, 0));
+
+      const totalIgst = roundCur(hsnTable.reduce((acc, r) => acc + r.igst_amount, 0));
+
+      const totalTax = roundCur(totalCgst + totalSgst + totalIgst);
+
+      const preRound = roundCur(totalTaxable + totalTax);
 
       const grandTotal = Math.round(preRound);
 
-      const roundOff = Math.round((grandTotal - preRound) * 100) / 100;
-
-
-
-      const halfRate = isIntraState ? 1.5 : 0;
-
-      const halfAmt = isIntraState ? Math.round((totalTaxable * 0.015) * 100) / 100 : 0;
+      const roundOff = roundCur(grandTotal - preRound);
 
 
 
@@ -213,7 +672,7 @@ export const generateInvoiceHtml = async (data: InvoicePDFData): Promise<string>
 
         invoice: {
 
-          invoice_number: data.invoice?.invoice_number || 'SJ/S/1945/26-27',
+          invoice_number: data.invoice?.invoice_number || 'INV-001',
 
           invoice_date: data.invoice?.invoice_date || new Date().toISOString(),
 
@@ -248,34 +707,42 @@ export const generateInvoiceHtml = async (data: InvoicePDFData): Promise<string>
         },
 
         seller: {
-          name: company.name || 'SAIDEEP JEWELLERS',
-          address: company.address || '167, Ward No. 3, Khedawas, Takhatgarh, Pali (Raj.)-306912',
-          city: company.city || 'Takhatgarh',
-          state: company.state || 'Rajasthan',
+          name: company.name || defaultStoreName,
+          address: company.address || '',
+          city: company.city || '',
+          state: company.state || '',
           state_code: sellerStateCode,
-          gstin: company.gstin || '08BNUPK1610E1Z3',
-          pan: company.pan || 'BNUPK1610E',
-          phone: company.phone || '+91-9460820878',
-          email: company.email || 'saideepjewellers78@gmail.com',
-          jurisdiction_city: company.jurisdiction_city || 'PALI',
+          gstin: company.gstin || '',
+          pan: company.pan || '',
+          phone: company.phone || '',
+          email: company.email || '',
+          jurisdiction_city: company.jurisdiction_city || company.city || '',
           declaration: company.declaration || 'We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.',
+          bank_name: data.company?.bank_name || company.bank_name || '',
+          bank_account_no: data.company?.bank_account_no || company.bank_account_no || '',
+          bank_ifsc: data.company?.bank_ifsc || company.bank_ifsc || '',
+          bank_branch: data.company?.bank_branch || company.bank_branch || '',
+          upi_id: data.company?.upi_id || company.upi_id || '',
+          upi_name: data.company?.upi_name || company.upi_name || '',
+          computer_generated_note: data.company?.computer_generated_note || company.computer_generated_note || '',
           stamp_url: company.stamp_url,
           signature_url: company.signature_url
         },
         buyer: (() => {
           const isPurchase = (data as any).type === 'purchase' || String(data.invoice?.invoice_number || '').startsWith('PUR-');
-          const party = (data as any).seller || (data as any).supplier || data.customer || {};
+          const party = isPurchase ? ((data as any).seller || (data as any).supplier || data.customer || {}) : ((data as any).buyer || data.customer || {});
           const partyName = (party.name || party.first_name || (data as any).customer_name || '').trim();
+          const defaultPartyState = company.state || '';
           return {
             name: partyName || (isPurchase ? 'Supplier / Vendor' : 'Walk-in Customer'),
-            address: party.address || (isPurchase ? '' : 'Takhatgarh, Pali (Raj.)'),
+            address: party.address || '',
             pan: party.pan || party.aadhaar_pan || '',
             gstin: party.gstin || party.gst_number || '',
-            state: party.state || 'Rajasthan',
-            state_code: String(party.state_code || buyerStateCode || '08').padStart(2, '0'),
-            place_of_supply: party.place_of_supply || party.state || 'Rajasthan',
-            contact_person: party.contact_person || '',
-            phone: party.phone || party.mobile || '',
+            state: party.state || defaultPartyState,
+            state_code: String(party.state_code || buyerStateCode || sellerStateCode || '08').padStart(2, '0'),
+            place_of_supply: party.place_of_supply || party.state || defaultPartyState,
+            contact_person: party.contact_person || partyName || '',
+            phone: party.phone || party.phone_number || party.mobile || '',
             email: party.email || ''
           };
         })(),
@@ -287,11 +754,11 @@ export const generateInvoiceHtml = async (data: InvoicePDFData): Promise<string>
 
           total_taxable_amount: totalTaxable,
 
-          total_cgst_amount: halfAmt,
+          total_cgst_amount: totalCgst,
 
-          total_sgst_amount: halfAmt,
+          total_sgst_amount: totalSgst,
 
-          total_igst_amount: isIntraState ? 0 : totalTax,
+          total_igst_amount: totalIgst,
 
           total_tax_amount: totalTax,
 
@@ -303,31 +770,7 @@ export const generateInvoiceHtml = async (data: InvoicePDFData): Promise<string>
 
           tax_amount_words: data.invoice?.tax_amount_words || `Indian Rupees ${totalTax} Only`,
 
-          hsn_table: [
-
-            {
-
-              hsn_code: gstItems[0]?.hsn_code || '71069120',
-
-              taxable_amount: totalTaxable,
-
-              cgst_rate: halfRate,
-
-              cgst_amount: halfAmt,
-
-              sgst_rate: halfRate,
-
-              sgst_amount: halfAmt,
-
-              igst_rate: isIntraState ? 0 : 3.0,
-
-              igst_amount: isIntraState ? 0 : totalTax,
-
-              total_tax_amount: totalTax
-
-            }
-
-          ]
+          hsn_table: hsnTable
 
         },
 
@@ -375,19 +818,19 @@ export const generateInvoiceHtml = async (data: InvoicePDFData): Promise<string>
 
       Object.assign(settings, res.data || {});
 
-      if (settings.business_name || settings.store_name) company.name = settings.business_name || settings.store_name;
+      if (!data.company?.name && (settings.business_name || settings.store_name)) company.name = settings.business_name || settings.store_name;
 
-      if (settings.address || settings.store_address) company.address = settings.address || settings.store_address;
+      if (!data.company?.address && (settings.address || settings.store_address)) company.address = settings.address || settings.store_address;
 
-      if (settings.phone || settings.store_phone) company.phone = settings.phone || settings.store_phone;
+      if (!data.company?.phone && (settings.phone || settings.store_phone)) company.phone = settings.phone || settings.store_phone;
 
-      if (settings.email || settings.store_email) company.email = settings.email || settings.store_email;
+      if (!data.company?.email && (settings.email || settings.store_email)) company.email = settings.email || settings.store_email;
 
-      if (settings.gstin || settings.store_gstin) company.gstin = settings.gstin || settings.store_gstin;
+      if (!data.company?.gstin && (settings.gstin || settings.store_gstin)) company.gstin = settings.gstin || settings.store_gstin;
 
-      if (settings.logo_url) company.logo_url = settings.logo_url;
+      if (!data.company?.logo_url && settings.logo_url) company.logo_url = settings.logo_url;
 
-      if (settings.tagline) company.tagline = settings.tagline;
+      if (!data.company?.tagline && settings.tagline) company.tagline = settings.tagline;
 
     } catch (e) {
 
@@ -401,9 +844,9 @@ export const generateInvoiceHtml = async (data: InvoicePDFData): Promise<string>
 
     try {
 
-      const upiId = settings?.upi_id || '';
+      const upiId = data.company?.upi_id || settings?.upi_id || '';
 
-      const upiName = settings?.upi_name || settings?.business_name || company?.name || defaultStoreName;
+      const upiName = data.company?.upi_name || company?.name || settings?.upi_name || settings?.business_name || defaultStoreName;
 
       const isCustomAmount = settings?.qr_amount_type === 'custom';
 
@@ -719,75 +1162,7 @@ export const generateInvoiceHtml = async (data: InvoicePDFData): Promise<string>
 
 
 
-    // DOM Measurement Engine (Isolated to prevent CSS bleed and ensure accurate font/style measurements)
-
-    const measureIframe = document.createElement('iframe');
-
-    measureIframe.style.position = 'fixed';
-
-    measureIframe.style.top = '0';
-
-    measureIframe.style.left = '-9999px';
-
-    measureIframe.style.width = '210mm';
-
-    measureIframe.style.visibility = 'hidden';
-
-    document.body.appendChild(measureIframe);
-
-
-
-    const idoc = measureIframe.contentWindow?.document;
-
-    if (idoc) {
-
-      idoc.open();
-
-      idoc.write(`
-
-        <!DOCTYPE html>
-
-        <html>
-
-        <head>
-
-          <meta charset="utf-8">
-
-          <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-
-          ${premiumComponents.getCommonStyles()}
-
-        </head>
-
-        <body>
-
-          <div id="page-measure" class="invoice-wrapper">
-
-             <div class="content">
-
-                <div id="footer-measure" style="text-align: center; margin-top: auto; padding-bottom: 60px; font-family: 'Cinzel', serif; font-size: 11px; font-weight: 700; color: var(--gold); letter-spacing: 1px;">
-
-                  Purity You Trust, Elegance You Deserve.
-
-                  <div style="font-size: 9px; margin-top: 4px; font-family: 'Inter', sans-serif;">Page 1 of 1</div>
-
-                </div>
-
-             </div>
-
-          </div>
-
-          <div id="measure-box" class="invoice-wrapper" style="height: auto; min-height: 0; max-height: none; padding: 0; border: none; overflow: visible;"></div>
-
-        </body>
-
-        </html>
-
-      `);
-
-      idoc.close();
-
-    }
+    // Build the final single-page invoice HTML directly (CSS auto-scaling keeps it to A4)
 
 
 
@@ -803,7 +1178,9 @@ export const generateInvoiceHtml = async (data: InvoicePDFData): Promise<string>
 
     let finalHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">`;
 
-    finalHtml += `<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">`;
+    if (!(window as any).electronAPI) {
+      finalHtml += `<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">`;
+    }
 
     finalHtml += premiumComponents.getCommonStyles();
 
@@ -949,12 +1326,6 @@ export const generateInvoiceHtml = async (data: InvoicePDFData): Promise<string>
 
 
 
-    // Cleanup measurement div (we don't even use it anymore because we force 1 page!)
-
-    document.body.removeChild(measureIframe);
-
-
-
     // Inject an auto-scale script directly into the HTML so native browser Print Previews
 
     // automatically shrink the content to fit perfectly within the 296.5mm A4 boundary.
@@ -1056,159 +1427,75 @@ export const getFormatDateOnly = (dateVal?: any): string => {
 
 
 export const generateInvoicePDF = async (data: InvoicePDFData) => {
-
   try {
-
-    // @ts-ignore
-
-    const html2pdf = (await import('html2pdf.js')).default;
-
     const finalRenderedHtml = await generateInvoiceHtml(data);
 
-    
+    const rawDocNum = String(
+      data.invoice?.invoice_number ||
+      ((data as any).type === 'purchase' ? 'PURCHASE' : (data as any).type === 'exchange' ? 'EXCHANGE' : 'INVOICE')
+    ).trim();
+    const cleanDocNum = sanitizeVaultSegment(rawDocNum, 'INVOICE');
+    const fileName = `${cleanDocNum}.pdf`;
 
-    // We MUST render this into the DOM first, because passing a string to html2pdf
+    const isPurchase = (data as any).type === 'purchase' || rawDocNum.startsWith('PUR-') || rawDocNum.includes('/P/') || rawDocNum.includes('_P_');
+    const isExchange = (data as any).type === 'exchange' || rawDocNum.startsWith('EXC-') || rawDocNum.includes('/E/') || rawDocNum.includes('_E_');
+    const category: 'Sales' | 'Purchases' | 'Exchanges' = isPurchase ? 'Purchases' : isExchange ? 'Exchanges' : 'Sales';
 
-    // breaks absolute positioned elements (like the watermark) across pages.
+    const rawParty = (data.customer?.name || (data as any).seller?.name || (data as any).supplier?.name || (isPurchase ? 'Supplier' : 'Walkin_Customer')).trim();
+    const cleanPartyName = sanitizeVaultSegment(rawParty, isPurchase ? 'Supplier' : 'Walkin_Customer');
 
-    const renderContainer = document.createElement('div');
+    const isGst = Boolean(
+      (data as any).is_gst ||
+      data.company?.id === 2 ||
+      data.invoice?.is_gst ||
+      cleanDocNum.startsWith('SJ_S') || cleanDocNum.startsWith('SJ/S') ||
+      cleanDocNum.startsWith('SJ_P') || cleanDocNum.startsWith('SJ/P') ||
+      cleanDocNum.startsWith('SJ_E') || cleanDocNum.startsWith('SJ/E') ||
+      cleanDocNum.startsWith('PG_') ||
+      cleanDocNum.includes('_S_') || cleanDocNum.includes('/S/') ||
+      cleanDocNum.includes('_P_') || cleanDocNum.includes('/P/') ||
+      cleanDocNum.includes('_E_') || cleanDocNum.includes('/E/')
+    );
+    const companyId = isGst ? 2 : (data.company?.id || 1);
 
-    renderContainer.style.position = 'fixed';
+    const { base64: cleanBase64 } = await renderHtmlToBase64Pdf(finalRenderedHtml, {
+      selector: '.pdf-container, .invoice-container',
+      filename: fileName,
+      scale: 2,
+      margin: 0,
+      fitInvoiceWrapper: true,
+    });
 
-    renderContainer.style.top = '0';
-
-    renderContainer.style.left = '-3000px'; // Safely offscreen, avoids browser paint culling that happens at -99999px
-
-    renderContainer.style.width = '210mm'; 
-
-    renderContainer.innerHTML = finalRenderedHtml;
-
-    document.body.appendChild(renderContainer);
-
-
-
-    // Wait for fonts and layouts to resolve in the DOM
-
-    await new Promise(resolve => setTimeout(resolve, 800));
-
-
-
-    const targetElement = renderContainer.querySelector('.pdf-container') as HTMLElement;
-
-    const invoiceWrapper = renderContainer.querySelector('.invoice-wrapper') as HTMLElement;
-
-    const content = renderContainer.querySelector('.content') as HTMLElement;
-
-    
-
-    if (invoiceWrapper && content) {
-
-      const maxH = invoiceWrapper.clientHeight || 1122; 
-
-      const contentH = content.scrollHeight || 1;
-
-      
-
-      if (contentH > maxH) {
-
-         // Scale down to fit one page precisely
-
-         const scale = Math.max(0.1, maxH / contentH);
-
-         content.style.transform = `scale(${scale})`;
-
-         content.style.transformOrigin = 'top center';
-
-         // Adjust height so the wrapper knows the scaled content fits
-
-         content.style.height = `${contentH}px`;
-
-      }
-
-    }
-
-    
-
-    const opt: any = {
-
-      margin:       0,
-
-      filename:     `${data.invoice?.invoice_number || 'INVOICE'}.pdf`,
-
-      image:        { type: 'jpeg', quality: 1.0 },
-
-      html2canvas:  { scale: 3, useCORS: true, letterRendering: true, windowWidth: 794 }, // Explicit window width ensures correct scaling
-
-      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
-
-    };
-
-
-
-    const electronAPI = (window as any).electronAPI;
-
-    if (electronAPI?.saveVaultPdf) {
-
-      try {
-
-        const worker = html2pdf().set(opt).from(targetElement);
-
-        const pdfBase64 = await worker.outputPdf('datauristring');
-
-        const cleanBase64 = pdfBase64.includes(',') ? pdfBase64.split(',')[1] : pdfBase64;
-
-        const isPurchase = (data as any).type === 'purchase' || String(data.invoice?.invoice_number || '').startsWith('PUR-') || String(data.invoice?.invoice_number || '').includes('/P/');
-        const isExchange = (data as any).type === 'exchange' || String(data.invoice?.invoice_number || '').startsWith('EXC-') || String(data.invoice?.invoice_number || '').includes('/E/');
-        const category = isPurchase ? 'Purchases' : isExchange ? 'Exchanges' : 'Sales';
-        const partyName = (data.customer?.name || (data as any).seller?.name || (data as any).supplier?.name || (isPurchase ? 'Supplier' : 'Walk-in Customer')).trim();
-        await electronAPI.saveVaultPdf({
-          category,
-          folderName: partyName,
-          fileName: `${data.invoice?.invoice_number || (isPurchase ? 'PURCHASE' : isExchange ? 'EXCHANGE' : 'INVOICE')}.pdf`,
-          base64Data: cleanBase64
-        });
-
-      } catch (vaultErr) {
-
-        console.warn('Silent vault save fallback:', vaultErr);
-
-        await html2pdf().set(opt).from(targetElement).save();
-
-      }
-
-    } else {
-
-      await html2pdf().set(opt).from(targetElement).save();
-
-    }
-
-
-
-    // Cleanup
-
-    document.body.removeChild(renderContainer);
-
+    await persistPdfToVault({
+      category,
+      folderName: cleanPartyName,
+      fileName,
+      base64Data: cleanBase64,
+      isGst,
+      companyId,
+    });
   } catch (error) {
-
     console.error('Error generating PDF:', error);
-
     throw error;
-
   }
-
 };
 
 
 
 export const printInvoiceDirect = async (data: InvoicePDFData): Promise<void> => {
-
   try {
-
     const finalRenderedHtml = await generateInvoiceHtml(data);
 
+    const electronAPI = (window as any).electronAPI;
+    if (electronAPI?.printHtml) {
+      await electronAPI.printHtml({
+        html: finalRenderedHtml,
+        title: String(data.invoice?.invoice_number || 'Invoice'),
+      });
+      return;
+    }
 
-
-    // Create an invisible iframe for native print triggering
+    // Create an invisible iframe for native browser print triggering
 
     const printFrame = document.createElement('iframe');
 
@@ -1316,7 +1603,7 @@ export const printInvoiceDirect = async (data: InvoicePDFData): Promise<void> =>
 
 
 
-export const generatePaymentReceiptPDF = async (row: any, entity: any) => {
+export const generatePaymentReceiptPDF = async (row: any, entity: any, isSupplierHint?: boolean) => {
 
   try {
 
@@ -1764,97 +2051,30 @@ export const generatePaymentReceiptPDF = async (row: any, entity: any) => {
 
 
 
-    // Render container - placed offscreen safely at -3000px with explicit A4 width
+    const isSupplier = isSupplierHint !== undefined
+      ? isSupplierHint
+      : !('first_name' in (entity || {}) || 'phone_number' in (entity || {}));
+    const category: 'Sales' | 'Purchases' = isSupplier ? 'Purchases' : 'Sales';
+    const cleanPartyFolder = sanitizeVaultSegment(partyName, isSupplier ? 'Suppliers' : 'Walkin_Customer');
+    const cleanVouch = sanitizeVaultSegment(String(voucherNo), 'REC');
+    const fileName = `Receipt_${cleanVouch}.pdf`;
 
-    const renderContainer = document.createElement('div');
+    const { base64: cleanBase64 } = await renderHtmlToBase64Pdf(receiptHtml, {
+      selector: '.receipt-pdf-page',
+      filename: fileName,
+      scale: 2,
+      margin: 0,
+      background: '#ffffff',
+    });
 
-    renderContainer.style.position = 'fixed';
-
-    renderContainer.style.top = '0';
-
-    renderContainer.style.left = '-3000px';
-
-    renderContainer.style.width = '210mm';
-
-    renderContainer.style.background = '#ffffff';
-
-    renderContainer.innerHTML = receiptHtml;
-
-    document.body.appendChild(renderContainer);
-
-
-
-    // Wait for web fonts and layout engine to paint
-
-    await new Promise(resolve => setTimeout(resolve, 800));
-
-
-
-    const targetElement = renderContainer.querySelector('.receipt-pdf-page') as HTMLElement;
-
-
-
-    // @ts-ignore
-
-    const html2pdf = (await import('html2pdf.js')).default;
-
-    const opt: any = {
-
-      margin:       0,
-
-      filename:     `Receipt_${voucherNo}.pdf`,
-
-      image:        { type: 'jpeg', quality: 1.0 },
-
-      html2canvas:  { scale: 2, useCORS: true, letterRendering: true, windowWidth: 794 },
-
-      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
-
-    };
-
-
-
-    const electronAPIReceipt = (window as any).electronAPI;
-
-    if (electronAPIReceipt?.saveVaultPdf) {
-
-      try {
-
-        const worker = html2pdf().set(opt).from(targetElement || renderContainer);
-
-        const pdfBase64 = await worker.outputPdf('datauristring');
-
-        const cleanBase64 = pdfBase64.includes(',') ? pdfBase64.split(',')[1] : pdfBase64;
-
-        const supplierFolder = entity?.name || 'Suppliers';
-
-        await electronAPIReceipt.saveVaultPdf({
-
-          category: 'Purchases',
-
-          folderName: supplierFolder,
-
-          fileName: `Receipt_${voucherNo}.pdf`,
-
-          base64Data: cleanBase64
-
-        });
-
-      } catch (vaultErr) {
-
-        console.warn('Silent receipt vault save fallback:', vaultErr);
-
-        await html2pdf().set(opt).from(targetElement || renderContainer).save();
-
-      }
-
-    } else {
-
-      await html2pdf().set(opt).from(targetElement || renderContainer).save();
-
-    }
-
-    document.body.removeChild(renderContainer);
+    await persistPdfToVault({
+      category,
+      folderName: cleanPartyFolder,
+      fileName,
+      base64Data: cleanBase64,
+      isGst: false,
+      companyId: 1,
+    });
 
   } catch (err) {
 
@@ -2346,57 +2566,36 @@ export const generateLedgerStatementPDF = async (data: StatementPDFData) => {
 
 
 
-    const renderContainer = document.createElement('div');
+    const cleanPartySegment = sanitizeVaultSegment(partyName, isSupplier ? 'Suppliers' : 'Walkin_Customer');
+    const cleanFileName = `${isSupplier ? 'Supplier' : 'Customer'}_${cleanPartySegment}_Statement.pdf`;
 
-    renderContainer.style.position = 'fixed';
+    const { base64: cleanBase64 } = await renderHtmlToBase64Pdf(statementHtml, {
+      selector: '.statement-pdf-page',
+      filename: cleanFileName,
+      scale: 2,
+      margin: 5,
+      background: '#ffffff',
+    });
 
-    renderContainer.style.top = '0';
+    // Save/update statement inside active GST/Without_GST Vault folder(s) for this party
+    const hasGstBills = bills.some((b: any) => /^(SJ|PG)[/_]|[/_](S|P|E)[/_]/i.test(String(b?.bill_no || '')));
+    const hasNonGstBills = bills.some((b: any) => b?.bill_no && !/^(SJ|PG)[/_]|[/_](S|P|E)[/_]/i.test(String(b.bill_no)));
+    const gstModes = hasGstBills && hasNonGstBills ? [true, false] : [hasGstBills];
 
-    renderContainer.style.left = '-3000px';
+    const vaultFileName = `Statement_${cleanPartySegment}.pdf`;
+    for (const isGstMode of gstModes) {
+      await persistPdfToVault({
+        category: isSupplier ? 'Purchases' : 'Sales',
+        folderName: cleanPartySegment,
+        fileName: vaultFileName,
+        base64Data: cleanBase64,
+        isGst: isGstMode,
+        companyId: isGstMode ? 2 : 1,
+      });
+    }
 
-    renderContainer.style.width = '210mm';
-
-    renderContainer.style.background = '#ffffff';
-
-    renderContainer.innerHTML = statementHtml;
-
-    document.body.appendChild(renderContainer);
-
-
-
-    await new Promise(resolve => setTimeout(resolve, 800));
-
-
-
-    const targetElement = renderContainer.querySelector('.statement-pdf-page') as HTMLElement;
-
-    // @ts-ignore
-
-    const html2pdf = (await import('html2pdf.js')).default;
-
-    const cleanFileName = `${isSupplier ? 'Supplier' : 'Customer'}_${partyName.replace(/[^a-zA-Z0-9]/g, '_')}_Statement.pdf`;
-
-    const opt: any = {
-
-      margin:       5,
-
-      filename:     cleanFileName,
-
-      image:        { type: 'jpeg', quality: 0.98 },
-
-      html2canvas:  { scale: 2, useCORS: true, letterRendering: true, windowWidth: 794 },
-
-      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
-
-      pagebreak:    { mode: ['css', 'legacy'] }
-
-    };
-
-
-
-    await html2pdf().set(opt).from(targetElement || renderContainer).save();
-
-    document.body.removeChild(renderContainer);
+    // Download readable copy into Downloads folder
+    triggerBase64Download(cleanBase64, cleanFileName);
 
   } catch (err) {
 

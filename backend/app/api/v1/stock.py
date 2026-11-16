@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import qrcode
 import os
 
@@ -15,8 +15,14 @@ QR_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.di
 os.makedirs(QR_DIR, exist_ok=True)
 
 @router.post("/", response_model=StockItemResponse)
-def create_stock_item(item_in: StockItemCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def create_stock_item(
+    item_in: StockItemCreate, 
+    company_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
     store_id = require_tenant_id(current_user)
+    target_company_id = company_id or item_in.company_id or 1
     prefix = "GLD" if item_in.metal.lower() == 'gold' else "SLV" if item_in.metal.lower() == 'silver' else "ITM"
     
     # Get last item to increment sequence globally across all stores (due to global unique index)
@@ -53,8 +59,11 @@ def create_stock_item(item_in: StockItemCreate, db: Session = Depends(get_db), c
     qr_path = os.path.join(QR_DIR, qr_filename)
     img.save(qr_path)
     
+    item_data = item_in.model_dump()
+    item_data["company_id"] = target_company_id
+
     db_item = StockItem(
-        **item_in.model_dump(),
+        **item_data,
         store_id=store_id,
         item_code=item_code,
         qr_code_path=f"/static/qrcodes/{qr_filename}"
@@ -73,12 +82,16 @@ def list_stock_items(
     category: str = None,
     metal: str = None,
     status: str = None,
+    company_id: Optional[int] = Query(None),
     db: Session = Depends(get_db), 
     current_user: User = Depends(get_current_user)
 ):
     store_id = require_tenant_id(current_user)
     query = db.query(StockItem).filter(StockItem.store_id == store_id)
     
+    if company_id is not None:
+        query = query.filter(StockItem.company_id == company_id)
+        
     if search:
         query = query.filter(StockItem.item_name.ilike(f"%{search}%") | StockItem.item_code.ilike(f"%{search}%"))
     if category:
@@ -91,17 +104,33 @@ def list_stock_items(
     total = query.count()
     items = query.order_by(StockItem.id.desc()).offset(skip).limit(limit).all()
     
-    total_weight = sum([item.net_weight for item in db.query(StockItem).filter(StockItem.store_id == store_id).all()])
+    weight_query = db.query(StockItem).filter(StockItem.store_id == store_id)
+    if company_id is not None:
+        weight_query = weight_query.filter(StockItem.company_id == company_id)
+    total_weight = sum([item.net_weight for item in weight_query.all()])
     
     items_data = [StockItemResponse.model_validate(item) for item in items]
     return {"total": total, "items": items_data, "total_weight": float(total_weight)}
 
 @router.get("/scan/{item_code}", response_model=StockItemResponse)
-def scan_stock_item(item_code: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def scan_stock_item(
+    item_code: str, 
+    company_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
     store_id = require_tenant_id(current_user)
     item = db.query(StockItem).filter(StockItem.store_id == store_id, StockItem.item_code == item_code).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
+        
+    if company_id is not None and item.company_id is not None and item.company_id != company_id:
+        target_name = "Without GST (Company 1)" if item.company_id == 1 else "GST (Company 2)"
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Item {item_code} belongs to {target_name}. Please switch to {target_name} to bill this item."
+        )
+
     if item.status.lower() == "sold":
         raise HTTPException(status_code=400, detail="Item already sold")
     return item

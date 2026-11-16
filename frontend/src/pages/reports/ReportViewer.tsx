@@ -458,7 +458,12 @@ export default function ReportViewer({ reportType }: { reportType: string }) {
     fetchReport(customStart, customEnd);
   };
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
+    const electronAPI = (window as any).electronAPI;
+    if (electronAPI?.printCurrentPage) {
+      await electronAPI.printCurrentPage();
+      return;
+    }
     window.print();
   };
 
@@ -528,7 +533,7 @@ export default function ReportViewer({ reportType }: { reportType: string }) {
                 ? 'bg-cyan-500/15 border-cyan-500/30 text-cyan-400'
                 : 'bg-amber-500/15 border-amber-500/30 text-amber-300'
             }`}>
-              {currentCompany?.name || 'Saideep Jewellers'} {currentCompany?.gst_enabled ? '• GST Tax Analytics' : '• Normal Retail Analytics'}
+              {currentCompany?.name || 'Jewellery Store'} {currentCompany?.gst_enabled ? '• GST Tax Analytics' : '• Normal Retail Analytics'}
             </span>
           </div>
           <h2 className="text-xl font-bold text-primary uppercase tracking-widest">{reportType} Report</h2>

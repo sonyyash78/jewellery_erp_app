@@ -1,12 +1,31 @@
 """
-Saideep Jewellers GST Tax Invoice Template
-===================================
-Pixel-accurate layout matching GST reference tax invoice (Sales_PG_S_1944_26-27).
+GST Tax Invoice Template
+========================
+Pixel-accurate layout matching GST reference tax invoice.
 Strictly used ONLY when company.gst_enabled = True.
 """
 from typing import Dict, Any, List
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
+import re
+
+
+def _round_cur(val: Decimal) -> Decimal:
+    return Decimal(str(val)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def _resolve_item_hsn(it: Dict[str, Any]) -> str:
+    explicit = it.get("hsn_code") or it.get("hsn")
+    if explicit and str(explicit).strip():
+        return str(explicit).strip()
+    m_type = str(it.get("metal_type") or it.get("item_type") or "").upper()
+    desc = str(it.get("description") or it.get("item_name") or "").upper()
+    is_bullion = bool(re.search(r"\b(BAR|BULLION)\b", desc) or re.search(r"\b(BAR|BULLION)\b", m_type))
+    if "SILVER" in m_type or (not m_type and "SILVER" in desc):
+        return "71069120" if is_bullion else "711311"
+    if "DIAMOND" in m_type or (not m_type and "DIAMOND" in desc):
+        return "71049120"
+    return "71081200" if is_bullion else "711319"
 
 
 def generate_gst_tax_invoice_html(data: Dict[str, Any]) -> str:
@@ -28,56 +47,112 @@ def generate_gst_tax_invoice_html(data: Dict[str, Any]) -> str:
     except Exception:
         formatted_date = str(inv_date)
 
-    co_name = company.get("name", "SAIDEEP JEWELLERS")
-    co_addr = company.get("address", "167, Ward No. 3, Khedawas, Takhatgarh, Pali (Raj.)-306912")
-    co_gstin = company.get("gstin", "08BNUPK1610E1Z3")
-    co_pan = company.get("pan", "BNUPK1610E")
-    co_state = company.get("state", "Rajasthan")
-    co_state_code = company.get("state_code", "08")
-    co_phone = company.get("phone", "+91-9460820878")
-    co_email = company.get("email", "saideepjewellers78@gmail.com")
-    co_jurisdiction = company.get("jurisdiction_city", "PALI")
-    co_declaration = company.get("declaration", "We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.")
+    co_name = company.get("name") or "Jewellery Store"
+    co_addr = company.get("address") or ""
+    co_gstin = company.get("gstin") or ""
+    co_pan = company.get("pan") or ""
+    co_state = company.get("state") or ""
+    co_state_code = company.get("state_code") or ""
+    co_phone = company.get("phone") or ""
+    co_email = company.get("email") or ""
+    co_jurisdiction = company.get("jurisdiction_city") or company.get("city") or ""
+    co_declaration = company.get("declaration") or "We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct."
+    co_bank_name = company.get("bank_name") or ""
+    co_bank_acc = company.get("bank_account_no") or ""
+    co_bank_ifsc = company.get("bank_ifsc") or ""
+    co_bank_branch = company.get("bank_branch") or ""
+    co_footer_note = company.get("computer_generated_note") or ""
 
-    buyer_name = (buyer.get("name") or buyer.get("first_name") or "Walk-in Customer").strip()
-    if buyer.get("last_name"):
-        buyer_name += f" {buyer['last_name']}"
-    buyer_addr = buyer.get("address", "")
-    buyer_gstin = buyer.get("gstin") or buyer.get("gst_number") or ""
-    buyer_pan = buyer.get("pan") or buyer.get("aadhaar_pan") or ""
-    buyer_state = buyer.get("state", "Rajasthan")
-    buyer_state_code = buyer.get("state_code", "08")
-    place_of_supply = buyer.get("place_of_supply") or buyer_state
-    buyer_contact_person = buyer.get("contact_person", "")
-    buyer_phone = buyer.get("phone") or buyer.get("mobile") or ""
-    buyer_email = buyer.get("email", "")
+    bank_line_parts = [p for p in [co_bank_name, f"A/c: {co_bank_acc}" if co_bank_acc else "", f"IFSC: {co_bank_ifsc}" if co_bank_ifsc else "", co_bank_branch] if p]
+    bank_html = f'<div style="font-size: 7pt; margin-bottom: 3px;"><b>Bank Details:</b> {" | ".join(bank_line_parts)}</div>' if bank_line_parts else ""
+
+    is_purchase = (data.get("type") == "purchase") or str(inv_num).startswith(("PUR-", "SJ_P", "PG_P", "SJ/P"))
+    
+    if is_purchase:
+        header_title = "TAX INVOICE (PURCHASE VOUCHER)"
+        party_box_label = "Supplier / Vendor (Billed from)"
+        party = data.get("seller") or data.get("supplier") or data.get("customer") or {}
+        buyer_name = (party.get("name") or party.get("first_name") or "Supplier / Vendor").strip()
+        if party.get("last_name"):
+            buyer_name += f" {party['last_name']}"
+        buyer_addr = party.get("address", "")
+        buyer_gstin = party.get("gstin") or party.get("gst_number") or ""
+        buyer_pan = party.get("pan") or party.get("aadhaar_pan") or ""
+        buyer_state = party.get("state", "Rajasthan")
+        buyer_state_code = str(party.get("state_code", "08")).zfill(2)
+        place_of_supply = party.get("place_of_supply") or buyer_state
+        buyer_contact_person = party.get("contact_person") or buyer_name
+        buyer_phone = party.get("phone") or party.get("mobile") or ""
+        buyer_email = party.get("email", "")
+    else:
+        header_title = "TAX INVOICE"
+        party_box_label = "Buyer (Bill to)"
+        buyer_name = (buyer.get("name") or buyer.get("first_name") or "Walk-in Customer").strip()
+        if buyer.get("last_name"):
+            buyer_name += f" {buyer['last_name']}"
+        buyer_addr = buyer.get("address", "")
+        buyer_gstin = buyer.get("gstin") or buyer.get("gst_number") or ""
+        buyer_pan = buyer.get("pan") or buyer.get("aadhaar_pan") or ""
+        buyer_state = buyer.get("state", "Rajasthan")
+        buyer_state_code = str(buyer.get("state_code", "08")).zfill(2)
+        place_of_supply = buyer.get("place_of_supply") or buyer_state
+        buyer_contact_person = buyer.get("contact_person", "")
+        buyer_phone = buyer.get("phone") or buyer.get("mobile") or ""
+        buyer_email = buyer.get("email", "")
 
     # Totals
-    subtotal = float(gst_calc.get("total_taxable_amount", inv.get("subtotal", 0.0)))
-    cgst_tot = float(gst_calc.get("total_cgst_amount", 0.0))
-    sgst_tot = float(gst_calc.get("total_sgst_amount", 0.0))
-    igst_tot = float(gst_calc.get("total_igst_amount", 0.0))
-    total_tax = float(gst_calc.get("total_tax_amount", inv.get("tax_amount", 0.0)))
-    round_off = float(gst_calc.get("round_off", 0.0))
-    grand_total = float(gst_calc.get("grand_total", inv.get("grand_total", 0.0)))
-    is_intra = gst_calc.get("is_intra_state", True)
+    seller_sc = str(co_state_code or "08").strip().zfill(2)
+    buyer_sc = str(buyer_state_code or seller_sc or "08").strip().zfill(2)
+    is_intra = gst_calc.get("is_intra_state", seller_sc == buyer_sc)
+    subtotal = float(gst_calc.get("total_taxable_amount") or inv.get("subtotal") or inv.get("total_taxable") or 0.0)
+    total_tax = float(gst_calc.get("total_tax_amount") or inv.get("tax_amount") or (float(inv.get("cgst", 0.0)) + float(inv.get("sgst", 0.0)) + float(inv.get("igst", 0.0))) or 0.0)
+    cgst_tot = float(gst_calc.get("total_cgst_amount") or inv.get("cgst") or 0.0)
+    sgst_tot = float(gst_calc.get("total_sgst_amount") or inv.get("sgst") or 0.0)
+    igst_tot = float(gst_calc.get("total_igst_amount") or inv.get("igst") or 0.0)
+    if cgst_tot == 0.0 and total_tax > 0 and is_intra:
+        cgst_tot = round(total_tax / 2, 2)
+        sgst_tot = round(total_tax - cgst_tot, 2)
+    grand_total = float(gst_calc.get("grand_total") or inv.get("grand_total") or (subtotal + total_tax))
+    round_off = float(gst_calc.get("round_off") or round(grand_total - (subtotal + total_tax), 2))
 
-    words_total = gst_calc.get("amount_chargeable_words", "")
-    words_tax = gst_calc.get("tax_amount_words", "")
+    def _number_to_indian_words(num):
+        units = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
+                 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen']
+        tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety']
+        def two_digits(n):
+            if n < 20: return units[n]
+            return tens[n // 10] + (' ' + units[n % 10] if n % 10 else '')
+        def three_digits(n):
+            if n < 100: return two_digits(n)
+            return units[n // 100] + ' Hundred' + (' and ' + two_digits(n % 100) if n % 100 else '')
+        n = int(round(num))
+        if n == 0: return 'Zero Rupees Only'
+        crore = n // 10000000
+        n %= 10000000
+        lakh = n // 100000
+        n %= 100000
+        thousand = n // 1000
+        n %= 1000
+        parts = []
+        if crore: parts.append(three_digits(crore) + ' Crore')
+        if lakh: parts.append(two_digits(lakh) + ' Lakh')
+        if thousand: parts.append(two_digits(thousand) + ' Thousand')
+        if n: parts.append(three_digits(n))
+        return 'Indian Rupees ' + ' '.join(parts) + ' Only'
 
     # Calculate total quantity
-    tot_qty = sum(float(it.get("quantity", it.get("net_weight", it.get("gross_weight", 0.0)))) for it in items)
+    tot_qty = sum(float(it.get("quantity") or it.get("net_weight") or it.get("gross_weight") or 0.0) for it in items)
     default_unit = items[0].get("unit", "Gms") if items else "Gms"
 
     # Item rows
     item_rows = []
     for idx, it in enumerate(items, 1):
-        desc = it.get("description", it.get("item_name", "SILVER BAR"))
-        hsn = it.get("hsn_code", it.get("hsn", "71069120"))
-        qty = float(it.get("quantity", it.get("net_weight", it.get("gross_weight", 1.0))))
+        desc = it.get("description") or it.get("item_name") or "Jewellery Item"
+        hsn = _resolve_item_hsn(it)
+        qty = float(it.get("quantity") or it.get("net_weight") or it.get("gross_weight") or 1.0)
         unit = it.get("unit", "Gms")
-        rate = float(it.get("rate", it.get("rate_per_gram", 0.0)))
-        amt = float(it.get("amount", it.get("taxable_amount", qty * rate)))
+        amt = float(it.get("amount") or it.get("taxable_amount") or it.get("final_price") or it.get("metal_value") or 0.0)
+        rate = float(it.get("rate") or it.get("applied_rate") or it.get("metal_rate") or (amt / qty if qty > 0 else 0.0))
         row = f"""
         <tr class="item-row">
           <td class="col-sr">{idx}</td>
@@ -94,10 +169,60 @@ def generate_gst_tax_invoice_html(data: Dict[str, Any]) -> str:
     item_rows_html = "".join(item_rows)
 
     # Tax summary table
-    hsn_table = gst_calc.get("hsn_tax_table", [])
+    hsn_table = list(gst_calc.get("hsn_tax_table", []))
+    if not hsn_table and subtotal > 0:
+        hsn_map: Dict[str, Dict[str, Any]] = {}
+        for it in items:
+            h_c = _resolve_item_hsn(it)
+            a_v = Decimal(str(it.get("amount") or it.get("taxable_amount") or it.get("final_price") or it.get("metal_value") or 0.0))
+            g_rate = Decimal(str(it.get("gst_rate") or "3.00"))
+            if h_c not in hsn_map:
+                hsn_map[h_c] = {"taxable": Decimal("0.00"), "gst_rate": g_rate}
+            hsn_map[h_c]["taxable"] += a_v
+        if not hsn_map:
+            hsn_map["711319"] = {"taxable": Decimal(str(subtotal)), "gst_rate": Decimal("3.00")}
+        for h_code, h_info in hsn_map.items():
+            h_taxable = _round_cur(h_info["taxable"])
+            g_rate = h_info["gst_rate"]
+            if is_intra:
+                half_rate = g_rate / Decimal("2")
+                h_cgst = _round_cur(h_taxable * (half_rate / Decimal("100")))
+                h_sgst = _round_cur(h_taxable * (half_rate / Decimal("100")))
+                h_igst_rate = Decimal("0.00")
+                h_igst = Decimal("0.00")
+                h_tax = _round_cur(h_cgst + h_sgst)
+            else:
+                half_rate = Decimal("0.00")
+                h_cgst = Decimal("0.00")
+                h_sgst = Decimal("0.00")
+                h_igst_rate = g_rate
+                h_igst = _round_cur(h_taxable * (g_rate / Decimal("100")))
+                h_tax = h_igst
+            hsn_table.append({
+                "hsn_code": h_code,
+                "taxable_amount": float(h_taxable),
+                "cgst_rate": float(half_rate),
+                "cgst_amount": float(h_cgst),
+                "sgst_rate": float(half_rate),
+                "sgst_amount": float(h_sgst),
+                "igst_rate": float(h_igst_rate),
+                "igst_amount": float(h_igst),
+                "total_tax_amount": float(h_tax),
+            })
+        if hsn_table and not gst_calc:
+            subtotal = float(_round_cur(sum(Decimal(str(r["taxable_amount"])) for r in hsn_table)))
+            cgst_tot = float(_round_cur(sum(Decimal(str(r["cgst_amount"])) for r in hsn_table)))
+            sgst_tot = float(_round_cur(sum(Decimal(str(r["sgst_amount"])) for r in hsn_table)))
+            igst_tot = float(_round_cur(sum(Decimal(str(r["igst_amount"])) for r in hsn_table)))
+            total_tax = float(_round_cur(Decimal(str(cgst_tot)) + Decimal(str(sgst_tot)) + Decimal(str(igst_tot))))
+            if not inv.get("grand_total"):
+                grand_total = float(round(subtotal + total_tax))
+            round_off = round(grand_total - (subtotal + total_tax), 2)
+    words_total = gst_calc.get("amount_chargeable_words") or _number_to_indian_words(grand_total)
+    words_tax = gst_calc.get("tax_amount_words") or _number_to_indian_words(total_tax)
     tax_rows = []
     for row_data in hsn_table:
-        h = row_data.get("hsn_code", "71069120")
+        h = row_data.get("hsn_code", "711319")
         tx = float(row_data.get("taxable_amount", 0.0))
         cr = float(row_data.get("cgst_rate", 1.5))
         ca = float(row_data.get("cgst_amount", 0.0))
@@ -285,7 +410,7 @@ def generate_gst_tax_invoice_html(data: Dict[str, Any]) -> str:
 </head>
 <body>
   <div class="invoice-container">
-    <div class="header-title">TAX INVOICE</div>
+    <div class="header-title">{header_title}</div>
     {irn_block}
     
     <div class="main-grid">
@@ -303,7 +428,7 @@ def generate_gst_tax_invoice_html(data: Dict[str, Any]) -> str:
         </div>
 
         <div class="buyer-box">
-          <div style="font-size: 7.5pt; color: #555;">Buyer (Bill to)</div>
+          <div style="font-size: 7.5pt; color: #555;">{party_box_label}</div>
           <div class="company-title" style="font-size: 8.5pt;">{buyer_name}</div>
           <div>{buyer_addr}</div>
           <table style="width: 100%; margin-top: 3px;">
@@ -446,6 +571,7 @@ def generate_gst_tax_invoice_html(data: Dict[str, Any]) -> str:
       <div class="footer-left">
         <div>
           <div style="font-size: 7.5pt; margin-bottom: 4px;">Company's PAN : <b>{co_pan}</b></div>
+          {bank_html}
           <div style="font-size: 7pt; font-weight: bold; text-decoration: underline; margin-bottom: 2px;">Declaration:</div>
           <div style="font-size: 7pt; color: #333;">{co_declaration}</div>
         </div>
@@ -455,14 +581,15 @@ def generate_gst_tax_invoice_html(data: Dict[str, Any]) -> str:
         <div style="font-size: 8pt; font-weight: bold;">for {co_name}</div>
         <div class="stamp-box">
           <div style="font-size: 6pt;">★ {co_name.upper()} ★</div>
-          <div style="font-size: 5.5pt;">{(co_jurisdiction or "PALI").upper()}</div>
+          <div style="font-size: 5.5pt;">{(co_jurisdiction or "").upper()}</div>
         </div>
         <div style="font-size: 7.5pt; font-weight: bold; margin-top: 6px;">Authorised Signatory</div>
       </div>
     </div>
 
     <div class="jurisdiction-bar">
-      SUBJECT TO {co_jurisdiction or "PALI"} JURISDICTION
+      {f"SUBJECT TO {co_jurisdiction.upper()} JURISDICTION" if co_jurisdiction else ""}
+      {f'<div style="font-size: 6.5pt; font-weight: normal; color: #555; margin-top: 2px;">{co_footer_note}</div>' if co_footer_note else ""}
     </div>
   </div>
 </body>

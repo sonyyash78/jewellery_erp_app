@@ -9,6 +9,7 @@ class SupplierLedger(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     seller_id: Mapped[int] = mapped_column(Integer, ForeignKey("sellers.id", ondelete="CASCADE"), index=True)
+    company_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("companies.id"), default=1, nullable=True)
     
     date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     voucher_type: Mapped[str] = mapped_column(String(50)) # Purchase, Payment, Opening Balance

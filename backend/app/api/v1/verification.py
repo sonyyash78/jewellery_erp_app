@@ -56,6 +56,7 @@ def verify_voucher(voucher_number: str, db: Session = Depends(get_db)) -> Dict[s
             else:
                 raise ValueError(f"No official record found for voucher code: {clean_voucher}")
 
+        co_name = ((data.get("company") or {}).get("name") or "Store").strip()
         return {
             "valid": True,
             "status": "VERIFIED_AUTHENTIC",
@@ -67,7 +68,7 @@ def verify_voucher(voucher_number: str, db: Session = Depends(get_db)) -> Dict[s
             "totals": data.get("totals"),
             "items": data.get("items", []),
             "old_items": data.get("old_items", []),
-            "message": "Official Authentic Bill Verified by Saideep Jewellers System"
+            "message": f"Official Authentic Bill Verified by {co_name}"
         }
     except Exception as e:
         raise HTTPException(

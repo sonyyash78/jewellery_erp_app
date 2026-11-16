@@ -9,7 +9,7 @@ import LiveRatesModal from './LiveRatesModal';
 import InvoicePreviewModal from '../../components/invoices/InvoicePreviewModal';
 
 export default function LiveBillSummary() {
-  const { currentCompanyId } = useCompanyStore();
+  const { currentCompanyId, currentCompany } = useCompanyStore();
   const {
     cart,
     gstState,
@@ -22,6 +22,13 @@ export default function LiveBillSummary() {
     setEditingItemId,
     removeFromCart
   } = useBillingStore();
+
+  // Default GST mode strictly according to the active operating company (Normal No-GST vs GST)
+  useEffect(() => {
+    if (currentCompany) {
+      setGstState(currentCompany.gst_enabled ? 'same_state' : 'none');
+    }
+  }, [currentCompany?.id, currentCompany?.gst_enabled, setGstState]);
 
   const [showCheckout, setShowCheckout] = useState(false);
   const [showRatesModal, setShowRatesModal] = useState(false);
@@ -78,7 +85,7 @@ export default function LiveBillSummary() {
           hsn: '',
           purity: item.purityDisplay || '22K Gold',
           touch: item.touchDisplay || 91.6,
-          wastage: item.wastageDisplay || 0,
+          wastage: item.wastageDisplay ?? '',
           grossWeight: item.grossWeight || 0,
           stoneWeight: item.stoneWeight || 0,
           ratePerGm: fallbackRate,
@@ -96,7 +103,7 @@ export default function LiveBillSummary() {
           category: '',
           hsn: '',
           tanch: item.touchDisplay || 65,
-          wastage: item.wastageDisplay || 0,
+          wastage: item.wastageDisplay ?? '',
           silverPurity: item.purityDisplay || 'Fine',
           grossWeight: item.grossWeight || 0,
           stoneWeight: item.stoneWeight || 0,

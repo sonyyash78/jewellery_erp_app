@@ -67,6 +67,8 @@ class ExchangeNewItemResponse(ExchangeNewItemCreate):
 
 class ExchangeResponse(BaseModel):
     id: int
+    company_id: Optional[int] = 1
+    exchange_number: Optional[str] = None
     customer_id: int
     exchange_date: datetime
     total_old_value: float

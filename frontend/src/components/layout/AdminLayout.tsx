@@ -6,10 +6,12 @@ import { LayoutDashboard, Users, ArrowLeftRight, LogOut, Package, Settings, Rece
 import AIAssistant from '../ai/AIAssistant';
 import CompanySelector from '../common/CompanySelector';
 import { useCompanyStore } from '../../store/companyStore';
+import { useBillingStore } from '../../store/billingStore';
 import StartupCompanyModal from '../common/StartupCompanyModal';
 import ShortcutBar from '../common/ShortcutBar';
 import { BACKEND_BASE_URL } from '../../config/api';
 import toast from 'react-hot-toast';
+import { initGlobalEnterNavigation } from '../../utils/keyboardNavigation';
 
 export default function AdminLayout() {
   const logout = useAuthStore(state => state.logout);
@@ -20,12 +22,14 @@ export default function AdminLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [storageStatus, setStorageStatus] = useState<any>(null);
   const [syncingStorage, setSyncingStorage] = useState(false);
+  const [appTitle, setAppTitle] = useState<string>(user?.store_name || 'Jewellery ERP');
 
   const isElectron = Boolean((window as any).electronAPI);
   const navigate = useNavigate();
   const { companies, selectCompany } = useCompanyStore();
 
   useEffect(() => {
+    initGlobalEnterNavigation();
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       // 1. Alt + 1 or Alt + 2: Company switching anywhere
       const isAlt1 = e.altKey && (e.key === '1' || e.code === 'Digit1' || e.code === 'Numpad1');
@@ -133,7 +137,7 @@ export default function AdminLayout() {
         electronAPI.getStorageStatus?.().then((res: any) => {
           if (res) setStorageStatus(res);
         }).catch(() => {});
-      }, 4000);
+      }, 15000);
 
       return () => {
         if (typeof unsubscribe === 'function') unsubscribe();
@@ -147,14 +151,21 @@ export default function AdminLayout() {
     if (!electronAPI) return;
     try {
       setSyncingStorage(true);
-      toast.loading('Saving all data to Pendrive...', { id: 'usb-sync' });
-      const res = await electronAPI.backupToUsb();
+      toast.loading('Backing up database & refreshing PDF vault...', { id: 'usb-sync' });
+      let archiveSucceeded = false;
+      try {
+        await axiosClient.post('/backup/archive-pdfs', { force_refresh: false, refresh_statements: true });
+        archiveSucceeded = true;
+      } catch (archErr) {
+        console.warn('Archive PDFs sync warning:', archErr);
+      }
+      const res = await electronAPI.backupToUsb({ skipArchive: archiveSucceeded, showDialog: false });
       if (res?.success) {
         toast.success(
           res.usbName
-            ? `Data safely saved to ${res.usbName}!`
-            : 'Database safely saved to Pendrive!',
-          { id: 'usb-sync' }
+            ? `Store data & PDFs saved to ${res.usbName}!`
+            : 'Database & PDFs safely backed up!',
+          { id: 'usb-sync', duration: 5000 }
         );
         const updated = await electronAPI.getStorageStatus();
         setStorageStatus(updated);
@@ -179,6 +190,17 @@ export default function AdminLayout() {
           }
         })
         .catch(() => {});
+      axiosClient.get('/settings/')
+        .then(res => {
+          const s = res.data || {};
+          const resolvedTitle = (s.app_name || s.business_name || s.store_name || user?.store_name || 'Jewellery ERP').trim();
+          if (resolvedTitle) {
+            setAppTitle(resolvedTitle);
+            document.title = resolvedTitle;
+            (window as any).electronAPI?.setAppTitle?.(resolvedTitle);
+          }
+        })
+        .catch(() => {});
     }
   };
 
@@ -186,6 +208,15 @@ export default function AdminLayout() {
     syncStoreDetails();
     window.addEventListener('settings-updated', syncStoreDetails);
     return () => window.removeEventListener('settings-updated', syncStoreDetails);
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
+    useBillingStore.getState().fetchLiveRates(false);
+    const interval = setInterval(() => {
+      useBillingStore.getState().fetchLiveRates(false);
+    }, 60000);
+    return () => clearInterval(interval);
   }, [token]);
 
   useEffect(() => {
@@ -258,7 +289,7 @@ export default function AdminLayout() {
                     onError={handleLogoError}
                   />
                 </div>
-                <span className="text-sm font-bold text-primary truncate">{user?.store_name || 'Jewellery ERP'}</span>
+                <span className="text-sm font-bold text-primary truncate">{user?.store_name || appTitle || 'Jewellery ERP'}</span>
               </div>
               <button 
                 onClick={() => setMobileMenuOpen(false)}
@@ -311,8 +342,8 @@ export default function AdminLayout() {
             />
           </div>
           <div className="flex flex-col min-w-0 flex-1">
-            <h1 className="text-sm font-bold text-primary tracking-wide uppercase truncate" title={user?.store_name || 'Jewellery ERP'}>
-              {user?.store_name || 'Jewellery ERP'}
+            <h1 className="text-sm font-bold text-primary tracking-wide uppercase truncate" title={user?.store_name || appTitle || 'Jewellery ERP'}>
+              {user?.store_name || appTitle || 'Jewellery ERP'}
             </h1>
             <span className="text-[10px] text-gray-500 uppercase tracking-widest truncate">
               {user?.role_name || 'Shop Owner'}

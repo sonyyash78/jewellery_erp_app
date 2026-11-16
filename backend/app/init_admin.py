@@ -46,19 +46,19 @@ def init_admin():
         if not default_store:
             default_store = Store(
                 id=1,
-                name="Saideep Jewellers",
-                tagline="Purity & Trust Since Inception",
-                phone="9876543210",
-                email="info@saideepjewellers.com",
-                city="Mumbai",
-                state="Maharashtra",
-                pincode="400001",
+                name="My Jewellery Store",
+                tagline="",
+                phone="",
+                email="",
+                city="",
+                state="",
+                pincode="",
                 is_active=True
             )
             db.add(default_store)
             db.commit()
             db.refresh(default_store)
-            print("[BOOTSTRAP] Created default store: Saideep Jewellers")
+            print("[BOOTSTRAP] Created default store: My Jewellery Store")
 
         # 3. Seed Default Metals and Purities
         seed_default_metals(db)

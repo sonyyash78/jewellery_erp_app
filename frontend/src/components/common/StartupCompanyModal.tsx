@@ -23,10 +23,13 @@ export default function StartupCompanyModal({ forceOpen, onClose }: StartupCompa
 
   // Listen to custom event to open modal on demand
   useEffect(() => {
-    const handleOpen = () => setIsOpen(true);
+    const handleOpen = () => {
+      fetchCompanies();
+      setIsOpen(true);
+    };
     window.addEventListener('open-company-picker', handleOpen);
     return () => window.removeEventListener('open-company-picker', handleOpen);
-  }, []);
+  }, [fetchCompanies]);
 
   const handleChoose = (companyId: number) => {
     selectCompany(companyId);
@@ -44,18 +47,20 @@ export default function StartupCompanyModal({ forceOpen, onClose }: StartupCompa
 
   const co1 = companies.find((c) => c.id === 1) || {
     id: 1,
-    name: 'SAIDEEP JEWELLERS',
-    address: 'Takhatgarh, Pali (Raj.)',
+    name: 'Normal Company',
+    address: '',
     gst_enabled: false,
-    invoice_prefix: 'INV'
+    invoice_prefix: 'INV',
+    invoice_series: 'S'
   };
 
   const co2 = companies.find((c) => c.id === 2) || {
     id: 2,
-    name: 'SAIDEEP JEWELLERS (GST)',
-    address: '167, Ward No. 3, Khedawas, Takhatgarh, Pali (Raj.)-306912',
+    name: 'GST Company',
+    address: '',
     gst_enabled: true,
-    invoice_prefix: 'SJ'
+    invoice_prefix: 'GST',
+    invoice_series: 'S'
   };
 
   return (
@@ -80,7 +85,7 @@ export default function StartupCompanyModal({ forceOpen, onClose }: StartupCompa
 
         {/* Two Company Options */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5 relative z-10">
-          {/* Company 1: Saideep Jewellers (Normal / Without GST) */}
+          {/* Company 1: Normal / Without GST */}
           <div
             onClick={() => handleChoose(1)}
             className={`group cursor-pointer rounded-2xl p-6 border-2 transition-all flex flex-col justify-between ${
@@ -103,7 +108,7 @@ export default function StartupCompanyModal({ forceOpen, onClose }: StartupCompa
                 {co1.name}
               </h3>
               <p className="text-xs text-amber-200/70 mt-1 font-mono">
-                {co1.address || 'Takhatgarh, Pali'}
+                {co1.address || 'Non-GST Retail Workspace'}
               </p>
               
               <div className="mt-4 space-y-2 text-xs text-gray-400 border-t border-gray-800/80 pt-3">
@@ -113,7 +118,7 @@ export default function StartupCompanyModal({ forceOpen, onClose }: StartupCompa
                 </div>
                 <div className="flex items-center gap-2">
                   <FileSpreadsheet size={14} className="text-amber-400" />
-                  <span>Series: <span className="font-mono text-gray-300">INV-YYYYMMDD-XXXX</span></span>
+                  <span>Series: <span className="font-mono text-gray-300">{co1.invoice_prefix || 'INV'}-YYYYMMDD-XXXX</span></span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Sparkles size={14} className="text-amber-400" />
@@ -126,11 +131,11 @@ export default function StartupCompanyModal({ forceOpen, onClose }: StartupCompa
               type="button"
               className="mt-6 w-full py-3 px-4 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all bg-amber-500 hover:bg-amber-400 text-black shadow-lg shadow-amber-500/20 group-hover:shadow-amber-500/40"
             >
-              Enter Saideep Jewellers (Normal) <ArrowRight size={14} />
+              Enter {co1.name || 'Company 1'} (Normal) <ArrowRight size={14} />
             </button>
           </div>
 
-          {/* Company 2: Saideep Jewellers (GST Tax Invoice) */}
+          {/* Company 2: GST Tax Invoice */}
           <div
             onClick={() => handleChoose(2)}
             className={`group cursor-pointer rounded-2xl p-6 border-2 transition-all flex flex-col justify-between ${
@@ -153,7 +158,7 @@ export default function StartupCompanyModal({ forceOpen, onClose }: StartupCompa
                 {co2.name}
               </h3>
               <p className="text-xs text-cyan-200/70 mt-1 font-mono">
-                {co2.address || '167, Ward No. 3, Khedawas, Takhatgarh, Pali'}
+                {co2.address || 'GST Tax Invoice Workspace'}
               </p>
 
               <div className="mt-4 space-y-2 text-xs text-gray-400 border-t border-gray-800/80 pt-3">
@@ -163,7 +168,7 @@ export default function StartupCompanyModal({ forceOpen, onClose }: StartupCompa
                 </div>
                 <div className="flex items-center gap-2">
                   <FileSpreadsheet size={14} className="text-cyan-400" />
-                  <span>Series: <span className="font-mono text-gray-300">SJ/S/1/26-27</span></span>
+                  <span>Series: <span className="font-mono text-gray-300">{co2.invoice_prefix || 'GST'}/{co2.invoice_series || 'S'}/01/...</span></span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Sparkles size={14} className="text-cyan-400" />
@@ -176,7 +181,7 @@ export default function StartupCompanyModal({ forceOpen, onClose }: StartupCompa
               type="button"
               className="mt-6 w-full py-3 px-4 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all bg-cyan-500 hover:bg-cyan-400 text-black shadow-lg shadow-cyan-500/20 group-hover:shadow-cyan-500/40"
             >
-              Enter Saideep Jewellers (GST) <ArrowRight size={14} />
+              Enter {co2.name || 'Company 2'} (GST) <ArrowRight size={14} />
             </button>
           </div>
         </div>

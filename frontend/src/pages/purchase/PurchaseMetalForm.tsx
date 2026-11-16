@@ -5,6 +5,7 @@ import type { PurchaseItem } from '../../store/purchaseStore';
 import { RotateCcw, ShoppingCart } from 'lucide-react';
 import { useBillingStore } from '../../store/billingStore';
 import toast from 'react-hot-toast';
+import { validateWastage, formatWastageInputValue } from '../../utils/wastageValidation';
 
 const InputLabel = ({ label }: { label: string }) => (
   <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">{label}</label>
@@ -84,14 +85,14 @@ export default function PurchaseMetalForm() {
 
   // ── Gold calculations ──
   const gNet = (goldForm.grossWeight || 0) - (goldForm.stoneWeight || 0);
-  const gFine = gNet * (((goldForm.touchPurity || 0) + (goldForm.wastage || 0)) / 100);
+  const gFine = gNet * (((goldForm.touchPurity || 0) + (Number(goldForm.wastage) || 0)) / 100);
   const gMetal = gFine * ((goldForm.metalRate || 0) / 10);
   let gMaking = 0; if(goldForm.makingChargeType==='percent') gMaking = gMetal*((goldForm.makingChargeValue||0)/100); else if(goldForm.makingChargeType==='per_gm') gMaking = gNet*(goldForm.makingChargeValue||0); else gMaking = goldForm.makingChargeValue||0;
   const gTaxable = Math.max(0, gMetal + gMaking + (goldForm.labourCharge || 0) + (goldForm.hallmarkCharge || 0) + (goldForm.otherCharges || 0) - (goldForm.discount || 0));
 
   // ── Silver calculations ──
   const sNet = (silverForm.grossWeight || 0) - (silverForm.stoneWeight || 0);
-  const sFine = sNet * (((silverForm.tanch || 0) + (silverForm.wastage || 0)) / 100);
+  const sFine = sNet * (((silverForm.tanch || 0) + (Number(silverForm.wastage) || 0)) / 100);
   const sMetal = sFine * ((silverForm.metalRate || 0) / 1000);
   let sMaking = 0; if(silverForm.makingChargeType==='percent') sMaking = sMetal*((silverForm.makingChargeValue||0)/100); else if(silverForm.makingChargeType==='per_gm') sMaking = sNet*(silverForm.makingChargeValue||0); else sMaking = silverForm.makingChargeValue||0;
   const sTaxable = Math.max(0, sMetal + sMaking + (silverForm.testingMeltingCharge || 0) + (silverForm.otherCharges || 0) - (silverForm.discount || 0));
@@ -107,14 +108,14 @@ export default function PurchaseMetalForm() {
     if (gNet <= 0) { toast.error('Net weight must be > 0'); return; }
     const touch = Number(goldForm.touchPurity || 91.6);
     if (touch <= 0) { toast.error('Touch purity must be greater than 0'); return; }
-    if ((touch + (goldForm.wastage || 0)) >= 100 && (goldForm.wastage || 0) > 0) { toast.error('Touch + Wastage must be less than 100 (Touch + Wastage < 100)'); return; }
-    if ((touch + (goldForm.wastage || 0)) > 100) { toast.error('Touch + Wastage must be <= 100'); return; }
+    const gWastageErr = validateWastage(touch, goldForm.wastage);
+    if (gWastageErr) { toast.error(gWastageErr); return; }
     const item: PurchaseItem = {
       id: editingItemId || Math.random().toString(36).substring(7),
       metalType: 'Gold', itemName: goldForm.itemName || 'Gold Item',
       category: goldForm.category || 'Gold',
       grossWeight: goldForm.grossWeight, stoneWeight: goldForm.stoneWeight, netWeight: gNet,
-      touchPurity: touch, wastage: goldForm.wastage || 0, fineWeight: gFine,
+      touchPurity: touch, wastage: Number(goldForm.wastage), fineWeight: gFine,
       metalRate: goldForm.metalRate, metalValue: gMetal,
       labourCharge: (goldForm.labourCharge || 0) + gMaking,
       makingChargeType: goldForm.makingChargeType || 'flat',
@@ -131,14 +132,14 @@ export default function PurchaseMetalForm() {
     if (sNet <= 0) { toast.error('Net weight must be > 0'); return; }
     const tanch = Number(silverForm.tanch || 99.9);
     if (tanch <= 0) { toast.error('Tanch / Touch purity must be greater than 0'); return; }
-    if ((tanch + (silverForm.wastage || 0)) >= 100 && (silverForm.wastage || 0) > 0) { toast.error('Touch + Wastage must be less than 100 (Touch + Wastage < 100)'); return; }
-    if ((tanch + (silverForm.wastage || 0)) > 100) { toast.error('Touch + Wastage must be <= 100'); return; }
+    const sWastageErr = validateWastage(tanch, silverForm.wastage);
+    if (sWastageErr) { toast.error(sWastageErr); return; }
     const item: PurchaseItem = {
       id: editingItemId || Math.random().toString(36).substring(7),
       metalType: 'Silver', itemName: silverForm.itemName || 'Silver Item',
       category: 'Silver',
       grossWeight: silverForm.grossWeight, stoneWeight: silverForm.stoneWeight || 0, netWeight: sNet,
-      touchPurity: tanch, wastage: silverForm.wastage || 0, fineWeight: sFine,
+      touchPurity: tanch, wastage: Number(silverForm.wastage), fineWeight: sFine,
       metalRate: silverForm.metalRate, metalValue: sMetal,
       labourCharge: sMaking,
       makingChargeType: silverForm.makingChargeType || 'flat',
@@ -361,7 +362,7 @@ export default function PurchaseMetalForm() {
 
             <div className="grid grid-cols-3 gap-3">
               <div><InputLabel label="Touch / Tanch" /><input type="number" step="0.1" value={goldForm.touchPurity === 0 ? 0 : goldForm.touchPurity || ''} onChange={e => updateGoldForm('touchPurity', Number(e.target.value))} className="w-full bg-[#1A1A20] border border-gray-700 rounded px-2 py-1 text-sm text-primary focus:border-primary outline-none font-mono" /></div>
-              <div><InputLabel label="Wastage (gm)" /><input type="number" step="0.1" value={goldForm.wastage === 0 ? 0 : goldForm.wastage || ''} onChange={e => updateGoldForm('wastage', Number(e.target.value))} className="w-full bg-[#1A1A20] border border-gray-700 rounded px-2 py-1 text-sm text-primary focus:border-primary outline-none font-mono" /></div>
+              <div><InputLabel label="Wastage (gm) *" /><input type="number" step="0.1" min="0" value={formatWastageInputValue(goldForm.wastage)} onChange={e => updateGoldForm('wastage', e.target.value === '' ? '' : Number(e.target.value))} placeholder="Required (0+)" className="w-full bg-[#1A1A20] border border-gray-700 rounded px-2 py-1 text-sm text-primary focus:border-primary outline-none font-mono" /></div>
               <div><InputLabel label="Fine Wt(g)" /><input disabled value={gFine.toFixed(3)} className="w-full bg-gray-900 border border-gray-800 rounded px-2 py-1 text-sm text-primary/70 outline-none font-mono cursor-not-allowed" /></div>
             </div>
 
@@ -432,7 +433,7 @@ export default function PurchaseMetalForm() {
 
             <div className="grid grid-cols-3 gap-3">
               <div><InputLabel label="Touch / Tanch" /><input type="number" step="0.1" value={silverForm.tanch === 0 ? 0 : silverForm.tanch || ''} onChange={e => updateSilverForm('tanch', Number(e.target.value))} className="w-full bg-[#1A1A20] border border-gray-700 rounded px-2 py-1 text-sm text-gray-300 focus:border-gray-500 outline-none font-mono" /></div>
-              <div><InputLabel label="Wastage (gm)" /><input type="number" step="0.1" value={silverForm.wastage === 0 ? 0 : silverForm.wastage || ''} onChange={e => updateSilverForm('wastage', Number(e.target.value))} className="w-full bg-[#1A1A20] border border-gray-700 rounded px-2 py-1 text-sm text-gray-300 focus:border-gray-500 outline-none font-mono" /></div>
+              <div><InputLabel label="Wastage (gm) *" /><input type="number" step="0.1" min="0" value={formatWastageInputValue(silverForm.wastage)} onChange={e => updateSilverForm('wastage', e.target.value === '' ? '' : Number(e.target.value))} placeholder="Required (0+)" className="w-full bg-[#1A1A20] border border-gray-700 rounded px-2 py-1 text-sm text-gray-300 focus:border-gray-500 outline-none font-mono" /></div>
               <div><InputLabel label="Fine Wt(g)" /><input disabled value={sFine.toFixed(3)} className="w-full bg-gray-900 border border-gray-800 rounded px-2 py-1 text-sm text-gray-300/70 outline-none font-mono cursor-not-allowed" /></div>
             </div>
 

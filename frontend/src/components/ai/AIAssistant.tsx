@@ -32,7 +32,7 @@ interface ChatMessage {
 const INITIAL_GREETING: ChatMessage = {
   id: 'init-1',
   role: 'ai',
-  text: '🙏 **Namaste! Main aapka Saideep Jewellery ERP Assistant hoon.**\n\nAap mujhse store ke business ke baare me Hindi, Hinglish ya English me pooch sakte hain. Niche diye buttons par click karein ya apna sawal type karein!',
+  text: '🙏 **Namaste! Main aapka Jewellery ERP AI Assistant hoon.**\n\nAap mujhse store ke business ke baare me Hindi, Hinglish ya English me pooch sakte hain. Niche diye buttons par click karein ya apna sawal type karein!',
   timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 };
 
@@ -225,7 +225,7 @@ export default function AIAssistant() {
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="font-semibold text-zinc-100 text-sm tracking-wide">
-                    {isGeminiActive ? 'Gemini AI Copilot' : 'Saideep AI Copilot'}
+                    {isGeminiActive ? 'Gemini AI Copilot' : 'Jewellery AI Copilot'}
                   </h3>
                   <span className={`text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded border ${
                     isGeminiActive

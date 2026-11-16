@@ -104,7 +104,7 @@ def google_callback() -> str:
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
     </head>
     <body style="background:#0a0a0a; color:#d4af37; font-family:sans-serif; text-align:center; padding-top:25%;">
-        <h2>Authenticating with Saideep Jewellers...</h2>
+        <h2>Authenticating...</h2>
         <p style="color:#aaa;">Please wait while we redirect back to the app.</p>
         <script>
             var hash = window.location.hash.substring(1);

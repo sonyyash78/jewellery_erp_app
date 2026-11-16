@@ -26,7 +26,7 @@ export default function CompanySelector() {
         <Building2 size={14} className={currentCompany?.gst_enabled ? 'text-emerald-400' : 'text-primary'} />
         <div className="flex flex-col text-left">
           <span className="font-semibold leading-tight flex items-center gap-1.5">
-            {currentCompany?.name || 'Saideep Jewellers'}
+            {currentCompany?.name || 'Select Company'}
             {currentCompany?.gst_enabled ? (
               <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.5 rounded font-bold">
                 GST Tax Invoice

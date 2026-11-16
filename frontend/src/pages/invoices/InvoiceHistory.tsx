@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { axiosClient } from '../../api/axiosClient';
 
 import { generateInvoicePDF, getFormatDateOnly } from '../../utils/invoicePdfUtils';
+import { getErrorMessage } from '../../utils/errorUtils';
 
 import {
 
@@ -21,9 +22,8 @@ import {
   MessageCircle,
 
   ChevronLeft,
-
-  ChevronRight
-
+  ChevronRight,
+  RotateCw
 } from 'lucide-react';
 
 import toast from 'react-hot-toast';
@@ -60,7 +60,7 @@ interface Invoice {
 
 
 export default function InvoiceHistory() {
-  const { currentCompanyId } = useCompanyStore();
+  const { currentCompanyId, currentCompany } = useCompanyStore();
   const [tab, setTab] = useState<'sales' | 'purchases' | 'exchanges'>('sales');
 
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -82,6 +82,32 @@ export default function InvoiceHistory() {
   const [previewType, setPreviewType] = useState<'invoice' | 'exchange' | 'purchase'>('invoice');
 
   const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [syncingVault, setSyncingVault] = useState(false);
+
+  const handleRefreshAllVaultPdfs = async () => {
+    try {
+      setSyncingVault(true);
+      toast.loading('Syncing new bills & statements into GST & Without_GST folders...', { id: 'vault-sync' });
+      let archiveSucceeded = false;
+      try {
+        await axiosClient.post('/backup/archive-pdfs', { force_refresh: false, refresh_statements: true });
+        archiveSucceeded = true;
+      } catch (archErr) {
+        console.warn('Vault archive warning:', archErr);
+      }
+      const electronAPI = (window as any).electronAPI;
+      if (electronAPI?.backupToUsb) {
+        await electronAPI.backupToUsb({ skipArchive: archiveSucceeded, showDialog: false });
+      }
+      toast.success('All bills & statements auto-saved to PC & Pendrive!', { id: 'vault-sync' });
+      fetchInvoices();
+    } catch (err: any) {
+      console.error('Vault sync error:', err);
+      toast.error('Failed to sync vault PDFs', { id: 'vault-sync' });
+    } finally {
+      setSyncingVault(false);
+    }
+  };
 
   const itemsPerPage = 10;
 
@@ -137,7 +163,7 @@ export default function InvoiceHistory() {
 
       console.error('Failed to fetch invoices:', error);
 
-      toast.error(error?.response?.data?.detail || error.message || 'Failed to load invoice history', { id: 'invoice-history-fetch-error' });
+      toast.error(getErrorMessage(error, 'Failed to load invoice history'), { id: 'invoice-history-fetch-error' });
 
     } finally {
 
@@ -149,13 +175,35 @@ export default function InvoiceHistory() {
 
 
 
+  const getDocKind = (invoice: Invoice): 'purchase' | 'exchange' | 'invoice' => {
+
+    const num = invoice.invoice_number || '';
+
+    if (tab === 'purchases' || num.startsWith('PUR-') || num.includes('/P/')) return 'purchase';
+
+    if (tab === 'exchanges' || num.startsWith('EXC-') || num.includes('/E/')) return 'exchange';
+
+    return 'invoice';
+
+  };
+
+
+
   const handleView = async (invoice: Invoice) => {
 
     try {
 
-      const isExchange = invoice.invoice_number.startsWith('EXC-');
+      const kind = getDocKind(invoice);
 
-      const endpoint = isExchange ? `/exchanges/${invoice.id}` : `/invoices/${invoice.id}`;
+      const endpoint = kind === 'purchase'
+
+        ? `/purchases/${invoice.id}`
+
+        : kind === 'exchange'
+
+          ? `/exchanges/${invoice.id}`
+
+          : `/invoices/${invoice.id}`;
 
       const res = await axiosClient.get(endpoint);
 
@@ -175,9 +223,11 @@ export default function InvoiceHistory() {
 
   const getPdfEndpoint = (invoice: Invoice) => {
 
-    if (invoice.invoice_number.startsWith('PUR-')) return `/purchases/${invoice.id}/pdf-data`;
+    const kind = getDocKind(invoice);
 
-    if (invoice.invoice_number.startsWith('EXC-')) return `/exchanges/${invoice.id}/pdf-data`;
+    if (kind === 'purchase') return `/purchases/${invoice.id}/pdf-data`;
+
+    if (kind === 'exchange') return `/exchanges/${invoice.id}/pdf-data`;
 
     return `/invoices/${invoice.id}/pdf-data`;
 
@@ -209,7 +259,7 @@ export default function InvoiceHistory() {
 
       console.error('PDF generation error:', error);
 
-      const errorMessage = error.response?.data?.detail || error.message || 'Unknown error';
+      const errorMessage = getErrorMessage(error, 'Unknown error');
 
       toast.error(`Failed to generate PDF: ${errorMessage}`, { id: toastId, duration: 5000 });
 
@@ -221,11 +271,7 @@ export default function InvoiceHistory() {
 
   const handlePrint = (invoice: Invoice) => {
 
-    const isEx = invoice.invoice_number.startsWith('EXC-');
-
-    const isPur = invoice.invoice_number.startsWith('PUR-');
-
-    setPreviewType(isPur ? 'purchase' : isEx ? 'exchange' : 'invoice');
+    setPreviewType(getDocKind(invoice));
 
     setPreviewInvoiceId(invoice.id);
 
@@ -253,13 +299,11 @@ export default function InvoiceHistory() {
 
       
 
-      const isExchange = invoice.invoice_number.startsWith('EXC-');
-
-      const isPurchase = invoice.invoice_number.startsWith('PUR-');
+      const kind = getDocKind(invoice);
 
       const message = encodeURIComponent(
 
-        `Hello ${res.data.customer.name},\n\nYour ${isPurchase ? 'purchase receipt' : isExchange ? 'exchange invoice' : 'invoice'} ${res.data.invoice.invoice_number} for Rs. ${res.data.totals.grand_total.toLocaleString('en-IN')} has been generated.\n\nThank you for your business!\n\n- ${res.data.company.name}`
+        `Hello ${res.data.customer.name},\n\nYour ${kind === 'purchase' ? 'purchase receipt' : kind === 'exchange' ? 'exchange invoice' : 'invoice'} ${res.data.invoice.invoice_number} for Rs. ${res.data.totals.grand_total.toLocaleString('en-IN')} has been generated.\n\nThank you for your business!\n\n- ${res.data.company.name}`
 
       );
 
@@ -358,13 +402,22 @@ export default function InvoiceHistory() {
           <div className="flex items-center gap-2">
             <h1 className="text-xl sm:text-2xl font-bold text-primary">Invoice History</h1>
             <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold font-mono border ${currentCompanyId === 2 ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40' : 'bg-amber-500/20 text-amber-300 border-amber-500/40'}`}>
-              {currentCompanyId === 2 ? '💎 SAIDEEP JEWELLERS (GST)' : '🏛️ SAIDEEP JEWELLERS (Normal)'}
+              {currentCompanyId === 2 ? `💎 ${currentCompany?.name || 'GST Company'} (GST)` : `🏛️ ${currentCompany?.name || 'Normal Company'} (Normal)`}
             </span>
           </div>
           <p className="text-xs sm:text-sm text-textMuted mt-0.5 sm:mt-1">
-            Viewing strictly isolated {currentCompanyId === 2 ? 'GST Tax Invoices for Saideep Jewellers' : 'retail non-GST invoices for Saideep Jewellers'}
+            Viewing strictly isolated {currentCompanyId === 2 ? `GST Tax Invoices for ${currentCompany?.name || 'this company'}` : `retail non-GST invoices for ${currentCompany?.name || 'this company'}`}
           </p>
         </div>
+        <button
+          onClick={handleRefreshAllVaultPdfs}
+          disabled={syncingVault}
+          className="flex items-center gap-2 bg-primary/20 hover:bg-primary/30 text-primary border border-primary/40 px-3 py-2 rounded-lg text-xs font-bold transition-all disabled:opacity-50 cursor-pointer shadow-[0_0_10px_rgba(212,175,55,0.2)]"
+          title="Refresh and auto-save all bills across database into GST & Without_GST folders"
+        >
+          <RotateCw size={14} className={syncingVault ? 'animate-spin' : ''} />
+          <span>{syncingVault ? 'Auto-Saving Vault...' : 'Refresh & Auto-Save PDFs'}</span>
+        </button>
       </div>
 
 

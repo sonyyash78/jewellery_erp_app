@@ -24,6 +24,7 @@ export interface StockItem {
   description: string | null;
   status: string;
   created_at: string;
+  company_id?: number;
 }
 
 interface InventoryStoreState {

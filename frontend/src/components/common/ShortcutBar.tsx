@@ -1,10 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Keyboard, HelpCircle, X, ChevronDown, ChevronUp, Building2, Coins, ArrowRight, CornerDownLeft } from 'lucide-react';
+import { useCompanyStore } from '../../store/companyStore';
 
 export default function ShortcutBar() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { companies } = useCompanyStore();
+  const co1 = companies.find(c => c.id === 1);
+  const co2 = companies.find(c => c.id === 2);
   const [showModal, setShowModal] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
 
@@ -265,20 +269,20 @@ export default function ShortcutBar() {
               <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-3 sm:p-4">
                 <h3 className="text-xs font-bold text-cyan-400 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
                   <Building2 size={15} />
-                  3. Multi-Company Switchers (Both SAIDEEP JEWELLERS)
+                  3. Multi-Company Switchers
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                   <div className="flex items-center justify-between p-2.5 bg-background/60 border border-amber-500/30 rounded-lg">
                     <div>
-                      <div className="text-amber-300 font-bold">SAIDEEP JEWELLERS (Normal)</div>
+                      <div className="text-amber-300 font-bold">{co1?.name || 'Company 1'} (Normal)</div>
                       <div className="text-[10px] text-gray-400">Retail non-GST estimates</div>
                     </div>
                     <kbd className="px-2 py-1 bg-amber-500/20 border border-amber-500/40 text-amber-300 font-mono font-bold rounded">Alt + 1</kbd>
                   </div>
                   <div className="flex items-center justify-between p-2.5 bg-background/60 border border-cyan-500/30 rounded-lg">
                     <div>
-                      <div className="text-cyan-300 font-bold">SAIDEEP JEWELLERS (GST)</div>
-                      <div className="text-[10px] text-gray-400">Strict GST Tax Invoices (SJ/S/01/26-27)</div>
+                      <div className="text-cyan-300 font-bold">{co2?.name || 'Company 2'} (GST)</div>
+                      <div className="text-[10px] text-gray-400">Strict GST Tax Invoices ({co2?.invoice_prefix || 'GST'}/{co2?.invoice_series || 'S'}/01)</div>
                     </div>
                     <kbd className="px-2 py-1 bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 font-mono font-bold rounded">Alt + 2</kbd>
                   </div>

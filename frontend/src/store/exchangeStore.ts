@@ -18,6 +18,17 @@ export interface OldItem {
   discount: number;
   rateApplied: number;
   calculatedValue: number;
+  diamondDetails?: {
+    diamondType?: string;
+    shape?: string;
+    caratWeight?: number;
+    weightGm?: number;
+    pieces?: number;
+    ratePerGm?: number;
+    ratePerCarat?: number;
+    colour?: string;
+    clarity?: string;
+  };
 }
 
 export interface NewItem {
@@ -40,6 +51,18 @@ export interface NewItem {
   otherCharges: number;
   discount: number;
   finalPrice: number;
+  diamondDetails?: {
+    diamondType?: string;
+    shape?: string;
+    caratWeight?: number;
+    weightGm?: number;
+    pieces?: number;
+    ratePerGm?: number;
+    ratePerCarat?: number;
+    colour?: string;
+    clarity?: string;
+    certificateNo?: string;
+  };
 }
 
 interface ExchangeStoreState {

@@ -22,6 +22,7 @@ class StockItemBase(BaseModel):
     image_path: Optional[str] = None
     description: Optional[str] = None
     status: str = "Available"
+    company_id: Optional[int] = 1
 
 class StockItemCreate(StockItemBase):
     pass
@@ -32,6 +33,7 @@ class StockItemUpdate(StockItemBase):
 class StockItemResponse(StockItemBase):
     id: int
     item_code: str
+    company_id: Optional[int] = 1
     qr_code_path: Optional[str] = None
     created_at: datetime
     updated_at: datetime

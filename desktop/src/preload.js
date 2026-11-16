@@ -11,12 +11,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveVaultPdf: (params) => ipcRenderer.invoke('save-vault-pdf', params),
   deleteVaultPdf: (params) => ipcRenderer.invoke('delete-vault-pdf', params),
   deletePartyFolder: (params) => ipcRenderer.invoke('delete-party-folder', params),
-  archivePdfsNow: () => ipcRenderer.invoke('archive-pdfs-now'),
+  archivePdfsNow: (options) => ipcRenderer.invoke('archive-pdfs-now', options),
   backupDatabase: () => ipcRenderer.invoke('backup-database'),
-  backupToUsb: () => ipcRenderer.invoke('backup-to-usb'),
+  backupToUsb: (options) => ipcRenderer.invoke('backup-to-usb', options),
   syncNow: () => ipcRenderer.invoke('sync-now'),
   restoreDatabase: () => ipcRenderer.invoke('restore-database'),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  printHtml: (params) => ipcRenderer.invoke('print-html', params),
+  htmlToPdf: (params) => ipcRenderer.invoke('html-to-pdf', params),
+  printCurrentPage: () => ipcRenderer.invoke('print-current-page'),
+  setAppTitle: (title) => ipcRenderer.invoke('set-app-title', title),
   onStorageStatusChange: (callback) => {
     const handler = (_event, data) => callback(data);
     ipcRenderer.on('storage-status-changed', handler);

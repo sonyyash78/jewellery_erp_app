@@ -1,7 +1,7 @@
 import { handleEnterKeyNavigation } from '../../utils/keyboardNavigation';
 import { useCompanyStore } from '../../store/companyStore';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 
 import { axiosClient } from '../../api/axiosClient';
 
@@ -45,7 +45,19 @@ export default function PurchaseCheckoutModal({ payload, grandTotal, onClose, on
 
 
 
-  const [cashPaid, setCashPaid] = useState<number>(0);
+  const [cashPaid, setCashPaid] = useState<number>(() => {
+    return Math.round((payload?.grand_total || payload?.total_amount || grandTotal || 0) * 100) / 100;
+  });
+  const cashInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (cashInputRef.current) {
+        cashInputRef.current.focus();
+        cashInputRef.current.select();
+      }
+    }, 100);
+    return () => clearTimeout(timer);
+  }, []);
 
   const [goldGiven, setGoldGiven] = useState<number>(0);
 
@@ -428,24 +440,16 @@ export default function PurchaseCheckoutModal({ payload, grandTotal, onClose, on
 
 
   const handleGenerate = async (shouldPrint: boolean) => {
-
-    if (!isFullySettled && !selectedSeller) {
-
-      toast.error('A supplier must be selected for outstanding balances.');
-
-      return;
-
-    }
-
     if (cashPaid < 0 || goldGiven < 0 || silverGiven < 0) {
-
       toast.error('Payments/deposits cannot be negative.');
-
       return;
-
     }
-
     setLoading(true);
+
+    let effectiveSellerId = selectedSeller || null;
+    if (!effectiveSellerId && sellers && sellers.length > 0) {
+      effectiveSellerId = sellers[0].id;
+    }
 
 
 
@@ -617,7 +621,7 @@ export default function PurchaseCheckoutModal({ payload, grandTotal, onClose, on
 
       items: updatedItems,
 
-      seller_id: selectedSeller || null,
+      seller_id: effectiveSellerId,
 
       status: isFullySettled ? 'Paid' : 'Completed',
 
@@ -664,51 +668,37 @@ export default function PurchaseCheckoutModal({ payload, grandTotal, onClose, on
 
 
 
-      try {
-
+      const runPdfJob = async () => {
         const pdfRes = await axiosClient.get(`/purchases/${res.data.id}/pdf-data`);
-
         const pdfData = pdfRes.data;
-
-        pdfData.invoice.amount_paid    = Number(cashPaid) || 0;
-
-        pdfData.invoice.cash_paid      = Number(cashPaid) || 0;
-
-        pdfData.invoice.balance_due    = finalBalanceAmount;
-
+        pdfData.invoice.amount_paid = Number(cashPaid) || 0;
+        pdfData.invoice.cash_paid = Number(cashPaid) || 0;
+        pdfData.invoice.balance_due = finalBalanceAmount;
         pdfData.invoice.balance_amount = finalBalanceAmount;
-
         pdfData.invoice.payment_method = paymentMethod;
-
         pdfData.invoice.transaction_id = paymentMethod === 'UPI' ? upiId : paymentMethod === 'Cheque' ? `${chequeNo} | ${bankName} | ${chequeDate}` : '-';
-
         pdfData.invoice.bill_type = backendBillType;
-
         pdfData.invoice.settlement_type = backendSettlementType;
-
         pdfData.invoice.settlement_metal_type = cashBalanceAction === 'metal_gold' ? 'Gold' : cashBalanceAction === 'metal_silver' ? 'Silver' : cashBalanceAction === 'metal_both' ? 'Both' : null;
-
         pdfData.invoice.gold_balance_metal_weight = goldBalMetal;
-
         pdfData.invoice.silver_balance_metal_weight = silverBalMetal;
 
         const { generateInvoicePDF, printInvoiceDirect } = await import('../../utils/invoicePdfUtils');
-
-        await generateInvoicePDF(pdfData);
-
+        void generateInvoicePDF(pdfData).catch((e) => console.warn('Purchase background PDF archive error:', e));
         if (shouldPrint) {
-
           await printInvoiceDirect(pdfData);
-
         }
+      };
 
-      } catch (pdfErr) {
-
-        console.warn('Purchase PDF generation error:', pdfErr);
-
+      if (shouldPrint) {
+        try {
+          await runPdfJob();
+        } catch (pdfErr) {
+          console.warn('Purchase PDF generation error:', pdfErr);
+        }
+      } else {
+        void runPdfJob().catch((pdfErr) => console.warn('Purchase background PDF error:', pdfErr));
       }
-
-
 
       onSuccess(res.data.id);
 
@@ -717,12 +707,46 @@ export default function PurchaseCheckoutModal({ payload, grandTotal, onClose, on
       toast.error(getErrorMessage(e, 'Failed to record purchase'));
 
     } finally {
-
       setLoading(false);
-
     }
-
   };
+
+  useEffect(() => {
+    const handleModalKeys = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (mode === 'new_supplier') {
+          setMode('checkout');
+        } else {
+          onClose();
+        }
+        return;
+      }
+
+      if (e.key === 'F12') {
+        e.preventDefault();
+        if (!loading) {
+          handleGenerate(true);
+        }
+        return;
+      }
+
+      if (e.key === 'Enter') {
+        const target = e.target as HTMLElement;
+        if (target?.tagName === 'TEXTAREA' && !e.ctrlKey) return;
+        if (target?.tagName === 'BUTTON' && target.getAttribute('data-save-only') !== 'true') return;
+        if (target?.getAttribute('data-counter-metal') === 'true') return;
+
+        e.preventDefault();
+        if (!loading) {
+          handleGenerate(false);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleModalKeys);
+    return () => window.removeEventListener('keydown', handleModalKeys);
+  }, [mode, onClose, loading, isFullySettled, selectedSeller, cashPaid, goldGiven, silverGiven, sellers, currentCompanyId]);
 
 
 
@@ -781,7 +805,7 @@ export default function PurchaseCheckoutModal({ payload, grandTotal, onClose, on
       <div 
         data-enter-container="true"
         onKeyDown={(e) => handleEnterKeyNavigation(e, '[data-enter-container]', () => {
-          if (!loading && (isFullySettled || selectedSeller)) {
+          if (!loading) {
             handleGenerate(false);
           }
         })}
@@ -1119,7 +1143,22 @@ export default function PurchaseCheckoutModal({ payload, grandTotal, onClose, on
 
                       </div>
 
-                      <input type="number" min="0" value={cashPaid === 0 ? '' : cashPaid} onChange={e => setCashPaid(Number(e.target.value))} placeholder="0" className="w-full bg-background border border-green-900 rounded p-2 text-lg font-mono text-green-400 outline-none focus:border-green-500" />
+                      <input 
+                        ref={cashInputRef}
+                        type="number" 
+                        min="0" 
+                        value={cashPaid === 0 ? '' : cashPaid} 
+                        onChange={e => setCashPaid(Number(e.target.value))} 
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (!loading) handleGenerate(false);
+                          }
+                        }}
+                        placeholder="0" 
+                        className="w-full bg-background border border-green-900 rounded p-2 text-lg font-mono text-green-400 outline-none focus:border-green-500" 
+                      />
 
                       <div className="flex gap-3 mt-2">
 
@@ -1455,8 +1494,8 @@ export default function PurchaseCheckoutModal({ payload, grandTotal, onClose, on
                   data-nav-button="true" 
                   data-save-only="true"
                   onClick={() => handleGenerate(false)} 
-                  disabled={loading || (!isFullySettled && !selectedSeller)} 
-                  className="py-2.5 sm:py-3 px-4 bg-emerald-700 hover:bg-emerald-600 focus:ring-2 focus:ring-emerald-400 text-white font-bold rounded-lg disabled:opacity-50 transition-all flex-1 text-xs sm:text-sm shadow-md flex items-center justify-center gap-1.5"
+                  disabled={loading} 
+                  className="py-2.5 sm:py-3 px-4 bg-emerald-700 hover:bg-emerald-600 focus:ring-2 focus:ring-emerald-400 text-white font-bold rounded-lg disabled:opacity-50 transition-all flex-1 text-xs sm:text-sm shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   {loading ? 'Saving...' : '💾 SAVE ONLY (Enter)'}
                 </button>
@@ -1464,8 +1503,8 @@ export default function PurchaseCheckoutModal({ payload, grandTotal, onClose, on
                   type="button"
                   data-nav-button="true" 
                   onClick={() => handleGenerate(true)} 
-                  disabled={loading || (!isFullySettled && !selectedSeller)} 
-                  className="py-2.5 sm:py-3 px-4 bg-primary hover:bg-primary-dark focus:ring-2 focus:ring-primary text-black font-black rounded-lg disabled:opacity-50 flex justify-center items-center shadow-[0_0_15px_rgba(212,175,55,0.3)] transition-all flex-1 text-xs sm:text-sm"
+                  disabled={loading} 
+                  className="py-2.5 sm:py-3 px-4 bg-primary hover:bg-primary-dark focus:ring-2 focus:ring-primary text-black font-black rounded-lg disabled:opacity-50 flex justify-center items-center shadow-[0_0_15px_rgba(212,175,55,0.3)] transition-all flex-1 text-xs sm:text-sm cursor-pointer"
                 >
                   {loading ? 'Processing...' : <><Check size={18} className="mr-2" /> SAVE &amp; PRINT (F12)</>}
                 </button>
